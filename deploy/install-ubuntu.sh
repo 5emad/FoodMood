@@ -26,10 +26,11 @@ APP_GROUP="foodapp"
 DB_NAME="food_ordering"
 SERVICE_NAME="food"
 NODE_MAJOR="20"
+INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CREDENTIALS_FILE="${INSTALL_DIR}/CREDENTIALS.txt"
+SUPERADMIN_CREDS_OUTPUT=""
 
 log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
 log_ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
@@ -44,6 +45,48 @@ red_box() {
   done <<< "$1"
   echo -e "${RED}${BOLD}╚══════════════════════════════════════════════════════════════════╝${NC}"
   echo ""
+}
+
+yellow_box() {
+  echo ""
+  echo -e "${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════════════╗${NC}"
+  while IFS= read -r line; do
+    printf "${YELLOW}${BOLD}║${NC} %-64s ${YELLOW}${BOLD}║${NC}\n" "$line"
+  done <<< "$1"
+  echo -e "${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════════════╝${NC}"
+  echo ""
+}
+
+security_off_server_notice() {
+  red_box $'⚠  نکته امنیتی مهم:\n   • رمزها و توکن‌ها را فقط در خزانه رمز سازمانی (خارج از سرور) نگه دارید.\n   • هرگز روی همین سرور فایل یادداشت، اسکرین‌شات یا متن رمز نگه ندارید.\n   • این سرور فقط فایل .env برای اجرای سامانه دارد — کپی دستی رمزها مجاز نیست.'
+}
+
+prompt_off_server_ack() {
+  local stage="$1"
+  security_off_server_notice
+  local reply=""
+  while true; do
+    read -r -p "$(echo -e "${CYAN}${stage}${NC} — تأیید می‌کنید اطلاعات را ${BOLD}خارج از سرور${NC} ذخیره کردید؟ (بله/yes): ")" reply
+    case "${reply,,}" in
+      y|yes|بله|تایید|confirm) return 0 ;;
+      *) log_warn "پس از یادداشت در خزانه امن خارج از سرور، «بله» یا «yes» وارد کنید." ;;
+    esac
+  done
+}
+
+show_mongo_credentials_once() {
+  yellow_box "$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
+    '  اطلاعات دیتابیس MongoDB — فقط یک‌بار در همین ترمینال' \
+    '' \
+    "  نام کاربری : ${MONGO_USER}" \
+    "  رمز عبور   : ${MONGO_PASS}" \
+    "  پایگاه داده: ${DB_NAME}" \
+    '  آدرس       : 127.0.0.1:27017')"
+  prompt_off_server_ack "اطلاعات دیتابیس"
+}
+
+wipe_install_secrets_from_shell() {
+  unset MONGO_PASS SUPERADMIN_PASS SUPERADMIN_CREDS_OUTPUT 2>/dev/null || true
 }
 
 require_root() {
@@ -128,12 +171,12 @@ collect_inputs() {
   echo -e "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
   echo ""
 
-  red_box $'⚠  هشدار مهم:\n   اطلاعات دیتابیس و رمزهای سامانه را حتماً در جای امن\n   (مدیریت رمز سازمان / خزانه امن) نگه دارید.\n   بدون این اطلاعات، بازیابی و دسترسی ممکن است غیرممکن شود.\n   پس از نصب، فایل CREDENTIALS.txt فقط برای root قابل خواندن است.'
+  red_box $'⚠  هشدار مهم:\n   اطلاعات دیتابیس و رمزهای سامانه را حتماً در خزانه رمز\n   سازمانی (خارج از این سرور) نگه دارید.\n   بدون این اطلاعات، بازیابی و دسترسی ممکن است غیرممکن شود.\n   هیچ فایل رمز روی سرور ساخته نمی‌شود — فقط همین ترمینال.'
 
   MONGO_USER="$(prompt_required "نام کاربری دیتابیس MongoDB")"
   MONGO_PASS="$(prompt_password_twice "رمز عبور دیتابیس MongoDB")"
 
-  red_box $'⚠  این نام کاربری و رمز دیتابیس را همین الان یادداشت کنید!\n   پس از نصب در فایل زیر هم ذخیره می‌شود:\n   /opt/food/CREDENTIALS.txt'
+  show_mongo_credentials_once
 
   # ── حالت سریع: فقط دیتابیس پرسیده می‌شود؛ بقیه پیش‌فرض امن ─────────────────
   if [[ "$QUICK_MODE" -eq 1 ]]; then
@@ -145,7 +188,7 @@ collect_inputs() {
     SUPERADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)@Fm9"
     SERVER_IP="$(detect_server_ip)"
     log_info "حالت سریع: Nginx روی IP، بدون دامنه — دسترسی: http://${SERVER_IP}"
-    log_info "سوپرادمین '${SUPERADMIN_USER}' با رمز تصادفی ساخته می‌شود — در CREDENTIALS.txt ذخیره خواهد شد."
+    log_info "سوپرادمین '${SUPERADMIN_USER}' با رمز تصادفی ساخته می‌شود — در پایان نصب یک‌بار در ترمینال نمایش داده می‌شود."
     return
   fi
 
@@ -295,7 +338,7 @@ deploy_application() {
     --exclude node_modules \
     --exclude .git \
     --exclude .env \
-    --exclude CREDENTIALS.txt \
+    --exclude INSTALL_INFO.txt \
     --exclude '*.log' \
     "$PROJECT_DIR/" "$INSTALL_DIR/"
 
@@ -399,7 +442,7 @@ EOF
   log_ok "فایل .env ساخته شد."
 }
 
-write_credentials_file() {
+write_install_info_file() {
   local access_url
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     access_url="https://${APP_DOMAIN}"
@@ -409,39 +452,85 @@ write_credentials_file() {
     access_url="http://${SERVER_IP:-$(detect_server_ip)}:3000"
   fi
 
-  cat > "$CREDENTIALS_FILE" <<EOF
+  cat > "$INSTALL_INFO_FILE" <<EOF
 ═══════════════════════════════════════════════════════════════
-  اطلاعات حساس سامانه تغذیه — این فایل را در جای امن نگه دارید
+  راهنمای نصب سامانه تغذیه — بدون اطلاعات حساس
   تاریخ نصب: $(date '+%Y-%m-%d %H:%M:%S %Z')
 ═══════════════════════════════════════════════════════════════
 
-⚠  هشدار: بدون این اطلاعات، بازیابی دیتابیس و پشتیبان ممکن است
-   غیرممکن شود. یک کپی در خزانه رمز سازمان نگه دارید.
+⚠  این فایل عمداً رمز، توکن یا کلید ندارد.
+   رمزها فقط یک‌بار در ترمینال نصب نمایش داده شدند.
+   آن‌ها را در خزانه رمز سازمانی (خارج از سرور) نگه دارید.
 
-─── MongoDB ───────────────────────────────────────────────────
+─── MongoDB (بدون رمز) ───────────────────────────────────────
   نام کاربری : ${MONGO_USER}
-  رمز عبور   : ${MONGO_PASS}
   پایگاه داده: ${DB_NAME}
   آدرس       : 127.0.0.1:27017
 
 ─── دسترسی وب ─────────────────────────────────────────────────
   آدرس سامانه: ${access_url}
 
-─── کلیدهای رمزنگاری (.env) ──────────────────────────────────
-  SESSION_SECRET  : $(grep '^SESSION_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)
-  JWT_SECRET      : $(grep '^JWT_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)
-  BACKUP_SECRET   : $(grep '^BACKUP_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)
-  PASSWORD_PEPPER : $(grep '^PASSWORD_PEPPER=' "${INSTALL_DIR}/.env" | cut -d= -f2-)
-
 ─── مسیرها ────────────────────────────────────────────────────
   نصب سامانه : ${INSTALL_DIR}
-  فایل env   : ${INSTALL_DIR}/.env
+  فایل env   : ${INSTALL_DIR}/.env  (فقط برای اجرا — کپی دستی توصیه نمی‌شود)
   لاگ سرویس  : journalctl -u ${SERVICE_NAME} -f
 
 EOF
 
-  chmod 600 "$CREDENTIALS_FILE"
-  chown root:root "$CREDENTIALS_FILE"
+  chmod 644 "$INSTALL_INFO_FILE"
+  chown root:root "$INSTALL_INFO_FILE"
+  # حذف فایل قدیمی در صورت وجود — دیگر رمز روی سرور نگه نمی‌داریم
+  rm -f "${INSTALL_DIR}/CREDENTIALS.txt"
+}
+
+reveal_final_secrets_once() {
+  local access_url session_secret jwt_secret backup_secret pepper
+  if [[ "$USE_DOMAIN" -eq 1 ]]; then
+    access_url="https://${APP_DOMAIN}"
+  elif [[ "$USE_NGINX" -eq 1 ]]; then
+    access_url="http://${SERVER_IP:-$(detect_server_ip)}"
+  else
+    access_url="http://${SERVER_IP:-$(detect_server_ip)}:3000"
+  fi
+
+  session_secret="$(grep '^SESSION_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+  jwt_secret="$(grep '^JWT_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+  backup_secret="$(grep '^BACKUP_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+  pepper="$(grep '^PASSWORD_PEPPER=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+
+  echo ""
+  echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+  echo -e "${YELLOW}${BOLD}  اطلاعات حساس — فقط یک‌بار در همین ترمینال${NC}"
+  echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+  echo ""
+  echo -e "${BOLD}─── MongoDB ───────────────────────────────────────────────────${NC}"
+  echo "  نام کاربری : ${MONGO_USER}"
+  echo "  رمز عبور   : ${MONGO_PASS}"
+  echo "  پایگاه داده: ${DB_NAME}"
+  echo ""
+  echo -e "${BOLD}─── دسترسی وب ─────────────────────────────────────────────────${NC}"
+  echo "  آدرس سامانه: ${access_url}"
+  echo ""
+  echo -e "${BOLD}─── کلیدهای رمزنگاری (.env) ──────────────────────────────────${NC}"
+  echo "  SESSION_SECRET  : ${session_secret}"
+  echo "  JWT_SECRET      : ${jwt_secret}"
+  echo "  BACKUP_SECRET   : ${backup_secret}"
+  echo "  PASSWORD_PEPPER : ${pepper}"
+  echo ""
+
+  if [[ "$CREATE_SUPERADMIN" -eq 1 ]]; then
+    echo -e "${BOLD}─── سوپرادمین ─────────────────────────────────────────────────${NC}"
+    if [[ -n "$SUPERADMIN_CREDS_OUTPUT" ]]; then
+      echo "$SUPERADMIN_CREDS_OUTPUT"
+    else
+      echo "  (ساخت سوپرادمین انجام نشد یا از قبل وجود داشت)"
+    fi
+    echo ""
+  fi
+
+  prompt_off_server_ack "اطلاعات نهایی نصب"
+  wipe_install_secrets_from_shell
+  log_ok "تأیید ذخیره خارج از سرور ثبت شد. رمزها از حافظه نصب‌کننده پاک شدند."
 }
 
 install_npm_deps() {
@@ -604,9 +693,8 @@ create_superadmin_account() {
     echo "$output"
     return
   }
-  echo "$output" >> "$CREDENTIALS_FILE"
-  chmod 600 "$CREDENTIALS_FILE"
-  log_ok "سوپرادمین '${SUPERADMIN_USER}' ساخته شد — توکن دومرحله‌ای در CREDENTIALS.txt ذخیره شد."
+  SUPERADMIN_CREDS_OUTPUT="$output"
+  log_ok "سوپرادمین '${SUPERADMIN_USER}' ساخته شد — اطلاعات ورود در پایان نصب یک‌بار در ترمینال نمایش داده می‌شود."
 }
 
 print_summary() {
@@ -627,7 +715,7 @@ print_summary() {
   echo -e "  ${BOLD}آدرس سامانه:${NC}  ${access_url}/login"
   echo -e "  ${BOLD}پنل مدیریت:${NC}   ${access_url}/admin/dashboard"
   echo ""
-  red_box $'⚠  حتماً اطلاعات زیر را در جای امن نگه دارید:\n   • نام کاربری و رمز MongoDB\n   • کلیدهای BACKUP_SECRET و سایر رمزهای .env\n   • توکن دومرحله‌ای سوپرادمین (اگر ساخته شد)\n\n   فایل کامل: /opt/food/CREDENTIALS.txt\n   (فقط root می‌تواند بخواند — یک کپی امن بگیرید)'
+  red_box $'✓  نصب کامل شد.\n   اطلاعات حساس فقط یک‌بار در ترمینال نمایش داده شد\n   و تأیید ذخیره خارج از سرور دریافت شد.\n\n   راهنمای بدون رمز: /opt/food/INSTALL_INFO.txt\n   (فقط آدرس‌ها و مسیرها — بدون رمز یا توکن)'
   echo -e "  ${BOLD}دستورات مفید:${NC}"
   echo "    sudo systemctl status food"
   echo "    sudo journalctl -u food -f"
@@ -649,8 +737,9 @@ main() {
   install_npm_deps
   setup_systemd
   configure_nginx
-  write_credentials_file
   create_superadmin_account
+  write_install_info_file
+  reveal_final_secrets_once
   print_summary
 }
 

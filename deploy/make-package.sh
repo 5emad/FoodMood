@@ -29,6 +29,7 @@ rsync -a \
   --exclude .env \
   --exclude dist \
   --exclude .mongodb-data \
+  --exclude 'INSTALL_INFO.txt' \
   --exclude 'CREDENTIALS.txt' \
   --exclude '*.log' \
   "$PROJECT_DIR/" "$STAGE/food/"
