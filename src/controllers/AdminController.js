@@ -8,7 +8,7 @@ const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const SecurityLog = require('../models/SecurityLog');
-const { hashPassword, escapeRegex, hashSensitiveToken } = require('../helpers/SecurityHelper');
+const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
 const { testConnection: testLdapConn, validateConfig: validateLdapConfig } = require('../helpers/LdapHelper');
 const { mergeLdapSettings, ldapFieldsFromBody } = require('../helpers/LdapSettingsHelper');
 const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
@@ -36,6 +36,17 @@ function optionalString(value) {
 function nullableString(value) {
   const normalized = firstString(value).trim();
   return normalized || null;
+}
+
+function passwordPolicyError(role) {
+  return role === 'superadmin'
+    ? 'رمز سوپر ادمین باید حداقل ۱۲ کاراکتر و شامل حرف، عدد و نماد باشد'
+    : 'رمز عبور باید حداقل ۸ کاراکتر و شامل حرف و عدد باشد';
+}
+
+function meetsPasswordPolicy(password, role) {
+  const isSuper = role === 'superadmin';
+  return validatePasswordPolicy(password, { minLength: isSuper ? 12 : 8, requireSymbol: isSuper });
 }
 
 function generateOneTimeSuperToken() {
@@ -274,6 +285,10 @@ class AdminController {
         return res.status(400).json({ message: 'ساخت حساب local فقط برای مدیر مجاز است. کاربران عادی باید با Active Directory وارد شوند.' });
       }
 
+      if (!meetsPasswordPolicy(normalizedPassword, requestedRole)) {
+        return res.status(400).json({ message: passwordPolicyError(requestedRole) });
+      }
+
       const exists = await User.findOne({ username: normalizedUsername });
       if (exists) {
         return res.status(400).json({ message: 'نام کاربری تکراری است' });
@@ -353,6 +368,10 @@ class AdminController {
       });
 
       if (normalizedPassword) {
+        const effectiveRole = normalizedRole || user.role;
+        if (!meetsPasswordPolicy(normalizedPassword, effectiveRole)) {
+          return res.status(400).json({ message: passwordPolicyError(effectiveRole) });
+        }
         user.password = await hashPassword(normalizedPassword);
       }
 
