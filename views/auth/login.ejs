@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ورود به سامانه تغذیه</title>
+  <%- include('../partials/head-assets') %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="auth-body">
+  <div class="auth-wrap">
+    <div class="auth-side">
+      <div class="auth-side-icon">
+        <i class="fas fa-utensils"></i>
+      </div>
+      <div class="auth-side-title"><%= locals.organizationName || 'سامانه تغذیه' %></div>
+      <div class="auth-side-sub">
+       سامانه توزیع و رزرو غذا
+      </div>
+      <div class="auth-side-dots">
+        <span class="active"></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+
+    <div class="auth-card">
+      <div class="auth-card-title">خوش آمدید</div>
+      <div class="auth-card-sub">نام کاربری و رمز عبور را وارد کنید</div>
+
+      <% if (locals.expired) { %>
+        <div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle"></i>
+          نشست شما منقضی شده است. لطفا دوباره وارد شوید.
+        </div>
+      <% } %>
+
+      <% if (locals.idle) { %>
+        <div class="alert alert-warning">
+          <i class="fas fa-clock"></i>
+          به دلیل عدم فعالیت، نشست شما پایان یافت. لطفا دوباره وارد شوید.
+        </div>
+      <% } %>
+
+      <% if (locals.error) { %>
+        <div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle"></i>
+          <%= error %>
+        </div>
+      <% } %>
+
+      <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-user" style="color:var(--primary);margin-left:6px"></i>
+            نام کاربری
+          </label>
+          <input type="text" class="form-control" id="username" name="username"
+                 placeholder="مثلا ali" required dir="ltr" style="text-align:right" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-lock" style="color:var(--primary);margin-left:6px"></i>
+            کلمه عبور
+          </label>
+          <input type="password" class="form-control" id="password" name="password"
+                 placeholder="••••••••" required dir="ltr" style="text-align:right" autocomplete="new-password">
+        </div>
+
+        <div class="form-group" id="superTokenGroup" style="display:none">
+          <label class="form-label">
+            <i class="fas fa-shield-halved" style="color:var(--primary);margin-left:6px"></i>
+            توکن امنیتی سوپر ادمین
+          </label>
+          <input type="password" class="form-control" id="superToken" name="superToken"
+                 placeholder="توکن یک‌بار نمایش داده‌شده" dir="ltr" style="text-align:left" autocomplete="new-password">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-w100 mt-2" style="padding:13px;font-size:.95rem;">
+          <i class="fas fa-sign-in-alt"></i>
+          ورود به پنل
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const submitButton = form.querySelector('button[type="submit"]');
+    const defaultButtonHtml = submitButton.innerHTML;
+
+    function showError(message) {
+      const oldAlert = document.querySelector('.auth-card .alert-danger');
+      if (oldAlert) oldAlert.remove();
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-danger';
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-exclamation-triangle';
+      alert.appendChild(icon);
+      alert.appendChild(document.createTextNode(' ' + String(message || '')));
+      form.before(alert);
+    }
+
+    form.addEventListener('submit', async (event) => {
+      if (form.dataset.mode === 'super-token') return;
+      event.preventDefault();
+      submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ورود...';
+      submitButton.disabled = true;
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        const data = await response.json();
+
+        if (data.tokenRequired) {
+          document.getElementById('superTokenGroup').style.display = 'block';
+          document.getElementById('username').disabled = true;
+          document.getElementById('password').disabled = true;
+          submitButton.innerHTML = '<i class="fas fa-shield-halved"></i> تایید توکن امنیتی';
+          submitButton.disabled = false;
+          form.dataset.mode = 'super-token';
+          showError(data.message || 'توکن امنیتی سوپر ادمین را وارد کنید');
+          document.getElementById('superToken').focus();
+          return;
+        }
+
+        if (data.success) {
+          window.location.href = data.user.mustSetFullName
+            ? '/complete-profile'
+            : (['admin', 'superadmin'].includes(data.user.role) ? '/admin/dashboard' : '/user/dashboard');
+          return;
+        }
+
+        showError(data.message || 'اطلاعات ورود صحیح نیست');
+      } catch (error) {
+        showError('خطا در ارتباط با سرور');
+      } finally {
+        submitButton.innerHTML = defaultButtonHtml;
+        submitButton.disabled = false;
+      }
+    });
+
+    form.addEventListener('submit', async (event) => {
+      if (form.dataset.mode !== 'super-token') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تایید...';
+      submitButton.disabled = true;
+      try {
+        const response = await fetch('/api/auth/verify-super-token', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: document.getElementById('superToken').value }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          window.location.href = '/admin/dashboard';
+          return;
+        }
+        showError(data.message || 'توکن امنیتی اشتباه است');
+      } catch {
+        showError('خطا در تایید توکن امنیتی');
+      } finally {
+        submitButton.innerHTML = '<i class="fas fa-shield-halved"></i> تایید توکن امنیتی';
+        submitButton.disabled = false;
+      }
+    }, true);
+  </script>
+</body>
+</html>

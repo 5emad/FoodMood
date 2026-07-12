@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../partials/session-security') %>
+  <title>تکمیل نام و نام خانوادگی</title>
+  <%- include('../partials/head-assets') %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="profile-page">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><i class="fas fa-utensils"></i></span>
+      <span>سامانه تغذیه</span>
+    </div>
+    <a class="logout" href="/logout"><i class="fas fa-arrow-right-from-bracket"></i> خروج</a>
+  </header>
+
+  <main class="shell">
+    <div class="eyebrow"><i class="fas fa-user-check"></i> تکمیل هویت کاربری</div>
+    <h1><span id="typed"></span><span class="caret"></span></h1>
+
+    <form id="profileForm" class="entry" autocomplete="off">
+      <div class="input-row">
+        <div class="field">
+          <i class="fas fa-signature"></i>
+          <input id="fullName" name="fullName" type="text" inputmode="text" dir="rtl"
+                 placeholder="مثلا: علی رضایی" required autofocus>
+        </div>
+        <button id="submitBtn" type="submit">
+          <i class="fas fa-arrow-left"></i>
+          ورود به سامانه
+        </button>
+      </div>
+      <div id="error" class="error"></div>
+    </form>
+
+    <p class="hint">این نام در پنل و گزارش‌های سامانه نمایش داده می‌شود.</p>
+  </main>
+
+  <script>
+    const text = 'کاربر عزیز، لطفا نام و نام خانوادگی خود را به فارسی بنویسید';
+    const target = document.getElementById('typed');
+    let index = 0;
+
+    function typeNext() {
+      target.textContent = text.slice(0, index);
+      index += 1;
+      if (index <= text.length) setTimeout(typeNext, 42);
+    }
+    typeNext();
+
+    const form = document.getElementById('profileForm');
+    const input = document.getElementById('fullName');
+    const error = document.getElementById('error');
+    const button = document.getElementById('submitBtn');
+    const persianName = /^[\u0600-\u06FF\s\u200c]{3,80}$/;
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const value = input.value.trim();
+      error.textContent = '';
+
+      if (!persianName.test(value) || value.split(/\s+/).filter(Boolean).length < 2) {
+        error.textContent = 'نام و نام خانوادگی را کامل و به فارسی وارد کنید.';
+        input.focus();
+        return;
+      }
+
+      button.disabled = true;
+      button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ثبت...';
+
+      try {
+        const response = await fetch('/api/auth/set-fullname', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName: value }),
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'ثبت نام انجام نشد');
+        }
+        window.location.href = '/user/dashboard';
+      } catch (err) {
+        error.textContent = err.message || 'خطا در ارتباط با سرور';
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-arrow-left"></i> ورود به سامانه';
+      }
+    });
+  </script>
+</body>
+</html>

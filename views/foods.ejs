@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <%- include('partials/session-security') %>
+    <title>سفارش غذا - سامانه تغذیه</title>
+    <%- include('partials/head-assets') %>
+    <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+    <script src="/js/security.js?v=5" defer></script>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<!-- Top Nav -->
+<nav class="top-nav">
+    <div class="nav-brand">
+        <div class="nav-brand-icon"><i class="fas fa-building"></i></div>
+        <div>
+            <div class="nav-brand-title">اتوماسیون تغذیه</div>
+            <span class="nav-brand-sub">سفارش سازمانی</span>
+        </div>
+    </div>
+    <div class="nav-user">
+        <a href="/user/dashboard" class="btn btn-outline btn-sm"><i class="fas fa-arrow-right"></i> داشبورد</a>
+        <a href="/logout" class="btn-icon logout-btn" title="خروج"><i class="fas fa-power-off"></i></a>
+    </div>
+</nav>
+
+<div style="max-width:1200px;margin:30px auto;padding:0 20px;">
+
+    <!-- Header -->
+    <div class="page-header">
+        <div>
+            <div class="ph-title">فهرست غذای سازمان</div>
+            <div class="ph-sub">انتخاب غذا و ثبت سفارش روزانه</div>
+        </div>
+        <i class="fas fa-utensils ph-icon"></i>
+    </div>
+
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:start;">
+
+        <!-- Sidebar -->
+        <div>
+            <!-- Categories -->
+            <div class="card" style="margin-bottom:16px;">
+                <div class="card-header"><div class="card-title"><i class="fas fa-list" style="color:var(--primary);margin-left:8px"></i>دسته‌بندی</div></div>
+                <div style="padding:10px 12px;">
+                    <button class="cat-btn active" onclick="filterCat('',this)">همه دسته‌ها</button>
+                    <button class="cat-btn" onclick="filterCat('breakfast',this)">صبحانه</button>
+                    <button class="cat-btn" onclick="filterCat('lunch',this)">ناهار</button>
+                    <button class="cat-btn" onclick="filterCat('dinner',this)">شام</button>
+                    <button class="cat-btn" onclick="filterCat('snack',this)">میان وعده</button>
+                </div>
+            </div>
+
+            <!-- Cart -->
+            <div class="cart-summary">
+                <div style="font-weight:700;margin-bottom:14px;font-size:.95rem;"><i class="fas fa-shopping-basket" style="color:var(--primary);margin-left:8px"></i>سبد سفارش</div>
+                <div class="cart-row"><span>تعداد آیتم</span><span id="cartCount" class="badge badge-primary">0</span></div>
+                <div class="cart-row"><span>مبلغ کل</span><span class="cart-total"><span id="cartTotal">0</span> ت</span></div>
+                <button class="btn btn-primary btn-w100 mt-2" onclick="checkout()">
+                    <i class="fas fa-check"></i> تکمیل سفارش
+                </button>
+                <button class="btn btn-sm btn-w100 mt-1" style="background:var(--danger-bg);color:var(--danger);border:1px solid rgba(142,42,63,.2);" onclick="clearCart()">
+                    <i class="fas fa-trash"></i> خالی کردن
+                </button>
+            </div>
+        </div>
+
+        <!-- Foods Grid -->
+        <div id="foodsGrid">
+            <div style="padding:40px;text-align:center;"><div class="spinner"></div></div>
+        </div>
+
+    </div>
+</div>
+
+<footer class="site-footer">
+    <p>سامانه مدیریت تغذیه سازمانی &copy; ۱۴۰۵</p>
+</footer>
+
+<script>
+    let cart = [];
+    const foodCache = new Map();
+    const catMap = { breakfast:'صبحانه', lunch:'ناهار', dinner:'شام', snack:'میان وعده' };
+
+    function esc(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function showToast(msg, type='success') {
+        const c = document.getElementById('toast-container');
+        const t = document.createElement('div');
+        t.className = `toast ${type}`;
+        t.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':'exclamation-circle'}"></i><span>${esc(msg)}</span>`;
+        c.appendChild(t);
+        setTimeout(() => { t.style.animation='fadeOut .4s forwards'; setTimeout(()=>t.remove(),400); }, 3000);
+    }
+
+    async function loadFoods(cat='') {
+        const url = cat ? `/api/foods/category/${cat}` : '/api/foods';
+        try {
+            const res  = await fetch(url, { credentials: 'same-origin' });
+            const data = await res.json();
+            renderFoods(data.success ? data.data : []);
+        } catch(e) { renderFoods([]); }
+    }
+
+    function renderFoods(foods) {
+        const grid = document.getElementById('foodsGrid');
+        foodCache.clear();
+        foods.forEach(f => foodCache.set(String(f._id), f));
+        if (!foods.length) {
+            grid.innerHTML = '<div class="empty-state"><i class="fas fa-utensils"></i><p>غذایی برای این دسته وجود ندارد</p></div>';
+            return;
+        }
+        grid.innerHTML = `<div class="food-grid">${foods.map(f=>`
+            <div class="food-card">
+                <div class="food-card-img">
+                    ${f.image ? `<img src="/uploads/foods/${encodeURIComponent(f.image)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(f.name)}">` : `<i class="fas fa-utensils"></i>`}
+                </div>
+                <div class="food-card-body">
+                    <div class="food-card-title">${esc(f.name)}</div>
+                    <div class="food-card-desc">${esc(f.description || 'بدون توضیح')}</div>
+                    <div class="food-card-footer">
+                        <span class="food-price">${(f.price||0).toLocaleString()} ت</span>
+                        <button class="btn btn-reserve" onclick="addToCart('${f._id}')">
+                            <i class="fas fa-plus"></i> افزودن
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('')}</div>`;
+    }
+
+    function addToCart(id) {
+        const food = foodCache.get(String(id));
+        if (!food) return;
+        cart.push({ foodId: id, name: food.name, price: food.price, quantity: 1 });
+        updateCart();
+        showToast(`${food.name} به سبد اضافه شد`);
+    }
+
+    function updateCart() {
+        document.getElementById('cartCount').textContent = cart.length;
+        document.getElementById('cartTotal').textContent = cart.reduce((s,i)=>s+(i.price*i.quantity),0).toLocaleString();
+    }
+
+    function clearCart() {
+        if (!cart.length) return;
+        if (confirm('سبد سفارش خالی شود؟')) { cart=[]; updateCart(); }
+    }
+
+    function filterCat(cat, btn) {
+        document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        loadFoods(cat);
+    }
+
+    async function checkout() {
+        if (!cart.length) { showToast('سبد خرید خالی است','error'); return; }
+        try {
+            const res  = await fetch('/api/orders', {
+                method:'POST',
+                credentials: 'same-origin',
+                headers:{ 'Content-Type':'application/json' },
+                body: JSON.stringify({ items: cart.map(i=>({ foodId:i.foodId, quantity:i.quantity })) }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('سفارش با موفقیت ثبت شد');
+                cart=[]; updateCart();
+                setTimeout(()=>window.location.href='/user/dashboard', 1500);
+            } else { showToast(data.message || 'خطا در ثبت سفارش','error'); }
+        } catch(e) { showToast('خطا در اتصال','error'); }
+    }
+
+    loadFoods();
+</script>
+</body>
+</html>

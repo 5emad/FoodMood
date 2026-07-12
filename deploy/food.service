@@ -1,0 +1,25 @@
+[Unit]
+Description=Sazman Food Ordering System
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=foodapp
+Group=foodapp
+WorkingDirectory=/opt/food
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/food/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=food-app
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

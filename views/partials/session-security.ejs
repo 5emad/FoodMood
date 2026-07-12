@@ -1,0 +1,5 @@
+<% if (typeof sessionPolicy !== 'undefined' && sessionPolicy) { %>
+<meta name="session-authenticated" content="1">
+<meta name="session-idle-ms" content="<%= sessionPolicy.idleMs %>">
+<meta name="session-max-ms" content="<%= sessionPolicy.maxMs %>">
+<% } %>

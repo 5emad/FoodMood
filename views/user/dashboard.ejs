@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../partials/session-security') %>
+  <title>پرتال تغذیه سازمانی</title>
+  <%- include('../partials/head-assets', { includeSweetAlert: true }) %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- No active week overlay -->
+<div id="noWeekOverlay" class="glass-overlay" style="display:none">
+  <div class="glass-box sm">
+    <div style="font-size:3rem;margin-bottom:16px;color:var(--primary-light)"><i class="fas fa-hourglass-half"></i></div>
+    <div class="modal-title">برنامه فعال نیست</div>
+    <div class="modal-desc">در حال حاضر منوی فعالی وجود ندارد.<br>لطفاً بعداً مراجعه فرمایید.</div>
+    <a href="/logout" class="btn btn-danger btn-w100" style="text-decoration:none;justify-content:center;padding:12px;">
+      <i class="fas fa-power-off"></i> خروج از سیستم
+    </a>
+  </div>
+</div>
+
+<!-- Top Nav -->
+<nav class="top-nav">
+  <div class="nav-brand">
+    <div class="nav-brand-icon"><i class="fas fa-utensils"></i></div>
+    <div>
+      <div class="nav-brand-title">اتوماسیون تغذیه</div>
+      <span class="nav-brand-sub">پرتال کارکنان</span>
+    </div>
+  </div>
+  <div class="nav-user">
+    <div class="nav-user-info">
+      <span class="nav-u-name" id="userName">همکار گرامی</span>
+      <span class="nav-u-dept" id="userDept">واحد عمومی</span>
+    </div>
+    <a href="/logout" class="btn-icon logout-btn" title="خروج"><i class="fas fa-power-off"></i></a>
+  </div>
+</nav>
+
+<main style="max-width:1200px;margin:32px auto;padding:0 24px">
+
+  <!-- Page Header -->
+  <div class="page-header" style="margin-bottom:28px">
+    <div>
+      <div class="ph-badge"><i class="fas fa-calendar-week"></i> هفته جاری</div>
+      <div class="ph-title">برنامه غذایی هفته</div>
+      <div class="ph-sub" id="weekTitle">در حال بارگذاری برنامه فعال...</div>
+    </div>
+    <i class="fas fa-bowl-food ph-icon"></i>
+  </div>
+
+  <!-- Tabs -->
+  <div class="user-tabs">
+    <button class="tab-button active" data-tab="menu">
+      <i class="fas fa-calendar-days"></i> منوی هفته
+    </button>
+    <button class="tab-button" data-tab="orders">
+      <i class="fas fa-receipt"></i> سفارش‌های من
+    </button>
+  </div>
+
+  <!-- Menu Tab -->
+  <section id="tab-menu" class="tab-panel active">
+    <div class="menu-grid" id="menuGrid">
+      <div style="padding:40px;text-align:center"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+  <!-- Orders Tab -->
+  <section id="tab-orders" class="tab-panel">
+    <div class="table-wrap" id="ordersWrap">
+      <div style="padding:40px;text-align:center"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+</main>
+
+<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script>
+if (typeof Swal === 'undefined') {
+  window.Swal = {
+    fire: function(opts) {
+      if (opts && opts.icon !== 'success') window.alert(opts.title || '');
+      return Promise.resolve({ isConfirmed: true });
+    },
+  };
+}
+
+let ordersCache = [];
+let menuCache = null;
+let showPricesToUsers = true;
+let defaultMenuItemCapacity = 20;
+const pendingMenuItems = new Set();
+
+function api(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  }).then(async r => {
+    if (r.status === 401) { window.location.replace('/login?expired=1'); throw new Error('401'); }
+    return r.json();
+  });
+}
+
+function toast(message, type = 'success') {
+  Swal.fire({
+    toast: true,
+    position: 'top-start',
+    icon: type === 'error' ? 'error' : 'success',
+    title: message,
+    showConfirmButton: false,
+    timer: type === 'error' ? 4200 : 3200,
+    timerProgressBar: true,
+    customClass: { popup: 'user-toast', container: 'user-toast-wrap' },
+    didOpen: popup => {
+      popup.setAttribute('dir', 'rtl');
+      popup.addEventListener('mouseenter', Swal.stopTimer);
+      popup.addEventListener('mouseleave', Swal.resumeTimer);
+    },
+  });
+}
+
+function money(value) { return Number(value || 0).toLocaleString('fa-IR') + ' تومان'; }
+function jdate(value) { return new Date(value).toLocaleDateString('fa-IR-u-ca-persian'); }
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+function remaining(deadline) {
+  const ms = new Date(deadline).getTime() - Date.now();
+  if (ms <= 0) return '00:00';
+  const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+function foodName(order) {
+  return order.menuItemId?.foodId?.name || order.items?.map(i => i.foodId?.name).filter(Boolean).join('، ') || '-';
+}
+function dailyMenuIdOfOrder(order) {
+  return String(order.menuItemId?.dailyMenuId?._id || order.menuItemId?.dailyMenuId || '');
+}
+
+async function loadMe() {
+  const data = await api('/api/auth/me');
+  if (data.success) {
+    document.getElementById('userName').textContent = data.user.fullName || data.user.username;
+    document.getElementById('userDept').textContent = data.user.department?.name || 'واحد عمومی';
+  }
+}
+
+// Full list (no pagination) is needed by the menu to lock already-ordered days.
+async function loadOrders() {
+  const data = await api('/api/orders');
+  ordersCache = data.success ? data.data : [];
+}
+
+let myOrdersPagination = { page: 1, limit: 10, total: 0, totalPages: 1 };
+
+async function loadMyOrders(page = myOrdersPagination.page || 1) {
+  if (page === 1 && ordersCache.length) {
+    const limit = myOrdersPagination.limit || 10;
+    myOrdersPagination = {
+      page: 1,
+      limit,
+      total: ordersCache.length,
+      totalPages: Math.max(1, Math.ceil(ordersCache.length / limit)),
+    };
+    renderOrders(ordersCache.slice(0, limit));
+    return;
+  }
+
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(myOrdersPagination.limit || 10),
+  });
+  const data = await api(`/api/orders?${params.toString()}`);
+  const orders = data.success ? data.data : [];
+  myOrdersPagination = data.pagination || { page, limit: myOrdersPagination.limit || 10, total: orders.length, totalPages: 1 };
+  renderOrders(orders);
+}
+
+function goToMyOrdersPage(page) {
+  const totalPages = Number(myOrdersPagination.totalPages || 1);
+  loadMyOrders(Math.min(Math.max(Number(page) || 1, 1), totalPages));
+}
+
+function renderOrdersPagination() {
+  const totalPages = Number(myOrdersPagination.totalPages || 1);
+  if (totalPages <= 1) return '';
+  const current = Number(myOrdersPagination.page || 1);
+  const pages = [];
+  const start = Math.max(1, current - 2);
+  const end = Math.min(totalPages, current + 2);
+  for (let page = start; page <= end; page += 1) pages.push(page);
+  return `<div class="pagination-bar">
+    <button class="page-btn" ${current <= 1 ? 'disabled' : ''} onclick="goToMyOrdersPage(${current - 1})">قبلی</button>
+    ${pages.map(page => `<button class="page-btn ${page === current ? 'active' : ''}" onclick="goToMyOrdersPage(${page})">${page.toLocaleString('fa-IR')}</button>`).join('')}
+    <button class="page-btn" ${current >= totalPages ? 'disabled' : ''} onclick="goToMyOrdersPage(${current + 1})">بعدی</button>
+    <span class="page-summary">${Number(myOrdersPagination.total || 0).toLocaleString('fa-IR')} سفارش</span>
+  </div>`;
+}
+
+function renderOrders(orders) {
+  const wrap = document.getElementById('ordersWrap');
+  if (!orders.length) {
+    wrap.innerHTML = '<div class="orders-empty"><i class="fas fa-receipt"></i><p>هنوز سفارشی ثبت نکرده‌اید.</p></div>';
+    return;
+  }
+  const statusLabel = { pending: 'در انتظار تایید', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
+  const statusClass = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
+  const priceHeader = showPricesToUsers ? '<th>مبلغ</th>' : '';
+
+  wrap.innerHTML = `
+    <table class="table">
+      <thead><tr><th>کد سفارش</th><th>غذا</th>${priceHeader}<th>تاریخ ثبت</th><th>تاریخ تحویل</th><th>وضعیت</th></tr></thead>
+      <tbody>${orders.map(order => `
+        <tr>
+          <td style="font-weight:900;direction:ltr">#${order.orderNumber || '-'}</td>
+          <td style="font-weight:700">${esc(foodName(order))}</td>
+          ${showPricesToUsers ? `<td>${money(order.totalPrice)}</td>` : ''}
+          <td style="white-space:nowrap">${jdate(order.orderDate)}</td>
+          <td style="white-space:nowrap">${order.deliveryDate ? jdate(order.deliveryDate) : '-'}</td>
+          <td><span class="badge badge-${statusClass[order.status] || 'gray'}">${statusLabel[order.status] || order.status}</span></td>
+        </tr>
+      `).join('')}</tbody>
+    </table>
+    ${renderOrdersPagination()}`;
+}
+
+async function loadMenu() {
+  await loadOrders();
+  const data = await api('/api/menu/active');
+  if (!data.success) {
+    document.getElementById('noWeekOverlay').style.display = 'flex';
+    document.getElementById('menuGrid').innerHTML = '<div class="empty-state"><i class="fas fa-calendar-xmark"></i><p>برنامه غذایی فعالی وجود ندارد.</p></div>';
+    return;
+  }
+  menuCache = data.data;
+  showPricesToUsers = data.data.settings?.showPricesToUsers !== false;
+  defaultMenuItemCapacity = Number(data.data.settings?.defaultMenuItemCapacity ?? 20);
+  document.getElementById('weekTitle').textContent = `${data.data.week.name || 'هفته فعال'}، ${jdate(data.data.week.startDate)} تا ${jdate(data.data.week.endDate)}`;
+  renderMenu();
+}
+
+function renderMenu() {
+  const orderedDayIds = new Set(ordersCache.filter(o => o.status !== 'cancelled').map(dailyMenuIdOfOrder));
+  const orderedItemIds = new Set(ordersCache.filter(o => o.status !== 'cancelled' && o.menuItemId).map(o => String(o.menuItemId._id || o.menuItemId)));
+
+  const menuItemToOrder = {};
+  ordersCache.filter(o => o.status !== 'cancelled' && o.menuItemId).forEach(o => {
+    menuItemToOrder[String(o.menuItemId._id || o.menuItemId)] = o;
+  });
+
+  const html = menuCache.days.map(day => {
+    const dayId = String(day._id);
+    const dayLocked = orderedDayIds.has(dayId);
+    return `
+      <div class="day-card">
+        <div class="day-card-header">
+          <span class="day-name">${day.dayId?.name || ''}</span>
+          <span class="day-date-badge">${jdate(day.date)}</span>
+        </div>
+        <div class="day-card-body">${day.items.length ? day.items.map(item => {
+          const capacity = Number(item.effectiveCapacity) > 0 ? Number(item.effectiveCapacity) : (Number(item.maxCapacity) > 0 && Number(item.maxCapacity) !== 50 ? Number(item.maxCapacity) : defaultMenuItemCapacity);
+          const full = capacity > 0 && item.reservedCount >= capacity;
+          const selectedItem = orderedItemIds.has(String(item._id));
+          const order = menuItemToOrder[String(item._id)];
+          return `
+            <div class="food-row">
+              <div>
+                <div class="food-name">${esc(item.foodId?.name || '-')}</div>
+                ${showPricesToUsers ? `<div class="food-price">${money(item.price)}</div>` : ''}
+                <div class="capacity-note">
+                  <i class="fas fa-users" style="font-size:.7rem"></i>
+                  رزرو: ${item.reservedCount || 0}${capacity ? ' از ' + capacity : ''}
+                </div>
+              </div>
+              <div class="menu-actions">
+                ${selectedItem
+                  ? (order?.canCancel
+                      ? `<button class="btn-cancel-order" onclick="cancelOrder('${order._id}')"><i class="fas fa-xmark"></i> لغو رزرو</button>`
+                      : '<span class="status-confirmed"><i class="fas fa-check"></i> تایید شده</span>')
+                  : dayLocked
+                    ? '<button class="btn-reserve" disabled style="font-size:.75rem">سفارش دارید</button>'
+                    : `<button class="btn-reserve" ${full ? 'disabled' : ''} onclick="placeOrder('${item._id}', this)">
+                        ${full ? '<i class="fas fa-ban"></i> تکمیل' : '<i class="fas fa-plus"></i> رزرو'}
+                       </button>`}
+              </div>
+            </div>`;
+        }).join('') : '<div class="day-empty"><i class="fas fa-bowl-food"></i><p>غذایی برای این روز ثبت نشده</p></div>'}</div>
+      </div>`;
+  }).join('');
+
+  const allEmpty = menuCache.days.every((day) => !day.items.length);
+  document.getElementById('menuGrid').innerHTML = allEmpty
+    ? `<div class="menu-notice"><i class="fas fa-info-circle"></i><span>منوی این هفته هنوز توسط مدیریت تکمیل نشده است. پس از ثبت غذاها می‌توانید رزرو کنید.</span></div>${html}`
+    : html;
+}
+
+async function placeOrder(menuItemId, btn) {
+  if (pendingMenuItems.has(menuItemId)) return;
+  pendingMenuItems.add(menuItemId);
+  const originalHtml = btn?.innerHTML;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ثبت';
+  }
+
+  try {
+    const data = await api('/api/orders', { method: 'POST', body: JSON.stringify({ menuItemId }) });
+    if (!data.success) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+      return toast(data.message || 'ثبت سفارش ناموفق بود', 'error');
+    }
+    toast(data.message || 'سفارش با موفقیت ثبت شد');
+    await loadMenu();
+  } finally {
+    pendingMenuItems.delete(menuItemId);
+  }
+}
+
+async function cancelOrder(orderId) {
+  const data = await api(`/api/orders/${orderId}/cancel`, { method: 'POST' });
+  if (!data.success) return toast(data.message || 'لغو سفارش ناموفق بود', 'error');
+  toast('سفارش لغو شد');
+  await loadMenu();
+  loadMyOrders();
+}
+
+document.querySelectorAll('.tab-button').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    button.classList.add('active');
+    document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
+    if (button.dataset.tab === 'orders') loadMyOrders();
+  });
+});
+
+loadMe();
+loadMenu();
+</script>
+</body>
+</html>
+

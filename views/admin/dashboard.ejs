@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../partials/session-security') %>
+  <title>پنل مدیریت تغذیه</title>
+  <%- include('../partials/head-assets', { includeSweetAlert: true }) %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="admin-body">
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon"><i class="fas fa-chart-pie"></i></div>
+    <div>
+      <span class="sidebar-brand-text" id="sidebarOrgName">سامانه تغذیه</span>
+      <span class="sidebar-brand-sub">پنل مدیریت</span>
+    </div>
+  </div>
+  <ul class="sidebar-nav">
+    <li><div class="sidebar-section-title">مدیریت</div></li>
+    <li><a class="sidebar-link active" data-tab="reports"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span></a></li>
+    <li><a class="sidebar-link" data-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
+    <li><a class="sidebar-link" data-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
+    <li><a class="sidebar-link" data-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
+    <li><div class="sidebar-section-title">تنظیمات</div></li>
+    <li><a class="sidebar-link" data-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
+    <li><a class="sidebar-link" data-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
+    <li><a class="sidebar-link" data-tab="backup"><i class="fas fa-database"></i><span>پشتیبان‌گیری</span></a></li>
+    <% if (user && user.role === 'superadmin') { %>
+      <li><a class="sidebar-link" data-tab="system-settings"><i class="fas fa-sliders"></i><span>تنظیمات سامانه</span></a></li>
+    <% } %>
+    <% if (user && user.role === 'superadmin') { %>
+      <li><a class="sidebar-link" data-tab="security"><i class="fas fa-shield-halved"></i><span>امنیت</span> <span id="securityNotifyBadge" class="badge badge-danger" style="display:none;margin-right:auto">0</span></a></li>
+    <% } %>
+  </ul>
+  <div class="sidebar-footer">
+    <div class="user-avatar">م</div>
+    <div>
+      <span class="sidebar-user-name">مدیر سیستم</span>
+      <span class="sidebar-user-role">دسترسی ارشد</span>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<div class="main-content">
+  <header class="top-header">
+    <div class="date-chip"><i class="far fa-calendar-check"></i><span id="todayDate"></span></div>
+    <div class="header-actions">
+      <% if (user && user.role === 'superadmin') { %>
+      <button type="button" id="priceToggleBtn" class="btn-header btn-site" onclick="toggleUserPrices()">
+        <i class="fas fa-tags"></i> قیمت برای کاربران
+      </button>
+      <% } %>
+      <a href="/user/dashboard" class="btn-header btn-site"><i class="fas fa-eye"></i> مشاهده پرتال</a>
+      <a href="/logout" class="btn-header btn-logout"><i class="fas fa-sign-out-alt"></i> خروج</a>
+    </div>
+  </header>
+
+  <main class="content-wrapper">
+    <div class="page-header">
+      <div>
+        <div class="ph-badge"><i class="fas fa-cogs"></i> مدیریت سیستم</div>
+        <div class="ph-title">مدیریت هوشمند تغذیه</div>
+        <div class="ph-sub"></div>
+      </div>
+      <i class="fas fa-cogs ph-icon"></i>
+    </div>
+
+    <!-- ===== REPORTS ===== -->
+    <section id="tab-reports" class="tab-pane active">
+      <div class="section-header no-print">
+        <div>
+          <div class="section-title">گزارش‌ها</div>
+          <div class="section-sub">گزارش هفتگی و ماهیانه سفارشات</div>
+        </div>
+        <div class="report-controls" id="reportActions">
+          <div class="sub-tabs">
+            <button class="sub-tab-btn active" data-sub="weekly" onclick="switchSubTab('weekly')"><i class="fas fa-calendar-week"></i> هفتگی</button>
+            <button class="sub-tab-btn" data-sub="monthly" onclick="switchSubTab('monthly')"><i class="fas fa-calendar"></i> ماهیانه</button>
+          </div>
+          <select class="form-control" id="reportWeekSelect" style="width:240px" onchange="onReportWeekChange()"></select>
+          <button class="btn btn-primary btn-sm" onclick="downloadPdf()" id="pdfBtn">
+            <i class="fas fa-file-pdf"></i> دانلود PDF
+          </button>
+        </div>
+      </div>
+
+      <div id="sub-weekly" class="sub-pane active">
+        <div class="print-title" id="printTitleWeekly"></div>
+        <div id="weeklyReportWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+        <div class="daily-stats-grid" id="dailyStatsGrid"></div>
+      </div>
+
+      <div id="sub-monthly" class="sub-pane">
+        <div class="print-title" id="printTitleMonthly"></div>
+        <div class="section-header no-print" style="margin-top:0;padding-top:0">
+          <div><div class="section-title">گزارش ماهیانه</div><div class="section-sub">انتخاب ماه شمسی</div></div>
+          <div class="d-flex gap-2" style="flex-wrap:wrap;align-items:center">
+            <select class="form-control" id="monthSelect" style="width:200px" onchange="loadMonthlyBySelect()">
+              <option value="">— ماه را انتخاب کنید —</option>
+            </select>
+          </div>
+        </div>
+        <div id="monthlyReportWrap">
+          <div class="empty-state"><i class="fas fa-calendar"></i><p>یک ماه را انتخاب کنید.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== WEEKS MANAGEMENT ===== -->
+    <section id="tab-weeks" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مدیریت هفته‌ها</div>
+          <div class="section-sub">برای هر هفته منو تعریف کنید، هفته را فعال یا غیرفعال کنید.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="createCurrentWeek()">
+          <i class="fas fa-sync-alt"></i> ساخت هفته جاری
+        </button>
+      </div>
+      <div id="weeksListWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== ORDERS ===== -->
+    <section id="tab-orders" class="tab-pane">
+      <div class="section-header">
+        <div><div class="section-title">سفارش‌ها</div><div class="section-sub">پس از بررسی، سفارش‌های هفته جاری را یکجا تایید کنید.</div></div>
+        <div class="order-toolbar">
+          <div class="search-group">
+            <i class="fas fa-search search-group-icon"></i>
+            <input id="orderSearchInput" type="number" min="100" placeholder="کد سفارش" onkeydown="if(event.key==='Enter') searchOrders()">
+            <button type="button" class="search-clear" onclick="clearOrderSearch()" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+            <button type="button" class="search-go" onclick="searchOrders()">جستجو</button>
+          </div>
+          <button class="btn btn-success btn-confirm-week" onclick="confirmAllOrders(this)">
+            <i class="fas fa-check-double"></i> تایید سفارش‌های کل هفته
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap" id="ordersWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <% if (user && user.role === 'superadmin') { %>
+    <section id="tab-security" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مرکز امنیت سوپر ادمین</div>
+          <div class="section-sub">لاگ ورود، تلاش‌های ناموفق، حساب‌های قفل‌شده و عملیات آنلاک</div>
+        </div>
+        <div class="d-flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-warning btn-sm" onclick="resetOwnSuperToken()"><i class="fas fa-key"></i> تغییر توکن من</button>
+          <button class="btn btn-outline btn-sm" onclick="loadSecurityCenter()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="securityStats">
+        <div class="stat-card"><div class="stat-icon red"><i class="fas fa-lock"></i></div><div><div class="stat-value" id="lockedCount">0</div><div class="stat-label">حساب قفل‌شده</div></div></div>
+        <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-triangle-exclamation"></i></div><div><div class="stat-value" id="failedCount">0</div><div class="stat-label">تلاش ناموفق ۲۴ ساعت</div></div></div>
+        <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-bell"></i></div><div><div class="stat-value" id="securityUnreadCount">0</div><div class="stat-label">رخداد مهم اخیر</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">کاربران قفل‌شده</div></div>
+        <div class="card-body"><div class="table-wrap" id="lockedUsersWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">تلاش‌های ناموفق پرتکرار</div></div>
+        <div class="card-body"><div class="table-wrap" id="failedSummaryWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">آخرین لاگ‌های امنیتی</div></div>
+        <div class="card-body"><div class="table-wrap" id="securityLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+    </section>
+    <% } %>
+
+    <!-- ===== USERS MANAGEMENT ===== -->
+    <section id="tab-users" class="tab-pane">
+      <div class="section-header">
+        <div><div class="section-title">مدیریت کاربران</div><div class="section-sub">افزودن، ویرایش و غیرفعال‌سازی کاربران سامانه</div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> کاربر جدید</button>
+      </div>
+      <div id="userFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="userFormTitle">افزودن کاربر</div>
+          <button class="btn-icon" onclick="closeUserForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="userForm" onsubmit="saveUser(event)" autocomplete="off">
+            <input type="hidden" id="editUserId" value="">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+              <div class="form-group">
+                <label class="form-label">نام کاربری *</label>
+                <input class="form-control" name="username" id="uf_username" required placeholder="مثال: 09121234567">
+              </div>
+              <div class="form-group">
+                <label class="form-label">نام کامل (فارسی) *</label>
+                <input class="form-control" name="fullName" id="uf_fullName" required placeholder="علی احمدی">
+              </div>
+              <div class="form-group">
+                <label class="form-label">رمز عبور</label>
+                <input class="form-control" name="password" id="uf_password" type="password" placeholder="در ویرایش خالی = بدون تغییر" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ایمیل</label>
+                <input class="form-control" name="email" id="uf_email" type="email" dir="ltr">
+              </div>
+              <div class="form-group">
+                <label class="form-label">موبایل</label>
+                <input class="form-control" name="phone" id="uf_phone" dir="ltr" placeholder="09121234567">
+              </div>
+              <div class="form-group">
+                <label class="form-label">واحد</label>
+                <select class="form-control" name="departmentId" id="uf_dept"><option value="">بدون واحد</option></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">نقش</label>
+                <select class="form-control" name="role" id="uf_role">
+                  <option value="user">کاربر عادی</option>
+                  <option value="admin">مدیر</option>
+                  <% if (user && user.role === 'superadmin') { %><option value="superadmin">سوپر ادمین</option><% } %>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">وضعیت</label>
+                <select class="form-control" name="status" id="uf_status">
+                  <option value="active">فعال</option>
+                  <option value="inactive">غیرفعال</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+              <button class="btn btn-outline" type="button" onclick="closeUserForm()">انصراف</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="usersTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== DEPARTMENTS ===== -->
+    <section id="tab-departments" class="tab-pane">
+      <div class="section-header">
+        <div><div class="section-title">مدیریت واحدهای سازمانی</div><div class="section-sub">افزودن، ویرایش و حذف واحدهای سازمان</div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddDept()"><i class="fas fa-plus"></i> واحد جدید</button>
+      </div>
+      <div id="deptFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="deptFormTitle">افزودن واحد</div>
+          <button class="btn-icon" onclick="closeDeptForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="deptForm" onsubmit="saveDept(event)">
+            <input type="hidden" id="editDeptId" value="">
+            <div style="display:flex;gap:12px;align-items:flex-end">
+              <div class="form-group" style="flex:1;margin:0">
+                <label class="form-label">نام واحد *</label>
+                <input class="form-control" id="df_name" required placeholder="مثال: واحد مالی">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+                <button class="btn btn-outline" type="button" onclick="closeDeptForm()">انصراف</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="deptsTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== BACKUP / RESTORE ===== -->
+    <section id="tab-backup" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <div class="section-title">پشتیبان‌گیری و بازیابی</div>
+          <div class="section-sub">خروجی امن از داده‌های سامانه و بازگردانی در صورت از دست رفتن اطلاعات</div>
+        </div>
+      </div>
+
+      <div class="backup-grid">
+        <div class="card backup-card">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-download" style="margin-left:8px;color:var(--primary)"></i> دریافت پشتیبان</div>
+          </div>
+          <div class="card-body">
+            <p class="backup-desc">یک فایل اختصاصی <code>.fzbackup</code> از تمام داده‌های سامانه (کاربران، غذاها، هفته‌ها، منوها، سفارش‌ها و تنظیمات) دریافت کنید.</p>
+            <ul class="backup-features">
+              <li><i class="fas fa-lock"></i> رمزنگاری AES-256-GCM — فقط همین سرور می‌تواند بخواند</li>
+              <li><i class="fas fa-fingerprint"></i> امضای دیجیتال — هر دستکاری در فایل شناسایی می‌شود</li>
+              <li><i class="fas fa-file-shield"></i> فرمت اختصاصی سامانه — فایل‌های غیرمرتبط رد می‌شوند</li>
+            </ul>
+            <button class="btn btn-primary" id="exportBackupBtn" onclick="exportBackup(this)">
+              <i class="fas fa-cloud-download-alt"></i> دانلود فایل پشتیبان
+            </button>
+          </div>
+        </div>
+
+        <div class="card backup-card backup-card-danger">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-upload" style="margin-left:8px;color:var(--danger)"></i> بازیابی از پشتیبان</div>
+            <span class="badge badge-danger">حساس</span>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-warning">
+              <i class="fas fa-triangle-exclamation"></i>
+              بازیابی تمام داده‌های فعلی را با محتوای فایل پشتیبان جایگزین می‌کند. قبل از بازیابی حتماً یک نسخه پشتیبان جدید بگیرید.
+            </div>
+            <div class="backup-upload-zone" id="backupDropZone">
+              <input type="file" id="backupFileInput" accept=".fzbackup" hidden>
+              <i class="fas fa-file-archive backup-upload-icon"></i>
+              <div class="backup-upload-title">فایل پشتیبان را انتخاب کنید</div>
+              <div class="backup-upload-sub">فقط فایل‌های <code>.fzbackup</code> صادرشده از همین سامانه</div>
+              <button type="button" class="btn btn-outline btn-sm mt-2" onclick="document.getElementById('backupFileInput').click()">
+                <i class="fas fa-folder-open"></i> انتخاب فایل
+              </button>
+              <div id="backupFileName" class="backup-file-name"></div>
+            </div>
+            <button class="btn btn-danger btn-w100 mt-3" id="restoreBackupBtn" onclick="restoreBackup(this)" disabled>
+              <i class="fas fa-rotate-left"></i> بازیابی داده‌ها
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FOODS ===== -->
+    <section id="tab-foods" class="tab-pane">
+      <div class="section-header">
+        <div><div class="section-title">غذاها</div><div class="section-sub">تعریف غذاهای قابل استفاده در منوی هفته</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">افزودن غذای جدید</div></div>
+        <div class="card-body">
+          <form id="foodForm" class="inline-form">
+            <input class="form-control" name="name" placeholder="نام غذا" required>
+            <input class="form-control" name="price" type="number" placeholder="قیمت (تومان)" required>
+            <select class="form-control" name="category">
+              <option value="lunch">ناهار</option>
+              <option value="breakfast">صبحانه</option>
+              <option value="dinner">شام</option>
+              <option value="snack">میان وعده</option>
+            </select>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-plus"></i> افزودن</button>
+          </form>
+        </div>
+      </div>
+      <div id="foodEditWrap" class="card" style="display:none;margin-bottom:14px">
+        <div class="card-header">
+          <div class="card-title">ویرایش غذا</div>
+          <button class="btn-icon" onclick="document.getElementById('foodEditWrap').style.display='none'"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="foodEditForm" class="inline-form" onsubmit="saveFoodEdit(event)">
+            <input type="hidden" id="editFoodId">
+            <input class="form-control" id="ef_name" placeholder="نام غذا" required>
+            <input class="form-control" id="ef_price" type="number" placeholder="قیمت" required>
+            <select class="form-control" id="ef_category">
+              <option value="lunch">ناهار</option><option value="breakfast">صبحانه</option>
+              <option value="dinner">شام</option><option value="snack">میان وعده</option>
+            </select>
+            <button class="btn btn-success" type="submit"><i class="fas fa-save"></i></button>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="foodsTable">
+          <thead><tr><th>نام</th><th>دسته</th><th>قیمت</th><th>عملیات</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="foodsPagination"></div>
+      </div>
+    </section>
+
+    <!-- ===== SYSTEM SETTINGS ===== -->
+    <section id="tab-system-settings" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <div class="section-title">تنظیمات سامانه</div>
+          <div class="section-sub">نام سازمان، محدودیت رزرو و اتصال Active Directory</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="card-header"><div class="card-title">تنظیمات عمومی</div></div>
+        <div class="card-body">
+          <form id="systemSettingsForm" onsubmit="saveSystemSettings(event)">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+              <div class="form-group">
+                <label class="form-label">نام سازمان</label>
+                <input class="form-control" id="set_organizationName" placeholder="مثال: شرکت فرازمان">
+              </div>
+              <div class="form-group">
+                <label class="form-label">حداکثر رزرو فعال هر کاربر</label>
+                <input class="form-control" id="set_maxActiveReservations" type="number" min="0" placeholder="0 = بدون محدودیت" dir="ltr" style="text-align:right">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ظرفیت پیش‌فرض هر غذا در هر روز</label>
+                <input class="form-control" id="set_defaultMenuItemCapacity" type="number" min="0" placeholder="مثلا 50" dir="ltr" style="text-align:right">
+              </div>
+              <div class="form-group">
+                <label class="form-label">نمایش قیمت برای کاربران</label>
+                <select class="form-control" id="set_showPricesToUsers">
+                  <option value="true">فعال</option>
+                  <option value="false">غیرفعال</option>
+                </select>
+              </div>
+              <div class="form-group theme-picker">
+                <label class="form-label">رنگ‌بندی سامانه</label>
+                <div class="theme-options" id="themeOptions" role="radiogroup" aria-label="رنگ‌بندی سامانه"></div>
+                <div class="theme-color-fields">
+                  <input id="set_themePrimary" type="color">
+                  <input id="set_themePrimaryLight" type="color">
+                  <input id="set_themePrimaryDark" type="color">
+                  <input id="set_themeGradientFrom" type="color">
+                  <input id="set_themeGradientTo" type="color">
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:18px;border-radius:10px">
+              <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <div class="card-title">تنظیمات LDAP / Active Directory</div>
+                <div class="d-flex gap-2 align-center">
+                  <span id="ldapStatusBadge" class="badge badge-gray" style="font-size:.75rem"><i class="fas fa-circle" style="font-size:.45rem;vertical-align:middle"></i> وضعیت نامشخص</span>
+                  <button type="button" class="btn btn-outline btn-sm no-print" onclick="testLdap(this)">
+                    <i class="fas fa-plug"></i> تست اتصال
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+                  <div class="form-group">
+                    <label class="form-label">وضعیت LDAP</label>
+                    <select class="form-control" id="set_ldapEnabled">
+                      <option value="false">غیرفعال</option>
+                      <option value="true">فعال</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">LDAP URL</label>
+                    <input class="form-control" id="set_ldapUrl" placeholder="ldaps://dc.company.local:636" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">نوع اتصال</label>
+                    <select class="form-control" id="set_ldapSecurity">
+                      <option value="ldaps">LDAPS — پورت ۶۳۶ (پیشنهادی)</option>
+                      <option value="starttls">StartTLS — پورت ۳۸۹ + ارتقاء TLS</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">مسیر CA Certificate</label>
+                    <input class="form-control" id="set_ldapCaCertPath" placeholder="C:\\certs\\domain-ca.pem" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Base DN</label>
+                    <input class="form-control" id="set_ldapBaseDn" placeholder="DC=company,DC=local" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Bind DN</label>
+                    <input class="form-control" id="set_ldapBindDn" placeholder="CN=service,CN=Users,DC=company,DC=local" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Bind Password موقت تست</label>
+                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="فقط برای تست اتصال، ذخیره نمی‌شود" dir="ltr" style="text-align:left" autocomplete="new-password">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">User Filter</label>
+                    <input class="form-control" id="set_ldapUserFilter" placeholder="(sAMAccountName={{username}})" dir="ltr" style="text-align:left">
+                  </div>
+                </div>
+                <div id="ldapPasswordHint" class="capacity-note" style="margin-top:8px">رمز Bind در دیتابیس ذخیره نمی‌شود. برای استفاده عملیاتی، LDAP_BIND_PASSWORD را در متغیر محیطی تنظیم کنید.</div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;text-align:left">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره تنظیمات</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script>
+// Fallback if Sweetalert2 CDN failed to load
+if (typeof Swal === 'undefined') {
+  window.Swal = {
+    mixin: function() { return window.Swal; },
+    fire: function(opts) {
+      if (opts && opts.showCancelButton) {
+        return Promise.resolve({ isConfirmed: window.confirm((opts.text || opts.title || '')) });
+      }
+      if (opts && opts.icon !== 'success') window.alert((opts.text || opts.title || ''));
+      return Promise.resolve({ isConfirmed: true });
+    },
+  };
+}
+
+let foods = [];
+let weeks = [];
+let currentWeeklyData = null;
+let currentMonthlyData = null;
+const currentUserRole = '<%= user && user.role ? user.role : "" %>';
+let orderPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
+let appSettings = {
+  showPricesToUsers: true,
+  organizationName: 'سامانه تغذیه',
+  maxActiveReservations: 0,
+  defaultMenuItemCapacity: 50,
+  themePrimary: '#9B6DFF',
+  themePrimaryLight: '#C4A8FF',
+  themePrimaryDark: '#6C3FD4',
+  themeGradientFrom: '#1A0E38',
+  themeGradientTo: '#2D1460',
+};
+let currentSubTab = 'weekly';
+
+const themePresets = [
+  {
+    id: 'purple',
+    label: 'تم بنفش',
+    themePrimary: '#9B6DFF',
+    themePrimaryLight: '#C4A8FF',
+    themePrimaryDark: '#6C3FD4',
+    themeGradientFrom: '#1A0E38',
+    themeGradientTo: '#2D1460',
+  },
+  {
+    id: 'blue',
+    label: 'تم آبی',
+    themePrimary: '#3B82F6',
+    themePrimaryLight: '#93C5FD',
+    themePrimaryDark: '#2563EB',
+    themeGradientFrom: '#1D4ED8',
+    themeGradientTo: '#3B82F6',
+  },
+  {
+    id: 'classic',
+    label: 'تم کلاسیک',
+    themePrimary: '#1E3A5F',
+    themePrimaryLight: '#C9A227',
+    themePrimaryDark: '#0F1F33',
+    themeGradientFrom: '#0B1726',
+    themeGradientTo: '#1E3A5F',
+  },
+  {
+    id: 'green',
+    label: 'تم سبز',
+    themePrimary: '#10B981',
+    themePrimaryLight: '#6EE7B7',
+    themePrimaryDark: '#047857',
+    themeGradientFrom: '#063F31',
+    themeGradientTo: '#0F766E',
+  },
+  {
+    id: 'orange',
+    label: 'تم نارنجی',
+    themePrimary: '#F97316',
+    themePrimaryLight: '#FDBA74',
+    themePrimaryDark: '#C2410C',
+    themeGradientFrom: '#431407',
+    themeGradientTo: '#9A3412',
+  },
+  {
+    id: 'red',
+    label: 'تم قرمز',
+    themePrimary: '#8E2A3F',
+    themePrimaryLight: '#C96F82',
+    themePrimaryDark: '#5C1526',
+    themeGradientFrom: '#2A070F',
+    themeGradientTo: '#6E1F31',
+  },
+  {
+    id: 'yellow',
+    label: 'تم زرد',
+    themePrimary: '#EAB308',
+    themePrimaryLight: '#FDE047',
+    themePrimaryDark: '#A16207',
+    themeGradientFrom: '#422006',
+    themeGradientTo: '#854D0E',
+  },
+];
+
+document.getElementById('todayDate').textContent = new Date().toLocaleDateString('fa-IR-u-ca-persian', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+function api(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  return fetch(url, { ...options, credentials: 'same-origin', headers }).then(async r => {
+    if (r.status === 401) { window.location.replace('/login?expired=1'); throw new Error('401'); }
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { return { success: false, message: text || `HTTP ${r.status}` }; }
+  });
+}
+
+function money(v) { return Number(v || 0).toLocaleString('fa-IR') + ' تومان'; }
+function jdate(v) { return new Date(v).toLocaleDateString('fa-IR-u-ca-persian'); }
+function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${text}</span>`; }
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+function renderPaginationBar(pagination, goFnName) {
+  const totalPages = Number(pagination.totalPages || 1);
+  if (totalPages <= 1) return '';
+  const current = Number(pagination.page || 1);
+  const pages = [];
+  const start = Math.max(1, current - 2);
+  const end = Math.min(totalPages, current + 2);
+  for (let page = start; page <= end; page += 1) pages.push(page);
+  return `<div class="pagination-bar">
+    <button class="page-btn" ${current <= 1 ? 'disabled' : ''} onclick="${goFnName}(${current - 1})">قبلی</button>
+    ${pages.map(page => `<button class="page-btn ${page === current ? 'active' : ''}" onclick="${goFnName}(${page})">${page.toLocaleString('fa-IR')}</button>`).join('')}
+    <button class="page-btn" ${current >= totalPages ? 'disabled' : ''} onclick="${goFnName}(${current + 1})">بعدی</button>
+    <span class="page-summary">${Number(pagination.total || 0).toLocaleString('fa-IR')} رکورد</span>
+  </div>`;
+}
+
+const dialog = Swal.mixin({
+  customClass: { popup: 'swal2-rtl' },
+  confirmButtonText: 'باشه',
+  cancelButtonText: 'انصراف',
+  buttonsStyling: true,
+  reverseButtons: true,
+  heightAuto: false,
+});
+
+function notify(message, icon = 'success', title = '') {
+  return dialog.fire({
+    icon,
+    title: title || (icon === 'success' ? 'انجام شد' : 'خطا'),
+    text: message,
+    timer: icon === 'success' ? 2200 : undefined,
+    timerProgressBar: icon === 'success',
+  });
+}
+
+function showSuperToken(token) {
+  return dialog.fire({
+    icon: 'warning',
+    title: 'توکن سوپر ادمین ساخته شد',
+    html: `<div style="text-align:right;line-height:1.9">این توکن فقط همین یک بار نمایش داده می‌شود و در دیتابیس قابل بازیابی نیست.</div><pre style="direction:ltr;text-align:left;background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-all">${token}</pre>`,
+    confirmButtonText: 'متوجه شدم',
+    timer: undefined,
+    timerProgressBar: false,
+  });
+}
+
+async function confirmAction({ title, text, confirmText = 'تایید', icon = 'question' }) {
+  const result = await dialog.fire({
+    icon,
+    title,
+    text,
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: 'انصراف',
+  });
+  return result.isConfirmed;
+}
+
+/* ===== SETTINGS ===== */
+async function loadSettings() {
+  const data = await api('/api/admin/settings');
+  if (data.success) {
+    appSettings = data.data;
+    fillSystemSettingsForm();
+    const priceToggleBtn = document.getElementById('priceToggleBtn');
+    if (priceToggleBtn) {
+      priceToggleBtn.innerHTML = appSettings.showPricesToUsers
+        ? '<i class="fas fa-tags"></i> قیمت: قابل نمایش'
+        : '<i class="fas fa-eye-slash"></i> قیمت: مخفی';
+    }
+    const sidebarOrgEl = document.getElementById('sidebarOrgName');
+    if (sidebarOrgEl) sidebarOrgEl.textContent = appSettings.organizationName || 'سامانه تغذیه';
+    refreshThemeStylesheet();
+  }
+}
+
+function refreshThemeStylesheet() {
+  const link = document.querySelector('link[href^="/css/theme-vars.css"]');
+  if (link) link.href = `/css/theme-vars.css?v=${Date.now()}`;
+}
+
+function currentThemePresetId() {
+  const keys = ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo'];
+  const normalize = value => String(value || '').toLowerCase();
+  const match = themePresets.find(preset => keys.every(key => normalize(appSettings[key]) === normalize(preset[key])));
+  return match ? match.id : '';
+}
+
+function setThemeColorInputs(preset) {
+  ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo'].forEach((key) => {
+    const input = document.getElementById(`set_${key}`);
+    if (input) input.value = preset[key];
+  });
+}
+
+function selectThemePreset(presetId) {
+  const preset = themePresets.find(item => item.id === presetId);
+  if (!preset) return;
+  Object.assign(appSettings, {
+    themePrimary: preset.themePrimary,
+    themePrimaryLight: preset.themePrimaryLight,
+    themePrimaryDark: preset.themePrimaryDark,
+    themeGradientFrom: preset.themeGradientFrom,
+    themeGradientTo: preset.themeGradientTo,
+  });
+  setThemeColorInputs(preset);
+  renderThemeOptions(preset.id);
+}
+
+function renderThemeOptions(activeId = currentThemePresetId()) {
+  const wrapper = document.getElementById('themeOptions');
+  if (!wrapper) return;
+  wrapper.innerHTML = themePresets.map(preset => `
+    <button
+      type="button"
+      class="theme-option ${preset.id === activeId ? 'active' : ''}"
+      role="radio"
+      aria-checked="${preset.id === activeId ? 'true' : 'false'}"
+      style="--theme-primary:${preset.themePrimary};--theme-light:${preset.themePrimaryLight};--theme-dark:${preset.themePrimaryDark};--theme-bg:color-mix(in srgb, ${preset.themePrimary} 10%, transparent)"
+      onclick="selectThemePreset('${preset.id}')"
+    >
+      <span class="theme-swatch"></span>
+      <span>${preset.label}</span>
+    </button>
+  `).join('');
+}
+
+function fillSystemSettingsForm() {
+  const byId = id => document.getElementById(id);
+  if (!byId('set_organizationName')) return;
+  byId('set_organizationName').value = appSettings.organizationName || '';
+  byId('set_maxActiveReservations').value = Number(appSettings.maxActiveReservations || 0);
+  byId('set_defaultMenuItemCapacity').value = Number(appSettings.defaultMenuItemCapacity ?? 50);
+  byId('set_themePrimary').value = appSettings.themePrimary || '#9B6DFF';
+  byId('set_themePrimaryLight').value = appSettings.themePrimaryLight || '#C4A8FF';
+  byId('set_themePrimaryDark').value = appSettings.themePrimaryDark || '#6C3FD4';
+  byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#1A0E38';
+  byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#2D1460';
+  renderThemeOptions();
+  byId('set_showPricesToUsers').value = String(Boolean(appSettings.showPricesToUsers));
+  byId('set_ldapEnabled').value = String(Boolean(appSettings.ldapEnabled));
+  byId('set_ldapUrl').value = appSettings.ldapUrl || '';
+  byId('set_ldapSecurity').value = appSettings.ldapSecurity || 'ldaps';
+  byId('set_ldapCaCertPath').value = appSettings.ldapCaCertPath || '';
+  byId('set_ldapBaseDn').value = appSettings.ldapBaseDn || '';
+  byId('set_ldapBindDn').value = appSettings.ldapBindDn || '';
+  byId('set_ldapBindPassword').value = '';
+  byId('set_ldapUserFilter').value = appSettings.ldapUserFilter || '(sAMAccountName={{username}})';
+  byId('ldapPasswordHint').textContent = appSettings.hasLdapBindPassword
+    ? 'رمز Bind از متغیر محیطی LDAP_BIND_PASSWORD خوانده می‌شود و در دیتابیس ذخیره نمی‌شود.'
+    : 'رمز Bind در دیتابیس ذخیره نمی‌شود. برای استفاده عملیاتی، LDAP_BIND_PASSWORD را در متغیر محیطی تنظیم کنید.';
+}
+
+async function saveSystemSettings(event) {
+  event.preventDefault();
+  const body = {
+    organizationName: document.getElementById('set_organizationName').value.trim(),
+    maxActiveReservations: Number(document.getElementById('set_maxActiveReservations').value || 0),
+    defaultMenuItemCapacity: Number(document.getElementById('set_defaultMenuItemCapacity').value || 0),
+    themePrimary: document.getElementById('set_themePrimary').value,
+    themePrimaryLight: document.getElementById('set_themePrimaryLight').value,
+    themePrimaryDark: document.getElementById('set_themePrimaryDark').value,
+    themeGradientFrom: document.getElementById('set_themeGradientFrom').value,
+    themeGradientTo: document.getElementById('set_themeGradientTo').value,
+    showPricesToUsers: document.getElementById('set_showPricesToUsers').value === 'true',
+    ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
+    ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
+    ldapSecurity: document.getElementById('set_ldapSecurity').value,
+    ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
+    ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
+    ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
+    ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
+  };
+  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
+  if (data.success) {
+    appSettings = data.data;
+    fillSystemSettingsForm();
+    loadSettings();
+    notify(data.message || 'تنظیمات ذخیره شد.');
+  } else {
+    notify(data.message || 'خطا در ذخیره تنظیمات', 'error');
+  }
+}
+
+async function toggleUserPrices() {
+  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ showPricesToUsers: !appSettings.showPricesToUsers }) });
+  if (data.success) { appSettings = data.data; loadSettings(); }
+  else notify(data.message || 'خطا', 'error');
+}
+
+/* ===== SIDEBAR ===== */
+document.querySelectorAll('.sidebar-link').forEach(link => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById(`tab-${link.dataset.tab}`).classList.add('active');
+    if (link.dataset.tab === 'reports') loadWeeks().then(() => loadWeeklyReport());
+    if (link.dataset.tab === 'weeks') loadWeeksManager();
+    if (link.dataset.tab === 'users') loadUsers();
+    if (link.dataset.tab === 'departments') loadDepts();
+    if (link.dataset.tab === 'orders') loadOrders();
+    if (link.dataset.tab === 'foods') loadFoods();
+    if (link.dataset.tab === 'system-settings') loadSettings();
+    if (link.dataset.tab === 'security') loadSecurityCenter();
+  });
+});
+
+function securityTypeLabel(type) {
+  return {
+    login_success: 'ورود موفق',
+    login_failed: 'ورود ناموفق',
+    account_locked: 'قفل حساب',
+    account_unlocked: 'آنلاک حساب',
+    super_token_required: 'درخواست توکن',
+    super_token_success: 'توکن موفق',
+    super_token_failed: 'توکن ناموفق',
+    backup_export: 'خروجی پشتیبان',
+    backup_restore: 'بازیابی پشتیبان',
+  }[type] || type;
+}
+
+async function loadSecurityCenter() {
+  const badge = document.getElementById('securityNotifyBadge');
+  const data = await api('/api/admin/security/summary');
+  if (!data.success) {
+    notify(data.message || 'خطا در دریافت اطلاعات امنیتی', 'error');
+    return;
+  }
+  const { lockedUsers = [], failedSummary = [], recentLogs = [], unreadCount = 0 } = data.data || {};
+  if (badge) {
+    badge.style.display = unreadCount ? 'inline-flex' : 'none';
+    badge.textContent = unreadCount > 99 ? '+99' : String(unreadCount);
+  }
+  const lockedCount = document.getElementById('lockedCount');
+  const failedCount = document.getElementById('failedCount');
+  const unreadEl = document.getElementById('securityUnreadCount');
+  if (lockedCount) lockedCount.textContent = lockedUsers.length.toLocaleString('fa-IR');
+  if (failedCount) failedCount.textContent = failedSummary.reduce((sum, item) => sum + Number(item.count || 0), 0).toLocaleString('fa-IR');
+  if (unreadEl) unreadEl.textContent = unreadCount.toLocaleString('fa-IR');
+
+  document.getElementById('lockedUsersWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>کاربر</th><th>نقش</th><th>تلاش‌ها</th><th>قفل تا</th><th>عملیات</th></tr></thead>
+      <tbody>${lockedUsers.map(u => `
+        <tr>
+          <td style="font-weight:800">${esc(u.fullName || u.username)}<div class="text-muted" style="font-size:.75rem;direction:ltr">${esc(u.username)}</div></td>
+          <td>${esc(u.role)}</td>
+          <td>${Number(u.loginAttempts || 0).toLocaleString('fa-IR')}</td>
+          <td>${new Date(u.lockUntil).toLocaleString('fa-IR')}</td>
+          <td><button class="btn btn-success btn-sm" onclick="unlockSecurityUser('${u._id}')"><i class="fas fa-unlock"></i> آنلاک</button></td>
+        </tr>
+      `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">حساب قفل‌شده‌ای وجود ندارد</td></tr>'}</tbody>
+    </table>`;
+
+  document.getElementById('failedSummaryWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>شناسه</th><th>تعداد</th><th>آخرین IP</th><th>آخرین تلاش</th></tr></thead>
+      <tbody>${failedSummary.map(item => `
+        <tr>
+          <td style="direction:ltr">${esc(item._id)}</td>
+          <td><span class="badge badge-danger">${Number(item.count || 0).toLocaleString('fa-IR')}</span></td>
+          <td style="direction:ltr">${esc(item.ip || '-')}</td>
+          <td>${new Date(item.lastAt).toLocaleString('fa-IR')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">موردی ثبت نشده</td></tr>'}</tbody>
+    </table>`;
+
+  document.getElementById('securityLogsWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>زمان</th><th>نوع</th><th>کاربر</th><th>IP</th><th>پیام</th></tr></thead>
+      <tbody>${recentLogs.map(log => `
+        <tr>
+          <td style="white-space:nowrap">${new Date(log.createdAt).toLocaleString('fa-IR')}</td>
+          <td><span class="badge ${log.type.includes('failed') || log.type.includes('locked') ? 'badge-danger' : 'badge-primary'}">${esc(securityTypeLabel(log.type))}</span></td>
+          <td style="direction:ltr">${esc(log.username || '-')}</td>
+          <td style="direction:ltr">${esc(log.ip || '-')}</td>
+          <td>${esc(log.message || '-')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">لاگی ثبت نشده</td></tr>'}</tbody>
+    </table>`;
+}
+
+async function unlockSecurityUser(id) {
+  if (!(await confirmAction({ title: 'آنلاک حساب؟', text: 'قفل حساب کاربر برداشته می‌شود.', confirmText: 'آنلاک', icon: 'warning' }))) return;
+  const data = await api(`/api/admin/security/users/${id}/unlock`, { method: 'POST' });
+  if (data.success) {
+    notify(data.message || 'حساب آنلاک شد.');
+    loadSecurityCenter();
+  } else {
+    notify(data.message || 'خطا در آنلاک', 'error');
+  }
+}
+
+async function resetOwnSuperToken() {
+  if (!(await confirmAction({
+    title: 'تغییر توکن سوپر ادمین؟',
+    text: 'توکن قبلی بلافاصله نامعتبر می‌شود و توکن جدید فقط یک بار نمایش داده خواهد شد.',
+    confirmText: 'تغییر توکن',
+    icon: 'warning',
+  }))) return;
+  const data = await api('/api/admin/security/super-token/reset', { method: 'POST' });
+  if (data.success && data.superToken) {
+    await showSuperToken(data.superToken);
+    loadSecurityCenter();
+  } else {
+    notify(data.message || 'خطا در تغییر توکن', 'error');
+  }
+}
+
+/* ===== WEEKS selector ===== */
+async function loadWeeks() {
+  const data = await api('/api/admin/weeks?future=5');
+  weeks = data.success ? data.data : [];
+  const options = weeks.map(w => `<option value="${w._id}">${w.isActive ? 'فعال - ' : ''}${esc(w.name || 'هفته')} (${esc(w.jalaliStart)} تا ${esc(w.jalaliEnd)})</option>`).join('');
+  ['reportWeekSelect'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      const previousValue = el.value;
+      const activeWeek = weeks.find(w => w.isActive);
+      el.innerHTML = options;
+      const previousStillExists = weeks.some(w => String(w._id) === String(previousValue));
+      el.value = previousStillExists ? previousValue : (activeWeek?._id || weeks[0]?._id || '');
+    }
+  });
+}
+
+/* ===== REPORTS ===== */
+function switchSubTab(tab) {
+  currentSubTab = tab;
+  document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.sub === tab));
+  document.querySelectorAll('.sub-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(`sub-${tab}`).classList.add('active');
+  updateReportControls();
+  if (tab === 'weekly') loadWeeklyReport();
+  if (tab === 'monthly' && !currentMonthlyData) loadMonthlyBySelect();
+}
+
+function updateReportControls() {
+  const weekSelect = document.getElementById('reportWeekSelect');
+  if (weekSelect) weekSelect.style.display = currentSubTab === 'weekly' ? '' : 'none';
+}
+
+function onReportWeekChange() {
+  if (currentSubTab === 'weekly') loadWeeklyReport();
+}
+
+async function loadWeeklyReport() {
+  const weekId = document.getElementById('reportWeekSelect')?.value;
+  const query = weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+  document.getElementById('weeklyReportWrap').innerHTML = '<div style="padding:28px;text-align:center"><div class="spinner"></div></div>';
+  document.getElementById('dailyStatsGrid').innerHTML = '';
+  const data = await api(`/api/admin/reports?${query}`);
+  if (!data.success) { document.getElementById('weeklyReportWrap').innerHTML = '<div class="empty-state"><p>خطا در دریافت گزارش</p></div>'; return; }
+  currentWeeklyData = data.data;
+  document.getElementById('printTitleWeekly').textContent = `گزارش هفتگی — ${data.data.title} (${data.data.range.jalaliStart} تا ${data.data.range.jalaliEnd})`;
+  renderWeeklyTable(data.data);
+  renderDailyStats(data.data);
+}
+
+function renderWeeklyTable(r) {
+  const wrap = document.getElementById('weeklyReportWrap');
+  const isSuperadminReportUser = (u) =>
+    String(u?.role || '').toLowerCase() === 'superadmin'
+    || String(u?.username || '').toLowerCase() === 'superadmin'
+    || String(u?.fullName || '').toLowerCase() === 'superadmin';
+  const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
+  const reportDays = r.days || byUser[0]?.days || [];
+  const dayHeaders = reportDays.map(d => `<th>${d.jalaliDate}</th>`).join('');
+  const rows = byUser.map(u => `
+    <tr>
+      <td style="text-align:right;font-weight:700">${esc(u.fullName)}</td>
+      <td>${esc(u.department)}</td>
+      ${reportDays.map(reportDay => {
+        const day = (u.days || []).find(d => d.jalaliDate === reportDay.jalaliDate);
+        return `<td>${day?.foods?.length ? day.foods.map(esc).join('<br>') : '-'}</td>`;
+      }).join('')}
+      <td><strong>${u.total}</strong></td>
+    </tr>`).join('');
+  const missingTable = renderMissingUsersTable(r);
+  if (!rows && !missingTable) {
+    wrap.innerHTML = '<div class="empty-state"><p>برای این هفته سفارشی ثبت نشده است.</p></div>';
+    return;
+  }
+  const mainTable = rows ? `<div class="table-wrap" style="overflow-x:auto">
+    <table class="report-table">
+      <thead><tr><th style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th>جمع</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>` : '<div class="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>';
+  wrap.innerHTML = mainTable + missingTable;
+}
+
+/* Separate table for users who did not place any order in the range */
+function renderMissingUsersTable(r) {
+  const missing = r.missingUsers || {};
+  const entries = Object.entries(missing)
+    .map(([dept, names]) => [dept, names.filter((n) => String(n || '').toLowerCase() !== 'superadmin')])
+    .filter(([, names]) => names.length);
+  if (!entries.length) return '';
+  const totalMissing = entries.reduce((sum, [, names]) => sum + names.length, 0);
+  const rows = entries.flatMap(([dept, names]) => names.map((name) => `
+    <tr>
+      <td style="text-align:right;font-weight:700">${esc(name)}</td>
+      <td>${esc(dept)}</td>
+    </tr>`)).join('');
+  return `
+  <div class="card no-order-card mt-3">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-user-slash" style="margin-left:8px;color:var(--danger)"></i> افراد بدون سفارش</div>
+      <span class="badge badge-danger">${totalMissing.toLocaleString('fa-IR')} نفر</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap" style="border:none;border-radius:0;background:transparent">
+        <table class="report-table no-order-table">
+          <thead><tr><th style="text-align:right">نام فرد</th><th>واحد</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderDailyStats(r) {
+  const grid = document.getElementById('dailyStatsGrid');
+  const byUser = r.byUser || [];
+  if (!byUser.length) { grid.innerHTML = ''; return; }
+  const dayMap = {};
+  byUser.forEach(u => {
+    u.days.forEach(d => {
+      if (!dayMap[d.jalaliDate]) dayMap[d.jalaliDate] = {};
+      d.foods.forEach(f => { dayMap[d.jalaliDate][f] = (dayMap[d.jalaliDate][f] || 0) + 1; });
+    });
+  });
+  grid.innerHTML = Object.entries(dayMap).map(([day, foodCounts]) => {
+    const total = Object.values(foodCounts).reduce((a, b) => a + b, 0);
+    const rows = Object.entries(foodCounts).map(([f, c]) => `<div class="dsc-row"><span>${esc(f)}</span><strong>${c}</strong></div>`).join('');
+    return `<div class="dsc">
+      <div class="dsc-head">${day}</div>
+      <div class="dsc-body">${rows || '<div style="color:#999;text-align:center;font-size:.8rem;padding:8px">بدون سفارش</div>'}</div>
+      <div class="dsc-total">جمع: ${total} پرس</div>
+    </div>`;
+  }).join('');
+}
+
+async function loadMonthlyBySelect() {
+  const val = document.getElementById('monthSelect')?.value;
+  if (!val) return;
+  const [from, to] = val.split('|');
+  document.getElementById('monthlyReportWrap').innerHTML = '<div style="padding:28px;text-align:center"><div class="spinner"></div></div>';
+  const data = await api(`/api/admin/reports?jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`);
+  if (!data.success) {
+    document.getElementById('monthlyReportWrap').innerHTML = `<div class="alert alert-danger">${data.message || 'خطا در دریافت گزارش'}</div>`;
+    return;
+  }
+  currentMonthlyData = data.data;
+  renderMonthlyTable(data.data);
+  document.getElementById('printTitleMonthly').textContent = `گزارش ماهیانه — ${data.data.range.jalaliStart} تا ${data.data.range.jalaliEnd}`;
+}
+
+function renderMonthlyTable(r) {
+  const wrap = document.getElementById('monthlyReportWrap');
+  const orders = (r.orders || []).filter((o) =>
+    String(o?.userId?.role || '').toLowerCase() !== 'superadmin'
+    && String(o?.userId?.username || '').toLowerCase() !== 'superadmin'
+    && String(o?.userId?.fullName || '').toLowerCase() !== 'superadmin'
+  );
+  if (!orders.length) { wrap.innerHTML = '<div class="empty-state"><p>در این ماه سفارشی یافت نشد.</p></div>'; return; }
+  const userMap = {};
+  orders.forEach(o => {
+    if (o.status === 'cancelled') return;
+    const uid = String(o.userId?._id || o.userId);
+    const name = o.userId?.fullName || o.userId?.username || '-';
+    if (!userMap[uid]) userMap[uid] = { name, count: 0, price: 0 };
+    userMap[uid].count += o.quantity || o.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
+    userMap[uid].price += o.totalPrice || 0;
+  });
+  const rows = Object.values(userMap).sort((a, b) => b.count - a.count);
+  const totalCount = rows.reduce((s, u) => s + u.count, 0);
+  const totalPrice = rows.reduce((s, u) => s + u.price, 0);
+  if (!rows.length) { wrap.innerHTML = '<div class="empty-state"><p>در این ماه سفارش فعالی یافت نشد.</p></div>'; return; }
+  wrap.innerHTML = `<div class="table-wrap">
+    <table class="report-table">
+      <thead><tr><th>#</th><th style="text-align:right">نام فرد</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
+      <tbody>
+        ${rows.map((u, i) => `<tr><td>${i + 1}</td><td style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${u.count}</td><td>${money(u.price)}</td></tr>`).join('')}
+        <tr style="background:var(--primary-dark);color:#fff;font-weight:bold">
+          <td colspan="2" style="text-align:right">جمع کل</td>
+          <td>${totalCount}</td>
+          <td>${money(totalPrice)}</td>
+        </tr>
+      </tbody>
+    </table></div>` + renderMissingUsersTable(r);
+}
+
+async function buildMonthOptions() {
+  const sel = document.getElementById('monthSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">در حال بارگذاری ماه‌ها...</option>';
+  const data = await api('/api/admin/reports/months');
+  const months = data.success ? data.data : [];
+  if (!months.length) {
+    sel.innerHTML = '<option value="">ماهی دارای سفارش نیست</option>';
+    document.getElementById('monthlyReportWrap').innerHTML = '<div class="empty-state"><i class="fas fa-calendar"></i><p>هنوز سفارشی برای گزارش ماهیانه ثبت نشده است.</p></div>';
+    return;
+  }
+  sel.innerHTML = months
+    .map(m => `<option value="${esc(m.from)}|${esc(m.to)}">${esc(m.label)} (${Number(m.count || 0).toLocaleString('fa-IR')} سفارش)</option>`)
+    .join('');
+  if (currentSubTab === 'monthly') loadMonthlyBySelect();
+}
+
+/* ===== BACKUP ===== */
+function initBackupTab() {
+  const input = document.getElementById('backupFileInput');
+  const nameEl = document.getElementById('backupFileName');
+  const restoreBtn = document.getElementById('restoreBackupBtn');
+  if (!input) return;
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) {
+      nameEl.textContent = '';
+      restoreBtn.disabled = true;
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.fzbackup')) {
+      notify('فقط فایل پشتیبان سامانه (.fzbackup) قابل قبول است.', 'error');
+      input.value = '';
+      nameEl.textContent = '';
+      restoreBtn.disabled = true;
+      return;
+    }
+    nameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} کیلوبایت)`;
+    restoreBtn.disabled = false;
+  });
+}
+
+async function exportBackup(btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال آماده‌سازی...';
+  try {
+    const res = await fetch('/api/admin/backup/export', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      notify(err.message || 'خطا در ساخت پشتیبان', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sazman-food-backup-${stamp}.fzbackup`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify('فایل پشتیبان با موفقیت دانلود شد.', 'success');
+  } catch {
+    notify('خطا در دانلود پشتیبان', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> دانلود فایل پشتیبان';
+  }
+}
+
+async function restoreBackup(btn) {
+  const input = document.getElementById('backupFileInput');
+  const file = input?.files?.[0];
+  if (!file) {
+    notify('ابتدا فایل پشتیبان را انتخاب کنید.', 'warning');
+    return;
+  }
+  if (!(await confirmAction({
+    title: 'بازیابی کامل داده‌ها؟',
+    text: 'تمام داده‌های فعلی سامانه با محتوای این فایل پشتیبان جایگزین می‌شوند. این عملیات قابل بازگشت نیست مگر با پشتیبان دیگر.',
+    confirmText: 'بله، بازیابی کن',
+    icon: 'warning',
+  }))) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال بازیابی...';
+  try {
+    const form = new FormData();
+    form.append('backupFile', file);
+    const res = await fetch('/api/admin/backup/restore', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: form,
+    });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    const data = await res.json().catch(() => ({ success: false, message: 'پاسخ نامعتبر از سرور' }));
+    if (data.success) {
+      notify(data.message || 'بازیابی انجام شد.', 'success');
+      input.value = '';
+      document.getElementById('backupFileName').textContent = '';
+      btn.disabled = true;
+      setTimeout(() => window.location.reload(), 1800);
+    } else {
+      notify(data.message || 'بازیابی ناموفق بود', 'error');
+      btn.disabled = false;
+    }
+  } catch {
+    notify('خطا در ارسال فایل پشتیبان', 'error');
+    btn.disabled = false;
+  } finally {
+    if (!btn.disabled) btn.innerHTML = '<i class="fas fa-rotate-left"></i> بازیابی داده‌ها';
+  }
+}
+
+/* ===== LDAP Test ===== */
+async function testLdap(btn) {
+  const badge = document.getElementById('ldapStatusBadge');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تست...';
+  badge.className = 'badge badge-gray';
+  badge.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="font-size:.45rem"></i> در حال بررسی...';
+  try {
+    const body = {
+      ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
+      ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
+      ldapSecurity: document.getElementById('set_ldapSecurity').value,
+      ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
+      ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
+      ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
+      ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
+    };
+    const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
+    if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
+    const data = await api('/api/admin/settings/test-ldap', { method: 'POST', body: JSON.stringify(body) });
+    if (data.success) {
+      badge.className = 'badge badge-success';
+      badge.innerHTML = '<i class="fas fa-check-circle" style="font-size:.7rem"></i> متصل';
+      notify(data.message, 'success', 'LDAP');
+    } else {
+      badge.className = 'badge badge-danger';
+      badge.innerHTML = '<i class="fas fa-times-circle" style="font-size:.7rem"></i> قطع';
+      notify(data.message, 'error', 'LDAP — خطا');
+    }
+  } catch {
+    badge.className = 'badge badge-danger';
+    badge.innerHTML = '<i class="fas fa-times-circle" style="font-size:.7rem"></i> خطا';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-plug"></i> تست اتصال';
+}
+
+/* ===== PDF Download ===== */
+async function downloadPdf() {
+  const btn = document.getElementById('pdfBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ساخت PDF...';
+  try {
+    let url = '/api/admin/reports/pdf?';
+    if (currentSubTab === 'monthly') {
+      const val = document.getElementById('monthSelect')?.value;
+      if (!val) {
+        notify('ابتدا یک ماه انتخاب کنید', 'warning', 'PDF');
+        return;
+      }
+      const [from, to] = val.split('|');
+      url += `jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`;
+    } else {
+      const weekId = document.getElementById('reportWeekSelect')?.value;
+      url += weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+    }
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      notify(err.message || 'خطا در ساخت PDF', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const dispo = res.headers.get('Content-Disposition') || '';
+    const match = dispo.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `report-${Date.now()}.pdf`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify('PDF با موفقیت دانلود شد.', 'success');
+  } catch {
+    notify('خطا در ساخت PDF', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-pdf"></i> دانلود PDF';
+  }
+}
+
+/* ===== WEEKS MANAGER ===== */
+async function loadWeeksManager() {
+  const data = await api('/api/admin/weeks?noSync=true');
+  weeks = data.success ? data.data : [];
+  await loadAllFoods();
+  renderWeeksManager();
+}
+
+const persianMonthNames = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+const expandedWeekNodes = new Set();
+
+function jalaliYearMonth(dateValue) {
+  const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', { year: 'numeric', month: 'numeric' })
+    .formatToParts(new Date(dateValue));
+  const pick = (type) => Number((parts.find(p => p.type === type) || {}).value || 0);
+  return { year: pick('year'), month: pick('month') };
+}
+
+function renderWeekCard(w) {
+  return `
+    <div class="week-card ${w.isActive ? 'is-active' : ''}" id="wcard-${w._id}">
+      <div class="week-card-head">
+        <div class="week-card-meta">
+          <span class="week-card-name">${esc(w.name || 'هفته')}</span>
+          <span class="week-card-date">(${esc(w.jalaliStart)} تا ${esc(w.jalaliEnd)})</span>
+          ${w.isActive ? '<span class="badge badge-success"><i class="fas fa-circle" style="font-size:.5rem"></i> فعال</span>' : ''}
+        </div>
+        <div class="week-card-actions">
+          <button class="btn btn-outline btn-sm" onclick="toggleWeekEditor('${w._id}')">
+            <i class="fas fa-utensils"></i> مدیریت غذاها
+          </button>
+          ${!w.isActive ? `<button class="btn btn-success btn-sm" onclick="activateWeek('${w._id}')">
+            <i class="fas fa-check-circle"></i> فعال کردن
+          </button>` : ''}
+          <button class="btn btn-danger btn-sm" onclick="deleteWeek('${w._id}')">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </div>
+      </div>
+      <div class="week-menu-editor" id="weditor-${w._id}">
+        <div class="day-checkboxes" id="wdays-${w._id}"><div style="text-align:center;padding:20px"><div class="spinner"></div></div></div>
+        <div style="text-align:left;margin-top:16px">
+          <button class="btn btn-primary" onclick="saveWeekMenu('${w._id}')">
+            <i class="fas fa-save"></i> ذخیره تغییرات منو
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderWeeksManager() {
+  const wrap = document.getElementById('weeksListWrap');
+  if (!weeks.length) {
+    wrap.innerHTML = `<div class="empty-state"><i class="fas fa-calendar-times"></i><p>هیچ هفته‌ای تعریف نشده است.</p></div>`;
+    return;
+  }
+
+  // Build the year -> month -> weeks tree (grouped by the week's start date)
+  const tree = new Map();
+  for (const w of weeks) {
+    const { year, month } = jalaliYearMonth(w.startDate);
+    if (!tree.has(year)) tree.set(year, new Map());
+    const months = tree.get(year);
+    if (!months.has(month)) months.set(month, []);
+    months.get(month).push(w);
+  }
+
+  // Default expansion: the year/month of the active week (or today's month)
+  if (!expandedWeekNodes.size) {
+    const anchor = weeks.find(w => w.isActive)?.startDate || new Date();
+    const { year, month } = jalaliYearMonth(anchor);
+    expandedWeekNodes.add(`y${year}`);
+    expandedWeekNodes.add(`y${year}m${month}`);
+  }
+
+  const years = [...tree.keys()].sort((a, b) => b - a);
+  wrap.innerHTML = `<div class="week-tree">${years.map(year => {
+    const months = tree.get(year);
+    const yearKey = `y${year}`;
+    const yearOpen = expandedWeekNodes.has(yearKey);
+    const yearCount = [...months.values()].reduce((sum, list) => sum + list.length, 0);
+    const monthKeys = [...months.keys()].sort((a, b) => a - b);
+    return `
+    <div class="tree-year ${yearOpen ? 'open' : ''}" id="node-${yearKey}">
+      <button type="button" class="tree-node-head tree-year-head" onclick="toggleWeekNode('${yearKey}')">
+        <i class="fas fa-chevron-left tree-arrow"></i>
+        <i class="fas fa-calendar"></i>
+        <span>سال ${year.toLocaleString('fa-IR', { useGrouping: false })}</span>
+        <span class="tree-count">${yearCount.toLocaleString('fa-IR')} هفته</span>
+      </button>
+      <div class="tree-children">
+        ${monthKeys.map(month => {
+          const monthKey = `y${year}m${month}`;
+          const monthOpen = expandedWeekNodes.has(monthKey);
+          const list = months.get(month).slice().sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+          const hasActive = list.some(w => w.isActive);
+          return `
+          <div class="tree-month ${monthOpen ? 'open' : ''}" id="node-${monthKey}">
+            <button type="button" class="tree-node-head tree-month-head" onclick="toggleWeekNode('${monthKey}')">
+              <i class="fas fa-chevron-left tree-arrow"></i>
+              <i class="far fa-calendar-alt"></i>
+              <span>${persianMonthNames[month - 1] || ''}</span>
+              <span class="tree-count">${list.length.toLocaleString('fa-IR')} هفته</span>
+              ${hasActive ? '<span class="badge badge-success">هفته فعال</span>' : ''}
+            </button>
+            <div class="tree-children tree-weeks">
+              ${list.map(renderWeekCard).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function toggleWeekNode(key) {
+  const node = document.getElementById(`node-${key}`);
+  if (!node) return;
+  if (expandedWeekNodes.has(key)) {
+    expandedWeekNodes.delete(key);
+    node.classList.remove('open');
+  } else {
+    expandedWeekNodes.add(key);
+    node.classList.add('open');
+  }
+}
+
+function toggleWeekEditor(weekId) {
+  const editor = document.getElementById(`weditor-${weekId}`);
+  if (editor.style.display === 'block') {
+    editor.style.display = 'none';
+  } else {
+    editor.style.display = 'block';
+    loadWeekDays(weekId);
+  }
+}
+
+async function loadWeekDays(weekId) {
+  const container = document.getElementById(`wdays-${weekId}`);
+  const data = await api(`/api/menu/weeks/${encodeURIComponent(weekId)}`);
+  if (!data.success || !data.data?.days) {
+    container.innerHTML = '<div class="empty-state"><p>اطلاعات روزها یافت نشد.</p></div>'; return;
+  }
+  container.innerHTML = data.data.days.map(day => {
+    const existingMap = {};
+    day.items.forEach(item => { existingMap[String(item.foodId?._id || item.foodId)] = String(item._id); });
+    return `<div class="day-box">
+      <div class="day-box-head">${day.dayId?.name || ''} — ${jdate(day.date)}</div>
+      <div class="day-box-body" data-daily-menu-id="${day._id}">
+        ${foods.map(f => {
+          const fid = String(f._id);
+          const mid = existingMap[fid] || '';
+          return `<label class="food-check-label">
+            <input type="checkbox" value="${fid}" data-mid="${mid}" ${mid ? 'checked' : ''}> ${esc(f.name)}
+          </label>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveWeekMenu(weekId) {
+  const editor = document.getElementById(`weditor-${weekId}`);
+  for (const box of editor.querySelectorAll('[data-daily-menu-id]')) {
+    const dailyMenuId = box.dataset.dailyMenuId;
+    for (const cb of box.querySelectorAll('input[type="checkbox"]')) {
+      const foodId = cb.value;
+      const mid = cb.dataset.mid;
+      if (cb.checked && !mid) {
+        await api('/api/admin/menu-items', { method: 'POST', body: JSON.stringify({ dailyMenuId, foodId, maxCapacity: appSettings?.defaultMenuItemCapacity ?? 50 }) });
+      } else if (!cb.checked && mid) {
+        await api(`/api/admin/menu-items/${mid}`, { method: 'DELETE' });
+      }
+    }
+  }
+  notify('منو با موفقیت ذخیره شد.');
+  loadWeekDays(weekId);
+}
+
+async function activateWeek(weekId) {
+  const data = await api(`/api/admin/weeks/${weekId}/activate`, { method: 'POST' });
+  if (data.success) { await loadWeeksManager(); notify('هفته فعال شد.'); }
+  else notify(data.message || 'خطا', 'error');
+}
+
+async function deleteWeek(weekId) {
+  if (!(await confirmAction({
+    title: 'حذف کامل هفته؟',
+    text: 'تمام منوها و سفارش‌های وابسته به این هفته حذف می‌شوند.',
+    confirmText: 'حذف هفته',
+    icon: 'warning',
+  }))) return;
+  const data = await api(`/api/admin/weeks/${weekId}`, { method: 'DELETE' });
+  if (data.success) { await loadWeeksManager(); notify(data.message || 'هفته حذف شد.'); }
+  else notify(data.message || 'خطا', 'error');
+}
+
+async function createCurrentWeek() {
+  const data = await api('/api/admin/weeks/current', { method: 'POST', body: JSON.stringify({ count: 5 }) });
+  if (data.success) { await loadWeeksManager(); notify(data.message || 'هفته جاری ساخته شد.'); }
+  else notify(data.message || 'خطا', 'error');
+}
+
+/* ===== ORDERS ===== */
+async function confirmAllOrders(btn) {
+  if (!(await confirmAction({
+    title: 'تایید سفارش‌های هفته جاری؟',
+    text: 'بعد از تایید، کاربران دیگر نمی‌توانند رزروهای خود را لغو کنند.',
+    confirmText: 'تایید همه سفارش‌ها',
+    icon: 'question',
+  }))) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تایید...';
+  const data = await api('/api/orders/admin/confirm-week', { method: 'POST' });
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check-double"></i> تایید سفارش‌های کل هفته';
+  if (data.success) {
+    notify(data.message || `${data.count} سفارش تایید شد.`);
+    loadOrders();
+  } else {
+    notify(data.message || 'خطا در تایید', 'error');
+  }
+}
+
+async function loadOrders(page = orderPagination.page || 1) {
+  const orderNumber = document.getElementById('orderSearchInput')?.value.trim();
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(orderPagination.limit || 20),
+  });
+  if (orderNumber) params.set('orderNumber', orderNumber);
+  const url = `/api/orders/admin/all?${params.toString()}`;
+  const data = await api(url);
+  const orders = data.success ? data.data : [];
+  orderPagination = data.pagination || { page, limit: orderPagination.limit || 20, total: orders.length, totalPages: 1 };
+  const labels = { pending: 'قابل لغو', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
+  const clsMap = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
+  document.getElementById('ordersWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>کد</th><th>نام مشتری</th><th>غذا</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead>
+      <tbody>${orders.map(o => `
+        <tr>
+          <td style="font-weight:900;direction:ltr">#${o.orderNumber || '-'}</td>
+          <td style="font-weight:700">${esc(o.userId?.fullName || o.userId?.username || o.orderUserName || o.ldapUsername || '-')}</td>
+          <td>${esc(o.menuItemId?.foodId?.name || o.items?.[0]?.foodId?.name || '-')}</td>
+          <td>${money(o.totalPrice)}</td>
+          <td><span class="badge badge-${clsMap[o.status] || 'gray'}">${labels[o.status] || o.status}</span></td>
+          <td>${jdate(o.orderDate)}</td>
+          <td>
+            ${o.status !== 'cancelled'
+              ? `<button class="btn btn-danger btn-sm" onclick="cancelAdminOrder('${o.orderNumber || o._id}')"><i class="fas fa-ban"></i> لغو</button>`
+              : '<span class="badge badge-gray">لغو شده</span>'}
+          </td>
+        </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">سفارشی ثبت نشده</td></tr>'}
+      </tbody>
+    </table>
+    ${renderOrderPagination()}`;
+}
+
+function renderOrderPagination() {
+  return renderPaginationBar(orderPagination, 'goToOrdersPage');
+}
+
+function goToOrdersPage(page) {
+  const totalPages = Number(orderPagination.totalPages || 1);
+  const nextPage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+  loadOrders(nextPage);
+}
+
+function searchOrders() {
+  orderPagination.page = 1;
+  loadOrders(1);
+}
+
+function clearOrderSearch() {
+  const input = document.getElementById('orderSearchInput');
+  if (input) input.value = '';
+  orderPagination.page = 1;
+  loadOrders(1);
+}
+
+async function cancelAdminOrder(orderNumber) {
+  if (!(await confirmAction({
+    title: `لغو سفارش #${orderNumber}؟`,
+    text: 'این سفارش برای کاربر لغو می‌شود و ظرفیت رزرو آزاد می‌شود.',
+    confirmText: 'لغو سفارش',
+    icon: 'warning',
+  }))) return;
+
+  const data = await api(`/api/orders/admin/${encodeURIComponent(orderNumber)}/cancel`, { method: 'POST' });
+  if (data.success) {
+    notify(data.message || 'سفارش لغو شد.');
+    loadOrders();
+  } else {
+    notify(data.message || 'خطا در لغو سفارش', 'error');
+  }
+}
+
+/* ===== FOODS ===== */
+const foodsMap = new Map();
+let foodPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+// Full list for the week menu editor (no pagination).
+async function loadAllFoods() {
+  const data = await api('/api/foods?includeInactive=true');
+  foods = data.success ? data.data : [];
+}
+
+async function loadFoods(page = foodPagination.page || 1) {
+  const params = new URLSearchParams({
+    includeInactive: 'true',
+    page: String(page),
+    limit: String(foodPagination.limit || 20),
+  });
+  const data = await api(`/api/foods?${params.toString()}`);
+  const pageFoods = data.success ? data.data : [];
+  foodPagination = data.pagination || { page, limit: foodPagination.limit || 20, total: pageFoods.length, totalPages: 1 };
+  foodsMap.clear();
+  pageFoods.forEach(f => foodsMap.set(String(f._id), f));
+  const tbody = document.querySelector('#foodsTable tbody');
+  const catLabel = { lunch: 'ناهار', breakfast: 'صبحانه', dinner: 'شام', snack: 'میان وعده' };
+  if (tbody) tbody.innerHTML = pageFoods.map(f => `
+    <tr>
+      <td style="font-weight:700">${esc(f.name)}</td>
+      <td><span class="badge badge-primary">${esc(catLabel[f.category] || f.category)}</span></td>
+      <td>${money(f.price)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-outline btn-sm" onclick="editFood('${f._id}')"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="deleteFood('${f._id}')"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">غذایی ثبت نشده</td></tr>';
+  const pagerWrap = document.getElementById('foodsPagination');
+  if (pagerWrap) pagerWrap.innerHTML = renderPaginationBar(foodPagination, 'goToFoodsPage');
+}
+
+function goToFoodsPage(page) {
+  const totalPages = Number(foodPagination.totalPages || 1);
+  loadFoods(Math.min(Math.max(Number(page) || 1, 1), totalPages));
+}
+
+function editFood(id) {
+  const f = foodsMap.get(String(id));
+  if (!f) return;
+  document.getElementById('editFoodId').value = id;
+  document.getElementById('ef_name').value = f.name;
+  document.getElementById('ef_price').value = f.price;
+  document.getElementById('ef_category').value = f.category;
+  document.getElementById('foodEditWrap').style.display = 'block';
+  document.getElementById('foodEditWrap').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function saveFoodEdit(event) {
+  event.preventDefault();
+  const id = document.getElementById('editFoodId').value;
+  const body = {
+    name: document.getElementById('ef_name').value,
+    price: Number(document.getElementById('ef_price').value),
+    category: document.getElementById('ef_category').value,
+  };
+  const data = await api(`/api/foods/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+  if (data.success) { document.getElementById('foodEditWrap').style.display = 'none'; loadFoods(); }
+  else notify(data.message || 'خطا در ویرایش', 'error');
+}
+
+async function deleteFood(id) {
+  if (!(await confirmAction({
+    title: 'حذف غذا؟',
+    text: 'این غذا از فهرست غذاها حذف می‌شود.',
+    confirmText: 'حذف غذا',
+    icon: 'warning',
+  }))) return;
+  const data = await api(`/api/foods/${id}`, { method: 'DELETE' });
+  if (data.success) { loadFoods(); notify(data.message || 'غذا حذف شد.'); } else notify(data.message || 'خطا در حذف', 'error');
+}
+
+document.getElementById('foodForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target).entries());
+  body.price = Number(body.price);
+  const data = await api('/api/foods', { method: 'POST', body: JSON.stringify(body) });
+  if (data.success) { e.target.reset(); loadFoods(); notify(data.message || 'غذا اضافه شد.'); } else notify(data.message || 'خطا در ذخیره', 'error');
+});
+
+/* ===== USERS MANAGEMENT ===== */
+let departments = [];
+let editingUserId = null;
+const usersMap = new Map();
+let userPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+async function loadUsers(page = userPagination.page || 1) {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(userPagination.limit || 20),
+  });
+  const [usersData, deptData] = await Promise.all([
+    api(`/api/admin/users?${params.toString()}`),
+    api('/api/admin/departments'),
+  ]);
+  departments = deptData.success ? deptData.data : [];
+  const users = usersData.success ? usersData.data : [];
+  userPagination = usersData.pagination || { page, limit: userPagination.limit || 20, total: users.length, totalPages: 1 };
+  usersMap.clear();
+  users.forEach(u => usersMap.set(String(u._id), u));
+  const roleLabel = { admin: 'مدیر', superadmin: 'سوپر ادمین', user: 'کاربر' };
+  const statusBadge = { active: 'badge-success', inactive: 'badge-danger' };
+  document.getElementById('usersTableWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>نام کامل</th><th>نام کاربری</th><th>واحد</th><th>نقش</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+      <tbody>${users.map(u => `
+        <tr>
+          <td style="font-weight:700">${esc(u.fullName || '-')}</td>
+          <td style="direction:ltr;text-align:center">${esc(u.username)}</td>
+          <td>${esc(u.departmentId?.name || '-')}</td>
+          <td>${esc(roleLabel[u.role] || u.role)}</td>
+          <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">کاربری ثبت نشده</td></tr>'}
+      </tbody>
+    </table>
+    ${renderPaginationBar(userPagination, 'goToUsersPage')}`;
+}
+
+function goToUsersPage(page) {
+  const totalPages = Number(userPagination.totalPages || 1);
+  loadUsers(Math.min(Math.max(Number(page) || 1, 1), totalPages));
+}
+
+function populateDeptSelect(selectedId) {
+  const sel = document.getElementById('uf_dept');
+  sel.innerHTML = '<option value="">بدون واحد</option>' +
+    departments.map(d => `<option value="${d._id}" ${String(d._id) === String(selectedId) ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+}
+
+function openAddUser() {
+  editingUserId = null;
+  document.getElementById('userFormTitle').textContent = 'افزودن کاربر';
+  document.getElementById('editUserId').value = '';
+  document.getElementById('userForm').reset();
+  document.getElementById('uf_role').value = 'admin';
+  populateDeptSelect('');
+  document.getElementById('userFormWrap').style.display = 'block';
+  document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
+}
+
+function openEditUser(id) {
+  const u = usersMap.get(String(id));
+  if (!u) return;
+  editingUserId = id;
+  document.getElementById('userFormTitle').textContent = 'ویرایش کاربر';
+  document.getElementById('editUserId').value = id;
+  document.getElementById('uf_username').value = u.username || '';
+  document.getElementById('uf_fullName').value = u.fullName || '';
+  document.getElementById('uf_password').value = '';
+  document.getElementById('uf_email').value = u.email || '';
+  document.getElementById('uf_phone').value = u.phone || '';
+  document.getElementById('uf_role').value = u.role || 'user';
+  document.getElementById('uf_status').value = u.status || 'active';
+  populateDeptSelect(u.departmentId?._id || u.departmentId || '');
+  document.getElementById('userFormWrap').style.display = 'block';
+  document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeUserForm() {
+  document.getElementById('userFormWrap').style.display = 'none';
+  editingUserId = null;
+}
+
+async function saveUser(event) {
+  event.preventDefault();
+  const id = document.getElementById('editUserId').value;
+  const body = {
+    username: document.getElementById('uf_username').value.trim(),
+    fullName: document.getElementById('uf_fullName').value.trim(),
+    email: document.getElementById('uf_email').value.trim() || undefined,
+    phone: document.getElementById('uf_phone').value.trim() || undefined,
+    role: document.getElementById('uf_role').value,
+    status: document.getElementById('uf_status').value,
+    departmentId: document.getElementById('uf_dept').value || null,
+  };
+  const pwd = document.getElementById('uf_password').value;
+  if (pwd) body.password = pwd;
+  const data = id
+    ? await api(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+    : await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
+  if (data.success) {
+    closeUserForm();
+    loadUsers();
+    if (data.superToken) await showSuperToken(data.superToken);
+    else notify(data.message || 'کاربر ذخیره شد.');
+  }
+  else notify(data.message || 'خطا در ذخیره', 'error');
+}
+
+async function deleteUser(id) {
+  const u = usersMap.get(String(id));
+  const name = u?.fullName || id;
+  if (!(await confirmAction({
+    title: 'حذف کاربر؟',
+    text: `کاربر «${name}» حذف می‌شود.`,
+    confirmText: 'حذف کاربر',
+    icon: 'warning',
+  }))) return;
+  const data = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+  if (data.success) { loadUsers(); notify(data.message || 'کاربر حذف شد.'); } else notify(data.message || 'خطا در حذف', 'error');
+}
+
+/* ===== DEPARTMENTS MANAGEMENT ===== */
+const deptsMap = new Map();
+
+async function loadDepts() {
+  const data = await api('/api/admin/departments');
+  const depts = data.success ? data.data : [];
+  deptsMap.clear();
+  depts.forEach(d => deptsMap.set(String(d._id), d));
+  document.getElementById('deptsTableWrap').innerHTML = `
+    <table class="table">
+      <thead><tr><th>نام واحد</th><th>تعداد کاربران</th><th>عملیات</th></tr></thead>
+      <tbody>${depts.map(d => `
+        <tr>
+          <td style="font-weight:700">${esc(d.name)}</td>
+          <td>${d.userCount || 0} نفر</td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-outline btn-sm" onclick="openEditDept('${d._id}')"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="deleteDept('${d._id}')"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">واحدی ثبت نشده</td></tr>'}
+      </tbody>
+    </table>`;
+}
+
+function openAddDept() {
+  document.getElementById('deptFormTitle').textContent = 'افزودن واحد';
+  document.getElementById('editDeptId').value = '';
+  document.getElementById('df_name').value = '';
+  document.getElementById('deptFormWrap').style.display = 'block';
+  document.getElementById('df_name').focus();
+}
+
+function openEditDept(id) {
+  const d = deptsMap.get(String(id));
+  if (!d) return;
+  document.getElementById('deptFormTitle').textContent = 'ویرایش واحد';
+  document.getElementById('editDeptId').value = id;
+  document.getElementById('df_name').value = d.name || '';
+  document.getElementById('deptFormWrap').style.display = 'block';
+  document.getElementById('df_name').focus();
+}
+
+function closeDeptForm() { document.getElementById('deptFormWrap').style.display = 'none'; }
+
+async function saveDept(event) {
+  event.preventDefault();
+  const id = document.getElementById('editDeptId').value;
+  const name = document.getElementById('df_name').value.trim();
+  const data = id
+    ? await api(`/api/admin/departments/${id}`, { method: 'PUT', body: JSON.stringify({ name }) })
+    : await api('/api/admin/departments', { method: 'POST', body: JSON.stringify({ name }) });
+  if (data.success) { closeDeptForm(); loadDepts(); notify(data.message || 'واحد ذخیره شد.'); }
+  else notify(data.message || 'خطا در ذخیره', 'error');
+}
+
+async function deleteDept(id) {
+  const d = deptsMap.get(String(id));
+  const name = d?.name || id;
+  if (!(await confirmAction({
+    title: 'حذف واحد؟',
+    text: `واحد «${name}» حذف می‌شود و کاربران آن بدون واحد می‌مانند.`,
+    confirmText: 'حذف واحد',
+    icon: 'warning',
+  }))) return;
+  const data = await api(`/api/admin/departments/${id}`, { method: 'DELETE' });
+  if (data.success) { loadDepts(); notify(data.message || 'واحد حذف شد.'); } else notify(data.message || 'خطا در حذف', 'error');
+}
+
+/* ===== INIT ===== */
+if (currentUserRole === 'superadmin') loadSettings();
+loadWeeks().then(() => loadWeeklyReport());
+initBackupTab();
+if (document.getElementById('securityNotifyBadge')) loadSecurityCenter();
+buildMonthOptions();
+</script>
+</body>
+</html>
+
