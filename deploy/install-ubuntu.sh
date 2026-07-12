@@ -17,7 +17,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 INSTALL_DIR="/opt/food"
@@ -27,6 +29,11 @@ DB_NAME="food_ordering"
 SERVICE_NAME="food"
 NODE_MAJOR="20"
 INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
+STEP_TOTAL=15
+STEP_CURRENT=0
+SSH_PORT=22
+ENABLE_FIREWALL=1
+ENABLE_HARDENING=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -36,6 +43,43 @@ log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
 log_ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 log_err()   { echo -e "${RED}[✗]${NC} $*" >&2; }
+
+step_begin() {
+  STEP_CURRENT=$((STEP_CURRENT + 1))
+  echo ""
+  echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${MAGENTA}${BOLD}  ▶ مرحله ${STEP_CURRENT}/${STEP_TOTAL}:${NC} ${BOLD}$*${NC}"
+  echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+show_foodmood_banner() {
+  clear 2>/dev/null || true
+  echo ""
+  echo -e "${MAGENTA}${BOLD}"
+  cat <<'BANNER'
+    ███████╗ ██████╗  ██████╗ ██████╗     ███╗   ███╗ ██████╗  ██████╗ ██████╗
+    ██╔════╝██╔═══██╗██╔═══██╗██╔══██╗    ████╗ ████║██╔═══██╗██╔═══██╗██╔══██╗
+    █████╗  ██║   ██║██║   ██║██║  ██║    ██╔████╔██║██║   ██║██║   ██║██║  ██║
+    ██╔══╝  ██║   ██║██║   ██║██║  ██║    ██║╚██╔╝██║██║   ██║██║   ██║██║  ██║
+    ██║     ╚██████╔╝╚██████╔╝██████╔╝    ██║ ╚═╝ ██║╚██████╔╝╚██████╔╝██████╔╝
+    ╚═╝      ╚═════╝  ╚═════╝ ╚═════╝     ╚═╝     ╚═╝ ╚═════╝  ╚═════╝ ╚═════╝
+BANNER
+  echo -e "${NC}"
+  echo -e "${CYAN}${BOLD}           سامانه سفارش و رزرو غذای سازمانی${NC}"
+  echo -e "${DIM}              نصب خودکار · Ubuntu / Debian${NC}"
+  echo ""
+}
+
+detect_ssh_port() {
+  local port=""
+  if command -v sshd >/dev/null 2>&1; then
+    port="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+  fi
+  if [[ -z "$port" || ! "$port" =~ ^[0-9]+$ ]]; then
+    port=22
+  fi
+  SSH_PORT="$port"
+}
 
 red_box() {
   echo ""
@@ -164,12 +208,46 @@ validate_superadmin_password() {
     && [[ "$pw" =~ [^A-Za-z0-9] ]]
 }
 
+collect_ssl_certificate_options() {
+  echo ""
+  echo -e "${BOLD}نوع گواهی SSL:${NC}"
+  echo "  1) Let's Encrypt (خودکار — دامنه باید به IP سرور اشاره کند)"
+  echo "  2) گواهی اختصاصی (مسیر فایل fullchain و privkey)"
+  local cert_choice=""
+  while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
+    read -r -p "$(echo -e "${CYAN}انتخاب [1/2]:${NC} ")" cert_choice
+  done
+  if [[ "$cert_choice" == "1" ]]; then
+    CERT_MODE="letsencrypt"
+    LE_EMAIL="$(prompt_required "ایمیل برای Let's Encrypt")"
+  else
+    CERT_MODE="custom"
+    SSL_FULLCHAIN="$(prompt_required "مسیر فایل fullchain (مثال: /etc/ssl/certs/fullchain.pem)")"
+    SSL_PRIVKEY="$(prompt_required "مسیر فایل privkey (مثال: /etc/ssl/private/privkey.pem)")"
+    if [[ ! -f "$SSL_FULLCHAIN" || ! -f "$SSL_PRIVKEY" ]]; then
+      log_err "فایل‌های گواهی پیدا نشدند. مسیرها را بررسی کنید."
+      exit 1
+    fi
+    log_ok "فایل‌های گواهی تأیید شدند."
+  fi
+}
+
+collect_web_ssl_options() {
+  USE_NGINX=1
+  if prompt_yes_no "دسترسی با دامنه و HTTPS فعال شود؟ (به‌جای IP)" "n"; then
+    USE_DOMAIN=1
+    APP_DOMAIN="$(prompt_required "نام دامنه (مثال: food.company.ir)")"
+    collect_ssl_certificate_options
+    log_info "دسترسی نهایی: https://${APP_DOMAIN}"
+  else
+    USE_DOMAIN=0
+    SERVER_IP="$(detect_server_ip)"
+    log_info "دسترسی از طریق IP: http://${SERVER_IP}"
+  fi
+}
+
 collect_inputs() {
-  echo ""
-  echo -e "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-  echo -e "${BOLD}  نصب خودکار سامانه تغذیه — Ubuntu / Debian${NC}"
-  echo -e "${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-  echo ""
+  show_foodmood_banner
 
   red_box $'⚠  هشدار مهم:\n   اطلاعات دیتابیس و رمزهای سامانه را حتماً در خزانه رمز\n   سازمانی (خارج از این سرور) نگه دارید.\n   بدون این اطلاعات، بازیابی و دسترسی ممکن است غیرممکن شود.\n   هیچ فایل رمز روی سرور ساخته نمی‌شود — فقط همین ترمینال.'
 
@@ -178,55 +256,40 @@ collect_inputs() {
 
   show_mongo_credentials_once
 
-  # ── حالت سریع: فقط دیتابیس پرسیده می‌شود؛ بقیه پیش‌فرض امن ─────────────────
+  detect_ssh_port
+  log_info "پورت SSH شناسایی‌شده: ${SSH_PORT}"
+
+  # ── حالت سریع ───────────────────────────────────────────────────────────────
   if [[ "$QUICK_MODE" -eq 1 ]]; then
-    USE_NGINX=1
-    USE_DOMAIN=0
     CREATE_SUPERADMIN=1
     SUPERADMIN_USER="superadmin"
-    # رمز تصادفی قوی: حرف + عدد + نماد (الزامات اعتبارسنجی برنامه)
     SUPERADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)@Fm9"
-    SERVER_IP="$(detect_server_ip)"
-    log_info "حالت سریع: Nginx روی IP، بدون دامنه — دسترسی: http://${SERVER_IP}"
-    log_info "سوپرادمین '${SUPERADMIN_USER}' با رمز تصادفی ساخته می‌شود — در پایان نصب یک‌بار در ترمینال نمایش داده می‌شود."
+    log_info "سوپرادمین '${SUPERADMIN_USER}' با رمز تصادفی ساخته می‌شود."
+    collect_web_ssl_options
+    log_info "فایروال UFW و هاردنینگ پایه به‌صورت خودکار فعال می‌شوند."
     return
   fi
 
   if prompt_yes_no "Nginx به‌عنوان پروکسی معکوس نصب و پیکربندی شود؟" "y"; then
-    USE_NGINX=1
-    if prompt_yes_no "دسترسی با دامنه و HTTPS فعال شود؟ (به‌جای IP)" "n"; then
-      USE_DOMAIN=1
-      APP_DOMAIN="$(prompt_required "نام دامنه (مثال: food.company.ir)")"
-      echo ""
-      echo "نوع گواهی SSL:"
-      echo "  1) Let's Encrypt (خودکار — دامنه باید به IP سرور اشاره کند)"
-      echo "  2) گواهی اختصاصی (مسیر فایل fullchain و privkey)"
-      local cert_choice=""
-      while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
-        read -r -p "$(echo -e "${CYAN}انتخاب [1/2]:${NC} ")" cert_choice
-      done
-      if [[ "$cert_choice" == "1" ]]; then
-        CERT_MODE="letsencrypt"
-        LE_EMAIL="$(prompt_required "ایمیل برای Let's Encrypt")"
-      else
-        CERT_MODE="custom"
-        SSL_FULLCHAIN="$(prompt_required "مسیر فایل fullchain (مثال: /path/to/fullchain.pem)")"
-        SSL_PRIVKEY="$(prompt_required "مسیر فایل privkey (مثال: /path/to/privkey.pem)")"
-        if [[ ! -f "$SSL_FULLCHAIN" || ! -f "$SSL_PRIVKEY" ]]; then
-          log_err "فایل‌های گواهی پیدا نشدند."
-          exit 1
-        fi
-      fi
-    else
-      USE_DOMAIN=0
-      SERVER_IP="$(detect_server_ip)"
-      log_info "دسترسی از طریق IP: http://${SERVER_IP}"
-    fi
+    collect_web_ssl_options
   else
     USE_NGINX=0
     USE_DOMAIN=0
     SERVER_IP="$(detect_server_ip)"
     log_info "سامانه مستقیم روی پورت 3000: http://${SERVER_IP}:3000"
+  fi
+
+  if prompt_yes_no "فایروال UFW فعال شود و فقط پورت‌های لازم باز باشند؟" "y"; then
+    ENABLE_FIREWALL=1
+  else
+    ENABLE_FIREWALL=0
+    log_warn "فایروال غیرفعال ماند — توصیه امنیتی: UFW را بعداً فعال کنید."
+  fi
+
+  if prompt_yes_no "هاردنینگ پایه لینوکس (sysctl، fail2ban، به‌روزرسانی خودکار) اعمال شود؟" "y"; then
+    ENABLE_HARDENING=1
+  else
+    ENABLE_HARDENING=0
   fi
 
   if prompt_yes_no "سوپرادمین اولیه ساخته شود؟" "y"; then
@@ -245,19 +308,115 @@ collect_inputs() {
 }
 
 install_base_packages() {
+  step_begin "نصب بسته‌های پایه"
   log_info "به‌روزرسانی مخازن و نصب بسته‌های پایه..."
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq \
     curl gnupg ca-certificates lsb-release apt-transport-https \
-    software-properties-common rsync openssl python3 \
+    software-properties-common rsync openssl python3 ufw fail2ban \
+    unattended-upgrades apt-listchanges \
     fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
     libcups2 libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 \
     libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
   log_ok "بسته‌های پایه نصب شدند."
 }
 
+apply_system_hardening() {
+  if [[ "$ENABLE_HARDENING" -ne 1 ]]; then
+    return
+  fi
+  step_begin "هاردنینگ پایه لینوکس"
+  log_info "اعمال تنظیمات امنیتی هسته (sysctl)..."
+
+  cat > /etc/sysctl.d/99-foodmood-hardening.conf <<'SYSCTL'
+# FoodMood — hardening baseline
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.tcp_syncookies = 1
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+fs.suid_dumpable = 0
+kernel.kptr_restrict = 2
+kernel.dmesg_restrict = 1
+SYSCTL
+  sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/99-foodmood-hardening.conf >/dev/null 2>&1 || true
+
+  log_info "تقویت SSH (بدون قطع دسترسی فعلی)..."
+  mkdir -p /etc/ssh/sshd_config.d
+  cat > /etc/ssh/sshd_config.d/99-foodmood-hardening.conf <<'SSHCONF'
+# FoodMood installer — SSH hardening (keeps existing auth methods)
+MaxAuthTries 3
+LoginGraceTime 30
+PermitEmptyPasswords no
+X11Forwarding no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowTcpForwarding no
+SSHCONF
+  if systemctl is-active --quiet ssh 2>/dev/null || systemctl is-active --quiet sshd 2>/dev/null; then
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+  fi
+
+  log_info "فعال‌سازی fail2ban برای SSH..."
+  cat > /etc/fail2ban/jail.d/foodmood-ssh.local <<EOF
+[sshd]
+enabled = true
+port = ${SSH_PORT}
+maxretry = 5
+bantime = 3600
+findtime = 600
+EOF
+  systemctl enable fail2ban >/dev/null 2>&1 || true
+  systemctl restart fail2ban >/dev/null 2>&1 || true
+
+  log_info "فعال‌سازی به‌روزرسانی امنیتی خودکار..."
+  cat > /etc/apt/apt.conf.d/20auto-upgrades <<'AUTOUP'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+AUTOUP
+  systemctl enable unattended-upgrades >/dev/null 2>&1 || true
+  systemctl start unattended-upgrades >/dev/null 2>&1 || true
+
+  log_ok "هاردنینگ پایه اعمال شد (sysctl، SSH، fail2ban، auto-updates)."
+}
+
+setup_firewall() {
+  if [[ "$ENABLE_FIREWALL" -ne 1 ]]; then
+    return
+  fi
+  step_begin "پیکربندی فایروال UFW"
+  detect_ssh_port
+
+  log_info "باز کردن پورت SSH (${SSH_PORT}/tcp) قبل از فعال‌سازی فایروال..."
+  ufw --force reset >/dev/null 2>&1 || true
+  ufw default deny incoming
+  ufw default allow outgoing
+  ufw allow "${SSH_PORT}/tcp" comment 'SSH'
+
+  if [[ "$USE_NGINX" -eq 1 ]]; then
+    ufw allow 80/tcp comment 'HTTP / Nginx'
+    if [[ "${USE_DOMAIN:-0}" -eq 1 ]]; then
+      ufw allow 443/tcp comment 'HTTPS / Nginx'
+    fi
+  else
+    ufw allow 3000/tcp comment 'FoodMood direct'
+  fi
+
+  ufw logging medium
+  ufw --force enable
+  log_ok "فایروال UFW فعال شد — پورت‌های مجاز: SSH(${SSH_PORT})$( [[ "$USE_NGINX" -eq 1 ]] && echo -n ', 80' )$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo -n ', 443' )$( [[ "$USE_NGINX" -ne 1 ]] && echo -n ', 3000' )."
+}
+
 install_nodejs() {
+  step_begin "نصب Node.js"
   if command -v node >/dev/null 2>&1; then
     local ver
     ver="$(node -v | sed 's/v//' | cut -d. -f1)"
@@ -273,6 +432,7 @@ install_nodejs() {
 }
 
 install_mongodb() {
+  step_begin "نصب MongoDB"
   if command -v mongod >/dev/null 2>&1; then
     log_ok "MongoDB از قبل نصب است."
     return
@@ -297,7 +457,7 @@ install_mongodb() {
 }
 
 install_chrome_for_pdf() {
-  log_info "نصب مرورگر برای ساخت PDF..."
+  step_begin "نصب مرورگر PDF"
   if apt-get install -y -qq chromium-browser 2>/dev/null \
     || apt-get install -y -qq chromium 2>/dev/null; then
     log_ok "Chromium نصب شد."
@@ -318,7 +478,7 @@ install_nginx_stack() {
   if [[ "$USE_NGINX" -ne 1 ]]; then
     return
   fi
-  log_info "نصب Nginx..."
+  step_begin "نصب Nginx"
   apt-get install -y -qq nginx
   if [[ "$USE_DOMAIN" -eq 1 && "$CERT_MODE" == "letsencrypt" ]]; then
     apt-get install -y -qq certbot python3-certbot-nginx
@@ -328,6 +488,7 @@ install_nginx_stack() {
 }
 
 deploy_application() {
+  step_begin "استقرار سامانه FoodMood"
   log_info "ایجاد کاربر سرویس و کپی پروژه به ${INSTALL_DIR}..."
   if ! id "$APP_USER" &>/dev/null; then
     useradd -r -m -d "$INSTALL_DIR" -s /bin/bash "$APP_USER"
@@ -347,7 +508,7 @@ deploy_application() {
 }
 
 setup_mongodb_auth() {
-  log_info "پیکربندی احراز هویت MongoDB..."
+  step_begin "پیکربندی امنیت MongoDB"
   systemctl start mongod
   sleep 2
 
@@ -395,7 +556,7 @@ PY
 }
 
 write_env_file() {
-  log_info "ساخت فایل .env..."
+  step_begin "ساخت تنظیمات محیط (.env)"
   local encoded_pass app_url allowed_origins mongo_uri
 
   encoded_pass="$(url_encode "$MONGO_PASS")"
@@ -469,6 +630,13 @@ write_install_info_file() {
 
 ─── دسترسی وب ─────────────────────────────────────────────────
   آدرس سامانه: ${access_url}
+$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo "  دامنه       : ${APP_DOMAIN}" )
+$( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  نوع SSL     : ${CERT_MODE}" )
+
+─── امنیت سرور ────────────────────────────────────────────────
+  فایروال UFW : $( [[ "${ENABLE_FIREWALL:-0}" -eq 1 ]] && echo "فعال" || echo "غیرفعال" )
+  پورت SSH    : ${SSH_PORT}
+  هاردنینگ    : $( [[ "${ENABLE_HARDENING:-0}" -eq 1 ]] && echo "فعال (sysctl, fail2ban)" || echo "غیرفعال" )
 
 ─── مسیرها ────────────────────────────────────────────────────
   نصب سامانه : ${INSTALL_DIR}
@@ -534,13 +702,13 @@ reveal_final_secrets_once() {
 }
 
 install_npm_deps() {
-  log_info "نصب وابستگی‌های Node.js (ممکن است چند دقیقه طول بکشد)..."
+  step_begin "نصب وابستگی‌های Node.js"
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
   log_ok "npm install انجام شد."
 }
 
 setup_systemd() {
-  log_info "فعال‌سازی سرویس systemd..."
+  step_begin "فعال‌سازی سرویس systemd"
   cp "${INSTALL_DIR}/deploy/food.service" "/etc/systemd/system/${SERVICE_NAME}.service"
   systemctl daemon-reload
   systemctl enable "$SERVICE_NAME"
@@ -663,6 +831,7 @@ configure_nginx() {
   if [[ "$USE_NGINX" -ne 1 ]]; then
     return
   fi
+  step_begin "پیکربندی Nginx"
 
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     if [[ "$CERT_MODE" == "letsencrypt" ]]; then
@@ -670,15 +839,8 @@ configure_nginx() {
     else
       configure_nginx_https_custom
     fi
-    if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
-      ufw allow 80/tcp
-      ufw allow 443/tcp
-    fi
   else
     configure_nginx_http
-    if command -v ufw >/dev/null 2>&1 && ufw status | grep -q 'Status: active'; then
-      ufw allow 80/tcp
-    fi
   fi
 }
 
@@ -686,7 +848,7 @@ create_superadmin_account() {
   if [[ "$CREATE_SUPERADMIN" -ne 1 ]]; then
     return
   fi
-  log_info "ساخت سوپرادمین..."
+  step_begin "ساخت سوپرادمین"
   local output
   output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)" || {
     log_warn "ساخت سوپرادمین ناموفق بود (شاید از قبل وجود دارد):"
@@ -698,7 +860,7 @@ create_superadmin_account() {
 }
 
 print_summary() {
-  local access_url
+  local access_url fw_ports
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     access_url="https://${APP_DOMAIN}"
   elif [[ "$USE_NGINX" -eq 1 ]]; then
@@ -707,13 +869,26 @@ print_summary() {
     access_url="http://${SERVER_IP:-$(detect_server_ip)}:3000"
   fi
 
+  fw_ports="SSH:${SSH_PORT}"
+  if [[ "$USE_NGINX" -eq 1 ]]; then
+    fw_ports+=", HTTP:80"
+    [[ "${USE_DOMAIN:-0}" -eq 1 ]] && fw_ports+=", HTTPS:443"
+  else
+    fw_ports+=", App:3000"
+  fi
+
   echo ""
-  echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-  echo -e "${GREEN}${BOLD}  نصب با موفقیت انجام شد${NC}"
-  echo -e "${GREEN}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
+  show_foodmood_banner
+  echo -e "${GREEN}${BOLD}  ✓ نصب FoodMood با موفقیت انجام شد${NC}"
   echo ""
   echo -e "  ${BOLD}آدرس سامانه:${NC}  ${access_url}/login"
   echo -e "  ${BOLD}پنل مدیریت:${NC}   ${access_url}/admin/dashboard"
+  if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
+    echo -e "  ${BOLD}فایروال UFW:${NC}   فعال — پورت‌های مجاز: ${fw_ports}"
+  fi
+  if [[ "$ENABLE_HARDENING" -eq 1 ]]; then
+    echo -e "  ${BOLD}هاردنینگ:${NC}     sysctl · fail2ban · auto-updates"
+  fi
   echo ""
   red_box $'✓  نصب کامل شد.\n   اطلاعات حساس فقط یک‌بار در ترمینال نمایش داده شد\n   و تأیید ذخیره خارج از سرور دریافت شد.\n\n   راهنمای بدون رمز: /opt/food/INSTALL_INFO.txt\n   (فقط آدرس‌ها و مسیرها — بدون رمز یا توکن)'
   echo -e "  ${BOLD}دستورات مفید:${NC}"
@@ -727,6 +902,7 @@ main() {
   require_root
   collect_inputs
   install_base_packages
+  apply_system_hardening
   install_nodejs
   install_mongodb
   install_chrome_for_pdf
@@ -737,6 +913,7 @@ main() {
   install_npm_deps
   setup_systemd
   configure_nginx
+  setup_firewall
   create_superadmin_account
   write_install_info_file
   reveal_final_secrets_once
