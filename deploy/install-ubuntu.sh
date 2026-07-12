@@ -604,7 +604,8 @@ EOF
 }
 
 write_install_info_file() {
-  local access_url
+  local access_url installed_version
+  installed_version="$(python3 -c 'import json; print(json.load(open("'"${INSTALL_DIR}/package.json"'", encoding="utf-8"))["version"])' 2>/dev/null || echo '?')"
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     access_url="https://${APP_DOMAIN}"
   elif [[ "$USE_NGINX" -eq 1 ]]; then
@@ -616,6 +617,7 @@ write_install_info_file() {
   cat > "$INSTALL_INFO_FILE" <<EOF
 ═══════════════════════════════════════════════════════════════
   راهنمای نصب سامانه تغذیه — بدون اطلاعات حساس
+  نسخه نصب‌شده: v${installed_version}
   تاریخ نصب: $(date '+%Y-%m-%d %H:%M:%S %Z')
 ═══════════════════════════════════════════════════════════════
 

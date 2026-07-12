@@ -7,24 +7,32 @@
 # یا اگر مخزن خصوصی است، با توکن:
 #   sudo bash bootstrap.sh --repo https://<TOKEN>@github.com/5emad/FoodMood.git --quick
 #
+# نصب نسخه مشخص:
+#   curl -fsSL .../bootstrap.sh | sudo bash -s -- --tag v1.1.0 --quick
+#
 # گزینه‌ها:
 #   --repo <url>     آدرس مخزن گیت (پیش‌فرض: مخزن GitHub پروژه)
 #   --branch <name>  شاخه (پیش‌فرض: main)
+#   --tag <vX.Y.Z>   نسخه مشخص (مثال: v1.1.0) — اولویت بر شاخه
 #   --quick          نصب سریع: فقط یوزر/پس دیتابیس پرسیده می‌شود؛ سوپرادمین خودکار ساخته می‌شود
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/5emad/FoodMood.git}"
 BRANCH="main"
+GIT_REF=""
 QUICK_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)   REPO_URL="$2"; shift 2 ;;
     --branch) BRANCH="$2"; shift 2 ;;
+    --tag)    GIT_REF="$2"; shift 2 ;;
     --quick|-q) QUICK_FLAG="--quick"; shift ;;
     *) shift ;;
   esac
 done
+
+[[ -n "$GIT_REF" ]] && BRANCH="$GIT_REF"
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   echo "[✗] باید با root اجرا شود (sudo)." >&2
