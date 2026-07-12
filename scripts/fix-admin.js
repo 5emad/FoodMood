@@ -64,21 +64,15 @@ activeSessionId: ${a.activeSessionId || 'null'}
   }
 
   if (arg === 'resetpw' && newPw) {
-    const bcrypt = require('bcryptjs');
-    const crypto = require('crypto');
-    const PEPPER = process.env.PASSWORD_PEPPER;
+    const { hashPassword, validatePasswordPolicy } = require('../src/helpers/SecurityHelper');
 
-    if (newPw.length < 8 || !/[a-zA-Z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+    if (!validatePasswordPolicy(newPw, { minLength: 8 })) {
       console.error('✘ رمز جدید باید حداقل 8 کاراکتر و شامل حرف و عدد باشد.');
       await mongoose.disconnect();
       process.exit(1);
     }
 
-    const peppered = PEPPER
-      ? crypto.createHmac('sha256', PEPPER).update(newPw).digest('hex')
-      : newPw;
-
-    const hash = await bcrypt.hash(peppered, 12);
+    const hash = await hashPassword(newPw);
 
     const res = await User.updateMany(
       { role: 'admin' },
