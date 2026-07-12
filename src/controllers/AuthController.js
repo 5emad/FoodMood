@@ -234,6 +234,15 @@ class AuthController {
         return res.status(403).json({ success: false, message: 'دسترسی سوپر ادمین معتبر نیست' });
       }
 
+      if (user.isLocked) {
+        if (req.session) delete req.session.pendingSuperLogin;
+        const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+        return res.status(423).json({
+          success: false,
+          message: `حساب کاربری به دلیل تلاش‌های ناموفق قفل شده است. ${minutesLeft} دقیقه دیگر تلاش کنید.`,
+        });
+      }
+
       if (!compareSensitiveToken(token, user.superTokenHash)) {
         await handleFailedLogin(user);
         await writeSecurityLog(req, 'super_token_failed', user, 'Invalid superadmin token');
