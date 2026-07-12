@@ -19,11 +19,20 @@ const hashPassword = async (plaintext) => {
 };
 
 const comparePassword = async (plaintext, hash) => {
-  // Primary: with pepper (new style)
-  if (await bcrypt.compare(pepperPassword(plaintext), hash)) return true;
-  // Fallback: without pepper (legacy accounts created before security update)
-  return bcrypt.compare(plaintext, hash);
+  return bcrypt.compare(pepperPassword(plaintext), hash);
 };
+
+/**
+ * Shared password policy: letters + digits required; superadmin-grade
+ * secrets additionally require a symbol and a longer minimum.
+ */
+function validatePasswordPolicy(password, { minLength = 8, requireSymbol = false } = {}) {
+  const pw = String(password || '');
+  if (pw.length < minLength) return false;
+  if (!/[a-zA-Z]/.test(pw) || !/[0-9]/.test(pw)) return false;
+  if (requireSymbol && !/[^a-zA-Z0-9]/.test(pw)) return false;
+  return true;
+}
 
 function hashSensitiveToken(plaintext) {
   const token = String(plaintext || '');
@@ -117,6 +126,7 @@ const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 module.exports = {
   hashPassword,
   comparePassword,
+  validatePasswordPolicy,
   hashSensitiveToken,
   compareSensitiveToken,
   encryptLdapPassword,
