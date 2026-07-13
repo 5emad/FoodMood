@@ -98,6 +98,17 @@ app.use(helmet({
   referrerPolicy: { policy: 'same-origin' },
 }));
 
+// Plain-HTTP installs: clear any browser HSTS cache and drop HTTPS-only headers.
+if (!trustTls) {
+  app.use((_req, res, next) => {
+    res.setHeader('Strict-Transport-Security', 'max-age=0');
+    res.removeHeader('Cross-Origin-Opener-Policy');
+    res.removeHeader('Cross-Origin-Resource-Policy');
+    res.removeHeader('Origin-Agent-Cluster');
+    next();
+  });
+}
+
 // ── CORS: only allow same origin in production ───────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
