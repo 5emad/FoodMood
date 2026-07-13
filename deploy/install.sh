@@ -742,6 +742,7 @@ NODE_ENV=production
 PORT=3000
 APP_URL=${app_url}
 ALLOWED_ORIGINS=${app_url}
+TRUST_TLS=false
 
 MONGODB_URI=${mongo_uri}
 MONGODB_TLS=false
@@ -798,6 +799,18 @@ install_npm_deps() {
 
   if [[ "$npm_rc" -ne 0 ]]; then
     log_err "npm install failed from all registries. Check network and re-run."
+    exit 1
+  fi
+
+  log_busy "Syncing frontend vendor assets (CSS/JS/fonts)..."
+  if ! sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"; then
+    log_err "Vendor asset sync failed — CSS/JS will not load. Check node_modules and re-run."
+    exit 1
+  fi
+  if [[ ! -f "${INSTALL_DIR}/public/css/enterprise-theme.css" \
+     || ! -f "${INSTALL_DIR}/public/vendor/fontawesome/css/all.min.css" \
+     || ! -f "${INSTALL_DIR}/public/vendor/vazirmatn/vazirmatn.css" ]]; then
+    log_err "Required static assets are missing under ${INSTALL_DIR}/public/"
     exit 1
   fi
   log_ok "npm install completed."
@@ -964,6 +977,23 @@ run_post_install_verify() {
       log_err "API health: no response from http://127.0.0.1:3000/api/system/health"
     fi
     ok=0
+  fi
+
+  local css_code hsts_header
+  css_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/css/enterprise-theme.css 2>/dev/null || echo '000')"
+  if [[ "$css_code" == "200" ]]; then
+    log_ok "Static CSS: /css/enterprise-theme.css is served"
+  else
+    log_err "Static CSS: /css/enterprise-theme.css returned HTTP ${css_code}"
+    ok=0
+  fi
+
+  hsts_header="$(curl -sI --max-time 10 http://127.0.0.1:3000/login 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="strict-transport-security"{print $2; exit}')"
+  if [[ -n "$hsts_header" ]]; then
+    log_err "HTTP install must not send HSTS (breaks CSS over plain HTTP). Found: ${hsts_header}"
+    ok=0
+  else
+    log_ok "HTTP headers: no HSTS on plain HTTP (CSS will load)"
   fi
 
   if [[ "$ok" -ne 1 ]]; then

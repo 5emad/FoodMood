@@ -52,8 +52,12 @@ const healthGateMiddleware = require('./src/middleware/healthGateMiddleware');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET;
+const trustTls = process.env.TRUST_TLS === 'true'
+  || /^https:\/\//i.test(process.env.APP_URL || '');
+const isProduction = process.env.NODE_ENV === 'production';
+const sessionCookieName = isProduction && trustTls ? '__Host-sid' : 'sid';
 
-if (process.env.NODE_ENV === 'production') {
+if (isProduction) {
   if (!SESSION_SECRET) throw new Error('SESSION_SECRET is required in production');
   if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required in production');
   if (!process.env.BACKUP_SECRET) throw new Error('BACKUP_SECRET is required in production');
@@ -86,7 +90,7 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
   frameguard:   { action: 'deny' },
-  hsts:         { maxAge: 31536000, includeSubDomains: true, preload: true },
+  hsts:         trustTls ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   noSniff:      true,
   xssFilter:    true,
   referrerPolicy: { policy: 'same-origin' },
@@ -142,9 +146,9 @@ app.use(session({
   saveUninitialized: false,
   rolling:           true,
   store:             new MongoSessionStore({ ttlMs: sessionMaxAgeMs }),
-  name:              process.env.NODE_ENV === 'production' ? '__Host-sid' : 'sid',
+  name:              sessionCookieName,
   cookie: {
-    secure:   process.env.NODE_ENV === 'production',
+    secure:   isProduction && trustTls,
     httpOnly: true,
     sameSite: 'strict',
     maxAge:   sessionMaxAgeMs,
