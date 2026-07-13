@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# بررسی نهایی نصب FoodMood — مسیرها، سرویس‌ها، سلامت API
-# اجرا:
+# FoodMood post-install verification — paths, services, API health
+# Run:
 #   sudo bash /opt/food/deploy/verify-install.sh
 #   sudo bash deploy/verify-install.sh --from-install
 set -euo pipefail
@@ -37,7 +37,7 @@ log_info() { [[ "$QUIET" -eq 1 ]] || echo -e "${CYAN}[*]${NC} $*"; }
 check_dir() {
   local path="$1" owner="$2" mode="$3" label="$4"
   if [[ ! -d "$path" ]]; then
-    log_fail "${label}: پوشه ${path} وجود ندارد"
+    log_fail "${label}: directory ${path} does not exist"
     return
   fi
   local perm owner_actual
@@ -45,26 +45,26 @@ check_dir() {
   owner_actual="$(stat -c '%U:%G' "$path" 2>/dev/null || stat -f '%Su:%Sg' "$path" 2>/dev/null || echo '?')"
   log_pass "${label}: ${path} (${owner_actual}, ${perm})"
   if [[ "$owner_actual" != "$owner" ]]; then
-    log_warn "${label}: مالک پیشنهادی ${owner} است، فعلی ${owner_actual}"
+    log_warn "${label}: recommended owner ${owner}, actual ${owner_actual}"
   fi
 }
 
 check_file_mode() {
   local path="$1" expect_mode="$2" expect_owner="$3" label="$4"
   if [[ ! -f "$path" ]]; then
-    log_fail "${label}: فایل ${path} وجود ندارد"
+    log_fail "${label}: file ${path} does not exist"
     return
   fi
   local perm owner_actual
   perm="$(stat -c '%a' "$path" 2>/dev/null || echo '?')"
   owner_actual="$(stat -c '%U:%G' "$path" 2>/dev/null || echo '?')"
   if [[ "$perm" == "$expect_mode" ]]; then
-    log_pass "${label}: ${path} (دسترسی ${perm})"
+    log_pass "${label}: ${path} (mode ${perm})"
   else
-    log_warn "${label}: دسترسی ${perm} — پیشنهاد ${expect_mode}"
+    log_warn "${label}: mode ${perm} — recommended ${expect_mode}"
   fi
   if [[ -n "$expect_owner" && "$owner_actual" != "$expect_owner" ]]; then
-    log_warn "${label}: مالک ${owner_actual} — پیشنهاد ${expect_owner}"
+    log_warn "${label}: owner ${owner_actual} — recommended ${expect_owner}"
   fi
 }
 
@@ -78,14 +78,14 @@ env_key_ok() {
   local val
   val="$(grep "^${key}=" "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- || true)"
   if [[ -z "$val" ]]; then
-    log_fail ".env: ${key} خالی است"
+    log_fail ".env: ${key} is empty"
     return 1
   fi
   if [[ "$val" == *replace-with* ]]; then
-    log_fail ".env: ${key} هنوز placeholder است"
+    log_fail ".env: ${key} is still a placeholder"
     return 1
   fi
-  log_pass ".env: ${key} تنظیم شده"
+  log_pass ".env: ${key} is set"
   return 0
 }
 
@@ -97,28 +97,28 @@ http_health() {
   elif command -v wget >/dev/null 2>&1; then
     body="$(wget -qO- --timeout=10 "$url" 2>/dev/null || true)"
   else
-    log_warn "curl/wget نیست — بررسی health API رد شد"
+    log_warn "curl/wget not found — API health check skipped"
     return
   fi
   if [[ -z "$body" ]]; then
-    log_fail "API health: پاسخی از ${url} دریافت نشد"
+    log_fail "API health: no response from ${url}"
     return
   fi
   if echo "$body" | grep -q '"healthy":true\|"healthy": true'; then
-    log_pass "API health: سرویس سالم است"
+    log_pass "API health: service is healthy"
   elif echo "$body" | grep -q '"healthy":false\|"healthy": false'; then
-    log_fail "API health: سرویس unhealthy — ${body}"
+    log_fail "API health: service unhealthy — ${body}"
   else
-    log_warn "API health: پاسخ غیرمنتظره — ${body:0:120}"
+    log_warn "API health: unexpected response — ${body:0:120}"
   fi
 }
 
 check_service() {
   local name="$1"
   if systemctl is-active --quiet "$name" 2>/dev/null; then
-    log_pass "systemd: ${name} فعال است"
+    log_pass "systemd: ${name} is active"
   else
-    log_fail "systemd: ${name} فعال نیست"
+    log_fail "systemd: ${name} is not active"
   fi
 }
 
@@ -129,44 +129,42 @@ check_node_version() {
   if [[ "$major" -ge 20 ]]; then
     log_pass "Node.js: v${ver}"
   else
-    log_fail "Node.js: v${ver} — حداقل 20 لازم است"
+    log_fail "Node.js: v${ver} — minimum 20 required"
   fi
 }
 
 main() {
   echo ""
-  echo -e "${BOLD}FoodMood — بررسی نهایی نصب${NC}"
-  echo -e "${CYAN}مسیر: ${INSTALL_DIR}${NC}"
+  echo -e "${BOLD}FoodMood — post-install verification${NC}"
+  echo -e "${CYAN}Path: ${INSTALL_DIR}${NC}"
   echo ""
 
-  # ── مسیرهای استاندارد FHS ─────────────────────────────────────
-  log_info "بررسی مسیرها..."
+  log_info "Checking paths..."
   if [[ -d "$INSTALL_DIR" ]]; then
-    log_pass "نصب برنامه: ${INSTALL_DIR} (/opt — FHS)"
+    log_pass "Application: ${INSTALL_DIR} (/opt — FHS)"
   else
-    log_fail "مسیر نصب ${INSTALL_DIR} پیدا نشد"
+    log_fail "Install path ${INSTALL_DIR} not found"
   fi
 
-  check_dir "/var/log/foodmood" "${APP_USER}:${APP_USER}" "750" "لاگ سیستمی (/var/log)"
-  check_dir "${INSTALL_DIR}/certs" "${APP_USER}:${APP_USER}" "750" "گواهی LDAP"
-  check_dir "${INSTALL_DIR}/docs" "${APP_USER}:${APP_USER}" "755" "مستندات"
+  check_dir "/var/log/foodmood" "${APP_USER}:${APP_USER}" "750" "System logs (/var/log)"
+  check_dir "${INSTALL_DIR}/certs" "${APP_USER}:${APP_USER}" "750" "LDAP certificates"
+  check_dir "${INSTALL_DIR}/docs" "${APP_USER}:${APP_USER}" "755" "Documentation"
 
   if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
-    log_pass "واحد systemd: /etc/systemd/system/${SERVICE_NAME}.service"
+    log_pass "systemd unit: /etc/systemd/system/${SERVICE_NAME}.service"
   else
-    log_fail "واحد systemd پیدا نشد"
+    log_fail "systemd unit not found"
   fi
 
-  # ── کاربر و مجوزها ────────────────────────────────────────────
-  log_info "بررسی کاربر و .env..."
+  log_info "Checking user and .env..."
   if id "$APP_USER" >/dev/null 2>&1; then
-    log_pass "کاربر سرویس: ${APP_USER}"
+    log_pass "Service user: ${APP_USER}"
   else
-    log_fail "کاربر ${APP_USER} وجود ندارد"
+    log_fail "User ${APP_USER} does not exist"
   fi
 
-  check_file_mode "${INSTALL_DIR}/.env" "600" "${APP_USER}:${APP_USER}" "تنظیمات"
-  check_file_mode "${INSTALL_DIR}/INSTALL_INFO.txt" "644" "root:root" "راهنمای نصب"
+  check_file_mode "${INSTALL_DIR}/.env" "600" "${APP_USER}:${APP_USER}" "Runtime config"
+  check_file_mode "${INSTALL_DIR}/INSTALL_INFO.txt" "644" "root:root" "Install guide"
 
   if [[ -f "${INSTALL_DIR}/.env" ]]; then
     for key in SESSION_SECRET JWT_SECRET BACKUP_SECRET PASSWORD_PEPPER \
@@ -178,51 +176,47 @@ main() {
           if [[ "$logdir" == "/var/log/foodmood" ]]; then
             log_pass ".env: LOG_DIR=/var/log/foodmood"
           else
-            log_warn ".env: LOG_DIR=${logdir} — پیشنهاد /var/log/foodmood"
+            log_warn ".env: LOG_DIR=${logdir} — recommended /var/log/foodmood"
           fi
         else
           env_key_ok "$key" || true
         fi
       else
-        log_fail ".env: ${key} وجود ندارد"
+        log_fail ".env: ${key} is missing"
       fi
     done
   fi
 
-  # ── سرویس‌ها ──────────────────────────────────────────────────
-  log_info "بررسی سرویس‌ها..."
+  log_info "Checking services..."
   check_service "$SERVICE_NAME"
   check_service mongod
 
-  # ── Node و API ─────────────────────────────────────────────────
-  log_info "بررسی runtime..."
+  log_info "Checking runtime..."
   check_node_version
   http_health
 
-  # ── نسخه ───────────────────────────────────────────────────────
   if [[ -f "${INSTALL_DIR}/package.json" ]]; then
     local ver
     ver="$(python3 -c 'import json; print(json.load(open("'"${INSTALL_DIR}/package.json"'", encoding="utf-8"))["version"])' 2>/dev/null || echo '?')"
-    log_pass "نسخه نصب‌شده: v${ver}"
+    log_pass "Installed version: v${ver}"
   fi
 
-  # ── نتیجه ──────────────────────────────────────────────────────
   echo ""
   echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "  ${GREEN}موفق:${NC} ${PASS}   ${RED}ناموفق:${NC} ${FAIL}   ${YELLOW}هشدار:${NC} ${WARN}"
+  echo -e "  ${GREEN}Pass:${NC} ${PASS}   ${RED}Fail:${NC} ${FAIL}   ${YELLOW}Warn:${NC} ${WARN}"
   echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
   if [[ "$FAIL" -eq 0 ]]; then
     echo ""
-    echo -e "${GREEN}${BOLD}  ✓ ACCEPT — نصب از نظر فنی پذیرفته شد${NC}"
-    echo -e "  چک‌لیست Go-Live: ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md"
+    echo -e "${GREEN}${BOLD}  ✓ ACCEPT — install passed technical verification${NC}"
+    echo -e "  Go-live checklist: ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md"
     echo ""
     exit 0
   fi
 
   echo ""
-  echo -e "${RED}${BOLD}  ✗ REJECT — ${FAIL} مورد باید قبل از Go-Live رفع شود${NC}"
-  echo -e "  لاگ سرویس: sudo journalctl -u ${SERVICE_NAME} -n 40 --no-pager"
+  echo -e "${RED}${BOLD}  ✗ REJECT — ${FAIL} issue(s) must be fixed before go-live${NC}"
+  echo -e "  Service log: sudo journalctl -u ${SERVICE_NAME} -n 40 --no-pager"
   echo ""
   exit 1
 }

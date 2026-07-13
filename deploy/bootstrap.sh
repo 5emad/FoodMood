@@ -1,26 +1,31 @@
 #!/usr/bin/env bash
-# نصب یک‌خطی سامانه تغذیه از GitHub روی سرور خام Ubuntu/Debian
+# One-line FoodMood install from GitHub on a fresh Ubuntu/Debian server
 #
-# استفاده (روی سرور):
-#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash -s -- --quick
+# Usage (on server):
+#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash
 #
-# یا اگر مخزن خصوصی است، با توکن:
-#   sudo bash bootstrap.sh --repo https://<TOKEN>@github.com/5emad/FoodMood.git --quick
+# Full interactive install (more prompts):
+#   curl -fsSL .../bootstrap.sh | sudo bash -s -- --full
 #
-# نصب نسخه مشخص:
-#   curl -fsSL .../bootstrap.sh | sudo bash -s -- --tag v1.1.0 --quick
+# Private repo with token:
+#   sudo bash bootstrap.sh --repo https://<TOKEN>@github.com/5emad/FoodMood.git
 #
-# گزینه‌ها:
-#   --repo <url>     آدرس مخزن گیت (پیش‌فرض: مخزن GitHub پروژه)
-#   --branch <name>  شاخه (پیش‌فرض: main)
-#   --tag <vX.Y.Z>   نسخه مشخص (مثال: v1.1.0) — اولویت بر شاخه
-#   --quick          نصب سریع: فقط یوزر/پس دیتابیس پرسیده می‌شود؛ سوپرادمین خودکار ساخته می‌شود
+# Specific version:
+#   curl -fsSL .../bootstrap.sh | sudo bash -s -- --tag v1.1.0
+#
+# Options:
+#   --repo <url>     Git repository URL (default: project GitHub repo)
+#   --branch <name>  Branch (default: main)
+#   --tag <vX.Y.Z>   Specific tag (e.g. v1.1.0) — overrides branch
+#   --quick|-q       Quick install (default): MongoDB only, then auto
+#   --full           Full interactive install (SSL, firewall, superadmin prompts)
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/5emad/FoodMood.git}"
 BRANCH="main"
 GIT_REF=""
-QUICK_FLAG=""
+QUICK_FLAG="--quick"
+FULL_MODE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --branch) BRANCH="$2"; shift 2 ;;
     --tag)    GIT_REF="$2"; shift 2 ;;
     --quick|-q) QUICK_FLAG="--quick"; shift ;;
+    --full)   FULL_MODE=1; QUICK_FLAG=""; shift ;;
     *) shift ;;
   esac
 done
@@ -35,7 +41,7 @@ done
 [[ -n "$GIT_REF" ]] && BRANCH="$GIT_REF"
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-  echo "[✗] باید با root اجرا شود (sudo)." >&2
+  echo "[✗] Must run as root (sudo)." >&2
   exit 1
 fi
 
@@ -47,16 +53,20 @@ trap 'rm -rf "$CLONE_DIR"' EXIT
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ▶ مرحله ۰/۱۷: دریافت سورس از GitHub"
+echo "  ▶ Step 0/17: Fetch source from GitHub"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "[*] مخزن: ${REPO_URL}"
-echo "[*] شاخه: ${BRANCH}"
-[[ -n "$QUICK_FLAG" ]] && echo "[*] حالت: نصب سریع (--quick)"
-echo "[*] کلون — ممکن است ۳۰ ثانیه تا ۲ دقیقه طول بکشد..."
+echo "[*] Repository: ${REPO_URL}"
+echo "[*] Ref: ${BRANCH}"
+if [[ -n "$QUICK_FLAG" ]]; then
+  echo "[*] Mode: quick install (MongoDB credentials only, then automatic)"
+else
+  echo "[*] Mode: full interactive install"
+fi
+echo "[*] Cloning — may take 30 seconds to 2 minutes..."
 git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ▶ شروع نصب‌کننده install-ubuntu.sh"
+echo "  ▶ Starting install-ubuntu.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 bash "$CLONE_DIR/deploy/install-ubuntu.sh" $QUICK_FLAG

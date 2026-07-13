@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# نصب خودکار سامانه تغذیه روی Ubuntu/Debian
-# اجرا از ریشه پروژه:
-#   sudo bash deploy/install-ubuntu.sh            ← نصب تعاملی کامل
-#   sudo bash deploy/install-ubuntu.sh --quick    ← فقط MongoDB؛ بقیه خودکار + نمایش ۱۷ مرحله
+# FoodMood automated installer for Ubuntu/Debian
+# From project root:
+#   sudo bash deploy/install-ubuntu.sh              # full interactive (English)
+#   sudo bash deploy/install-ubuntu.sh --quick      # MongoDB only, then auto (default via bootstrap)
 set -euo pipefail
 
 QUICK_MODE=0
@@ -12,7 +12,7 @@ for arg in "$@"; do
   esac
 done
 
-# ─── رنگ‌ها ───────────────────────────────────────────────────────────────────
+# ─── Colors ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -49,25 +49,25 @@ log_busy() {
 }
 
 show_install_roadmap() {
-  echo -e "${BOLD}نقشه نصب (${STEP_TOTAL} مرحله):${NC}"
+  echo -e "${BOLD}Install plan (${STEP_TOTAL} steps):${NC}"
   local steps=(
-    "دریافت اطلاعات نصب"
-    "نصب بسته‌های پایه"
-    "هاردنینگ پایه لینوکس"
-    "نصب Node.js"
-    "نصب MongoDB"
-    "نصب مرورگر PDF"
-    "نصب Nginx"
-    "استقرار سامانه FoodMood"
-    "پیکربندی امنیت MongoDB"
-    "ساخت تنظیمات محیط (.env)"
-    "نصب وابستگی‌های Node.js"
-    "فعال‌سازی سرویس systemd"
-    "پیکربندی Nginx"
-    "پیکربندی فایروال UFW"
-    "ساخت سوپرادمین"
-    "بررسی نهایی (verify-install)"
-    "خلاصه و پایان نصب"
+    "Collect install inputs"
+    "Install base packages"
+    "Linux hardening baseline"
+    "Install Node.js"
+    "Install MongoDB"
+    "Install PDF browser"
+    "Install Nginx"
+    "Deploy FoodMood application"
+    "Configure MongoDB security"
+    "Create environment file (.env)"
+    "Install Node.js dependencies"
+    "Enable systemd service"
+    "Configure Nginx"
+    "Configure UFW firewall"
+    "Create superadmin account"
+    "Post-install verification"
+    "Summary and finish"
   )
   local i=1
   for s in "${steps[@]}"; do
@@ -76,9 +76,9 @@ show_install_roadmap() {
   done
   echo ""
   if [[ "$QUICK_MODE" -eq 1 ]]; then
-    echo -e "${CYAN}[*]${NC} حالت ${BOLD}سریع${NC}: فقط نام کاربری و رمز MongoDB پرسیده می‌شود."
-    echo -e "${CYAN}[*]${NC} Nginx روی IP سرور، UFW، هاردنینگ و سوپرادمین — خودکار."
-    echo -e "${YELLOW}[!]${NC} اگر چند دقیقه خروجی ندید، احتمالاً apt یا npm در حال اجراست — ${BOLD}قطع نکنید${NC}."
+    echo -e "${CYAN}[*]${NC} ${BOLD}Quick mode${NC}: only MongoDB username and password are asked."
+    echo -e "${CYAN}[*]${NC} Nginx on server IP, UFW, hardening, and superadmin — automatic."
+    echo -e "${YELLOW}[!]${NC} If there is no output for several minutes, apt or npm is still running — ${BOLD}do not interrupt${NC}."
     echo ""
   fi
 }
@@ -87,7 +87,7 @@ step_begin() {
   STEP_CURRENT=$((STEP_CURRENT + 1))
   echo ""
   echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${MAGENTA}${BOLD}  ▶ مرحله ${STEP_CURRENT}/${STEP_TOTAL}:${NC} ${BOLD}$*${NC}"
+  echo -e "${MAGENTA}${BOLD}  ▶ Step ${STEP_CURRENT}/${STEP_TOTAL}:${NC} ${BOLD}$*${NC}"
   echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
@@ -104,8 +104,8 @@ show_foodmood_banner() {
     ╚═╝      ╚═════╝  ╚═════╝ ╚═════╝     ╚═╝     ╚═╝ ╚═════╝  ╚═════╝ ╚═════╝
 BANNER
   echo -e "${NC}"
-  echo -e "${CYAN}${BOLD}           سامانه سفارش و رزرو غذای سازمانی${NC}"
-  echo -e "${DIM}              نصب خودکار · Ubuntu / Debian${NC}"
+  echo -e "${CYAN}${BOLD}           FoodMood — Enterprise Meal Ordering${NC}"
+  echo -e "${DIM}              Automated install · Ubuntu / Debian${NC}"
   echo ""
 }
 
@@ -141,33 +141,36 @@ yellow_box() {
 }
 
 security_off_server_notice() {
-  red_box $'⚠  نکته امنیتی مهم:\n   • رمزها و توکن‌ها را فقط در خزانه رمز سازمانی (خارج از سرور) نگه دارید.\n   • هرگز روی همین سرور فایل یادداشت، اسکرین‌شات یا متن رمز نگه ندارید.\n   • این سرور فقط فایل .env برای اجرای سامانه دارد — کپی دستی رمزها مجاز نیست.'
+  red_box $'SECURITY NOTICE:\n   • Store passwords and tokens in your org vault OFF this server.\n   • Never keep notes, screenshots, or password files on this host.\n   • Only .env exists on the server for runtime — do not copy secrets elsewhere on disk.'
 }
 
 prompt_off_server_ack() {
   local stage="$1"
+  if [[ "$QUICK_MODE" -eq 1 ]]; then
+    return 0
+  fi
   security_off_server_notice
   local reply=""
-  echo -e "${YELLOW}${BOLD}  ▶ اسکریپت منتظر تأیید شماست — گیر نکرده است.${NC}"
-  echo -e "${DIM}    پس از یادداشت رمزها در خزانه امن، «بله» یا «yes» بزنید و Enter.${NC}"
+  echo -e "${YELLOW}${BOLD}  ▶ Waiting for your confirmation — installer is not stuck.${NC}"
+  echo -e "${DIM}    After saving credentials off-server, type yes and press Enter.${NC}"
   while true; do
-    read -r -p "$(echo -e "${CYAN}${stage}${NC} — تأیید می‌کنید اطلاعات را ${BOLD}خارج از سرور${NC} ذخیره کردید؟ (بله/yes): ")" reply
+    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply
     case "${reply,,}" in
-      y|yes|بله|تایید|confirm) return 0 ;;
-      *) log_warn "پس از یادداشت در خزانه امن خارج از سرور، «بله» یا «yes» وارد کنید." ;;
+      y|yes|confirm) return 0 ;;
+      *) log_warn "Type yes after saving credentials in your secure vault." ;;
     esac
   done
 }
 
 show_mongo_credentials_once() {
   yellow_box "$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
-    '  اطلاعات دیتابیس MongoDB — فقط یک‌بار در همین ترمینال' \
+    '  MongoDB credentials — shown once in this terminal' \
     '' \
-    "  نام کاربری : ${MONGO_USER}" \
-    "  رمز عبور   : ${MONGO_PASS}" \
-    "  پایگاه داده: ${DB_NAME}" \
-    '  آدرس       : 127.0.0.1:27017')"
-  prompt_off_server_ack "اطلاعات دیتابیس"
+    "  Username : ${MONGO_USER}" \
+    "  Password : ${MONGO_PASS}" \
+    "  Database : ${DB_NAME}" \
+    '  Host     : 127.0.0.1:27017')"
+  prompt_off_server_ack "Database credentials"
 }
 
 wipe_install_secrets_from_shell() {
@@ -176,7 +179,7 @@ wipe_install_secrets_from_shell() {
 
 require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    log_err "این اسکریپت باید با root اجرا شود: sudo bash deploy/install-ubuntu.sh"
+    log_err "Run as root: sudo bash deploy/install-ubuntu.sh"
     exit 1
   fi
 }
@@ -203,9 +206,9 @@ prompt_yes_no() {
     read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply
     reply="${reply:-$default}"
     case "${reply,,}" in
-      y|yes|بله) return 0 ;;
-      n|no|خیر) return 1 ;;
-      *) log_warn "لطفاً y یا n وارد کنید." ;;
+      y|yes) return 0 ;;
+      n|no) return 1 ;;
+      *) log_warn "Please enter y or n." ;;
     esac
   done
 }
@@ -220,20 +223,31 @@ prompt_required() {
   echo "$value"
 }
 
+prompt_password_once() {
+  local label="$1"
+  local pass=""
+  while [[ -z "$pass" ]]; do
+    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass
+    echo ""
+    [[ -z "$pass" ]] && log_warn "Password cannot be empty."
+  done
+  echo "$pass"
+}
+
 prompt_password_twice() {
   local label="$1"
   local pass1="" pass2=""
   while true; do
     read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1
     echo ""
-    read -r -s -p "$(echo -e "${CYAN}تکرار ${label}:${NC} ")" pass2
+    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2
     echo ""
     if [[ -z "$pass1" ]]; then
-      log_warn "رمز نمی‌تواند خالی باشد."
+      log_warn "Password cannot be empty."
       continue
     fi
     if [[ "$pass1" != "$pass2" ]]; then
-      log_warn "رمزها یکسان نیستند. دوباره تلاش کنید."
+      log_warn "Passwords do not match. Try again."
       continue
     fi
     echo "$pass1"
@@ -251,55 +265,49 @@ validate_superadmin_password() {
 
 collect_ssl_certificate_options() {
   echo ""
-  echo -e "${BOLD}نوع گواهی SSL:${NC}"
-  echo "  1) Let's Encrypt (خودکار — دامنه باید به IP سرور اشاره کند)"
-  echo "  2) گواهی اختصاصی (مسیر فایل fullchain و privkey)"
+  echo -e "${BOLD}SSL certificate type:${NC}"
+  echo "  1) Let's Encrypt (automatic — domain must point to this server)"
+  echo "  2) Custom certificate (fullchain and privkey file paths)"
   local cert_choice=""
   while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
-    read -r -p "$(echo -e "${CYAN}انتخاب [1/2]:${NC} ")" cert_choice
+    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice
   done
   if [[ "$cert_choice" == "1" ]]; then
     CERT_MODE="letsencrypt"
-    LE_EMAIL="$(prompt_required "ایمیل برای Let's Encrypt")"
+    LE_EMAIL="$(prompt_required "Email for Let's Encrypt")"
   else
     CERT_MODE="custom"
-    SSL_FULLCHAIN="$(prompt_required "مسیر فایل fullchain (مثال: /etc/ssl/certs/fullchain.pem)")"
-    SSL_PRIVKEY="$(prompt_required "مسیر فایل privkey (مثال: /etc/ssl/private/privkey.pem)")"
+    SSL_FULLCHAIN="$(prompt_required "fullchain path (e.g. /etc/ssl/certs/fullchain.pem)")"
+    SSL_PRIVKEY="$(prompt_required "privkey path (e.g. /etc/ssl/private/privkey.pem)")"
     if [[ ! -f "$SSL_FULLCHAIN" || ! -f "$SSL_PRIVKEY" ]]; then
-      log_err "فایل‌های گواهی پیدا نشدند. مسیرها را بررسی کنید."
+      log_err "Certificate files not found. Check paths."
       exit 1
     fi
-    log_ok "فایل‌های گواهی تأیید شدند."
+    log_ok "Certificate files verified."
   fi
 }
 
 collect_web_ssl_options() {
   USE_NGINX=1
-  if prompt_yes_no "دسترسی با دامنه و HTTPS فعال شود؟ (به‌جای IP)" "n"; then
+  if prompt_yes_no "Use domain name with HTTPS? (instead of IP)" "n"; then
     USE_DOMAIN=1
-    APP_DOMAIN="$(prompt_required "نام دامنه (مثال: food.company.ir)")"
+    APP_DOMAIN="$(prompt_required "Domain name (e.g. food.company.com)")"
     collect_ssl_certificate_options
-    log_info "دسترسی نهایی: https://${APP_DOMAIN}"
+    log_info "App URL: https://${APP_DOMAIN}"
   else
     USE_DOMAIN=0
     SERVER_IP="$(detect_server_ip)"
-    log_info "دسترسی از طریق IP: http://${SERVER_IP}"
+    log_info "App URL: http://${SERVER_IP}"
   fi
 }
 
 collect_inputs() {
-  red_box $'⚠  هشدار مهم:\n   اطلاعات دیتابیس و رمزهای سامانه را حتماً در خزانه رمز\n   سازمانی (خارج از این سرور) نگه دارید.\n   بدون این اطلاعات، بازیابی و دسترسی ممکن است غیرممکن شود.\n   هیچ فایل رمز روی سرور ساخته نمی‌شود — فقط همین ترمینال.'
-
-  MONGO_USER="$(prompt_required "نام کاربری دیتابیس MongoDB")"
-  MONGO_PASS="$(prompt_password_twice "رمز عبور دیتابیس MongoDB")"
-
-  show_mongo_credentials_once
-
-  detect_ssh_port
-  log_info "پورت SSH شناسایی‌شده: ${SSH_PORT}"
-
-  # ── حالت سریع: بدون سوال SSL/دامنه — همه پیش‌فرض خودکار ────────────────
   if [[ "$QUICK_MODE" -eq 1 ]]; then
+    log_info "Quick install — enter MongoDB credentials, then all steps run automatically."
+    echo ""
+    MONGO_USER="$(prompt_required "MongoDB username")"
+    MONGO_PASS="$(prompt_password_once "MongoDB password")"
+    detect_ssh_port
     CREATE_SUPERADMIN=1
     SUPERADMIN_USER="superadmin"
     SUPERADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)@Fm9"
@@ -308,41 +316,51 @@ collect_inputs() {
     SERVER_IP="$(detect_server_ip)"
     ENABLE_FIREWALL=1
     ENABLE_HARDENING=1
-    log_ok "حالت سریع: Nginx روی http://${SERVER_IP} · UFW · هاردنینگ · سوپرادمین ${SUPERADMIN_USER}"
+    log_ok "Inputs collected. Continuing automatically — Nginx http://${SERVER_IP}, UFW, hardening, superadmin ${SUPERADMIN_USER}"
     return
   fi
 
-  if prompt_yes_no "Nginx به‌عنوان پروکسی معکوس نصب و پیکربندی شود؟" "y"; then
+  red_box $'IMPORTANT:\n   Store database and app secrets in your org password vault OFF this server.\n   Without them, recovery may be impossible.\n   No password file is written on disk — only this terminal shows secrets once.'
+
+  MONGO_USER="$(prompt_required "MongoDB username")"
+  MONGO_PASS="$(prompt_password_twice "MongoDB password")"
+
+  show_mongo_credentials_once
+
+  detect_ssh_port
+  log_info "Detected SSH port: ${SSH_PORT}"
+
+  if prompt_yes_no "Install and configure Nginx reverse proxy?" "y"; then
     collect_web_ssl_options
   else
     USE_NGINX=0
     USE_DOMAIN=0
     SERVER_IP="$(detect_server_ip)"
-    log_info "سامانه مستقیم روی پورت 3000: http://${SERVER_IP}:3000"
+    log_info "App will listen directly on port 3000: http://${SERVER_IP}:3000"
   fi
 
-  if prompt_yes_no "فایروال UFW فعال شود و فقط پورت‌های لازم باز باشند؟" "y"; then
+  if prompt_yes_no "Enable UFW firewall (only required ports)?" "y"; then
     ENABLE_FIREWALL=1
   else
     ENABLE_FIREWALL=0
-    log_warn "فایروال غیرفعال ماند — توصیه امنیتی: UFW را بعداً فعال کنید."
+    log_warn "Firewall left disabled — enable UFW later for production."
   fi
 
-  if prompt_yes_no "هاردنینگ پایه لینوکس (sysctl، fail2ban، به‌روزرسانی خودکار) اعمال شود؟" "y"; then
+  if prompt_yes_no "Apply Linux hardening (sysctl, fail2ban, auto-updates)?" "y"; then
     ENABLE_HARDENING=1
   else
     ENABLE_HARDENING=0
   fi
 
-  if prompt_yes_no "سوپرادمین اولیه ساخته شود؟" "y"; then
+  if prompt_yes_no "Create initial superadmin account?" "y"; then
     CREATE_SUPERADMIN=1
-    SUPERADMIN_USER="$(prompt_required "نام کاربری سوپرادمین")"
+    SUPERADMIN_USER="$(prompt_required "Superadmin username")"
     while true; do
-      SUPERADMIN_PASS="$(prompt_password_twice "رمز سوپرادمین (حداقل ۱۲ کاراکتر، حرف+عدد+نماد)")"
+      SUPERADMIN_PASS="$(prompt_password_twice "Superadmin password (min 12 chars, letter+digit+symbol)")"
       if validate_superadmin_password "$SUPERADMIN_PASS"; then
         break
       fi
-      log_warn "رمز ضعیف است. حداقل ۱۲ کاراکتر با حرف، عدد و نماد لازم است."
+      log_warn "Weak password. Use at least 12 characters with letters, digits, and symbols."
     done
   else
     CREATE_SUPERADMIN=0
@@ -350,11 +368,11 @@ collect_inputs() {
 }
 
 install_base_packages() {
-  step_begin "نصب بسته‌های پایه"
-  log_busy "به‌روزرسانی مخازن apt — معمولاً ۱ تا ۳ دقیقه"
+  step_begin "Install base packages"
+  log_busy "Updating apt repositories — usually 1-3 minutes"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  log_busy "نصب بسته‌های پایه — خروجی apt را ببینید؛ صبر کنید"
+  log_busy "Installing base packages — watch apt output; please wait"
   apt-get install -y \
     curl gnupg ca-certificates lsb-release apt-transport-https \
     software-properties-common rsync openssl python3 ufw fail2ban \
@@ -362,15 +380,15 @@ install_base_packages() {
     fonts-liberation libasound2 libatk-bridge2.0-0 libatk1.0-0 \
     libcups2 libdrm2 libgbm1 libgtk-3-0 libnspr4 libnss3 \
     libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
-  log_ok "بسته‌های پایه نصب شدند."
+  log_ok "Base packages installed."
 }
 
 apply_system_hardening() {
   if [[ "$ENABLE_HARDENING" -ne 1 ]]; then
     return
   fi
-  step_begin "هاردنینگ پایه لینوکس"
-  log_info "اعمال تنظیمات امنیتی هسته (sysctl)..."
+  step_begin "Linux hardening baseline"
+  log_info "Applying kernel security settings (sysctl)..."
 
   cat > /etc/sysctl.d/99-foodmood-hardening.conf <<'SYSCTL'
 # FoodMood — hardening baseline
@@ -391,7 +409,7 @@ kernel.dmesg_restrict = 1
 SYSCTL
   sysctl --system >/dev/null 2>&1 || sysctl -p /etc/sysctl.d/99-foodmood-hardening.conf >/dev/null 2>&1 || true
 
-  log_info "تقویت SSH (بدون قطع دسترسی فعلی)..."
+  log_info "Hardening SSH (keeps current access)..."
   mkdir -p /etc/ssh/sshd_config.d
   cat > /etc/ssh/sshd_config.d/99-foodmood-hardening.conf <<'SSHCONF'
 # FoodMood installer — SSH hardening (keeps existing auth methods)
@@ -407,7 +425,7 @@ SSHCONF
     systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
   fi
 
-  log_info "فعال‌سازی fail2ban برای SSH..."
+  log_info "Enabling fail2ban for SSH..."
   cat > /etc/fail2ban/jail.d/foodmood-ssh.local <<EOF
 [sshd]
 enabled = true
@@ -419,7 +437,7 @@ EOF
   systemctl enable fail2ban >/dev/null 2>&1 || true
   systemctl restart fail2ban >/dev/null 2>&1 || true
 
-  log_info "فعال‌سازی به‌روزرسانی امنیتی خودکار..."
+  log_info "Enabling unattended security upgrades..."
   cat > /etc/apt/apt.conf.d/20auto-upgrades <<'AUTOUP'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
@@ -428,17 +446,17 @@ AUTOUP
   systemctl enable unattended-upgrades >/dev/null 2>&1 || true
   systemctl start unattended-upgrades >/dev/null 2>&1 || true
 
-  log_ok "هاردنینگ پایه اعمال شد (sysctl، SSH، fail2ban، auto-updates)."
+  log_ok "Hardening applied (sysctl, SSH, fail2ban, auto-updates)."
 }
 
 setup_firewall() {
   if [[ "$ENABLE_FIREWALL" -ne 1 ]]; then
     return
   fi
-  step_begin "پیکربندی فایروال UFW"
+  step_begin "Configure UFW firewall"
   detect_ssh_port
 
-  log_info "باز کردن پورت SSH (${SSH_PORT}/tcp) قبل از فعال‌سازی فایروال..."
+  log_info "Allowing SSH port (${SSH_PORT}/tcp) before enabling firewall..."
   ufw --force reset >/dev/null 2>&1 || true
   ufw default deny incoming
   ufw default allow outgoing
@@ -455,34 +473,34 @@ setup_firewall() {
 
   ufw logging medium
   ufw --force enable
-  log_ok "فایروال UFW فعال شد — پورت‌های مجاز: SSH(${SSH_PORT})$( [[ "$USE_NGINX" -eq 1 ]] && echo -n ', 80' )$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo -n ', 443' )$( [[ "$USE_NGINX" -ne 1 ]] && echo -n ', 3000' )."
+  log_ok "UFW enabled — allowed: SSH(${SSH_PORT})$( [[ "$USE_NGINX" -eq 1 ]] && echo -n ', 80' )$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo -n ', 443' )$( [[ "$USE_NGINX" -ne 1 ]] && echo -n ', 3000' )."
 }
 
 install_nodejs() {
-  step_begin "نصب Node.js"
+  step_begin "Install Node.js"
   if command -v node >/dev/null 2>&1; then
     local ver
     ver="$(node -v | sed 's/v//' | cut -d. -f1)"
     if [[ "$ver" -ge "$NODE_MAJOR" ]]; then
-      log_ok "Node.js $(node -v) از قبل نصب است."
+      log_ok "Node.js $(node -v) already installed."
       return
     fi
   fi
-  log_info "نصب Node.js ${NODE_MAJOR}.x..."
-  log_busy "دانلود مخزن NodeSource و نصب — ۱ تا ۲ دقیقه"
+  log_info "Installing Node.js ${NODE_MAJOR}.x..."
+  log_busy "Downloading NodeSource repo — 1-2 minutes"
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
   apt-get install -y nodejs
-  log_ok "Node.js $(node -v) نصب شد."
+  log_ok "Node.js $(node -v) installed."
 }
 
 install_mongodb() {
-  step_begin "نصب MongoDB"
+  step_begin "Install MongoDB"
   if command -v mongod >/dev/null 2>&1; then
-    log_ok "MongoDB از قبل نصب است."
+    log_ok "MongoDB already installed."
     return
   fi
-  log_info "نصب MongoDB 7.0..."
-  log_busy "افزودن مخزن MongoDB و نصب — ۲ تا ۵ دقیقه"
+  log_info "Installing MongoDB 7.0..."
+  log_busy "Adding MongoDB repository — 2-5 minutes"
   curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
     | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
   local codename distro
@@ -498,17 +516,17 @@ install_mongodb() {
   apt-get install -y mongodb-org
   systemctl enable mongod
   systemctl start mongod
-  log_ok "MongoDB نصب و راه‌اندازی شد."
+  log_ok "MongoDB installed and started."
 }
 
 install_chrome_for_pdf() {
-  step_begin "نصب مرورگر PDF"
+  step_begin "Install PDF browser"
   if apt-get install -y -qq chromium-browser 2>/dev/null \
     || apt-get install -y -qq chromium 2>/dev/null; then
-    log_ok "Chromium نصب شد."
+    log_ok "Chromium installed."
     return
   fi
-  log_warn "Chromium از مخزن نصب نشد؛ تلاش برای Google Chrome..."
+  log_warn "Chromium not in repo; trying Google Chrome..."
   local chrome_deb="/tmp/google-chrome-stable.deb"
   curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
   if ! apt-get install -y -qq "$chrome_deb"; then
@@ -516,25 +534,25 @@ install_chrome_for_pdf() {
     apt-get install -f -y -qq
   fi
   rm -f "$chrome_deb"
-  log_ok "Google Chrome نصب شد."
+  log_ok "Google Chrome installed."
 }
 
 install_nginx_stack() {
   if [[ "$USE_NGINX" -ne 1 ]]; then
     return
   fi
-  step_begin "نصب Nginx"
+  step_begin "Install Nginx"
   apt-get install -y -qq nginx
   if [[ "$USE_DOMAIN" -eq 1 && "$CERT_MODE" == "letsencrypt" ]]; then
     apt-get install -y -qq certbot python3-certbot-nginx
   fi
   systemctl enable nginx
-  log_ok "Nginx نصب شد."
+  log_ok "Nginx installed."
 }
 
 deploy_application() {
-  step_begin "استقرار سامانه FoodMood"
-  log_info "ایجاد کاربر سرویس و کپی پروژه به ${INSTALL_DIR}..."
+  step_begin "Deploy FoodMood application"
+  log_info "Creating service user and copying project to ${INSTALL_DIR}..."
   if ! id "$APP_USER" &>/dev/null; then
     useradd -r -m -d "$INSTALL_DIR" -s /bin/bash "$APP_USER"
   fi
@@ -550,16 +568,16 @@ deploy_application() {
 
   chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
   chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
-  log_ok "پروژه در ${INSTALL_DIR} مستقر شد."
+  log_ok "Application deployed to ${INSTALL_DIR}."
 }
 
 setup_mongodb_auth() {
-  step_begin "پیکربندی امنیت MongoDB"
+  step_begin "Configure MongoDB security"
   systemctl start mongod
   sleep 2
 
   if ! mongosh --quiet --eval "db.runCommand({ ping: 1 })" &>/dev/null; then
-    log_err "اتصال به MongoDB ممکن نیست."
+    log_err "Cannot connect to MongoDB."
     exit 1
   fi
 
@@ -581,9 +599,9 @@ open(path, 'w', encoding='utf-8').write(body)
 PY
     mongosh --quiet "$DB_NAME" --file "$tmp_js"
     rm -f "$tmp_js"
-    log_ok "کاربر دیتابیس '${MONGO_USER}' ساخته شد."
+    log_ok "Database user '${MONGO_USER}' created."
   else
-    log_warn "کاربر '${MONGO_USER}' از قبل وجود دارد — رمز تغییر داده نمی‌شود."
+    log_warn "User '${MONGO_USER}' already exists — password not changed."
   fi
 
   local mongod_conf="/etc/mongod.conf"
@@ -595,14 +613,14 @@ PY
     fi
     systemctl restart mongod
     sleep 2
-    log_ok "احراز هویت MongoDB فعال شد."
+    log_ok "MongoDB authentication enabled."
   else
-    log_ok "احراز هویت MongoDB از قبل فعال است."
+    log_ok "MongoDB authentication already enabled."
   fi
 }
 
 write_env_file() {
-  step_begin "ساخت تنظیمات محیط (.env)"
+  step_begin "Create environment file (.env)"
   local encoded_pass app_url allowed_origins mongo_uri
 
   encoded_pass="$(url_encode "$MONGO_PASS")"
@@ -652,12 +670,12 @@ LDAP_ENCRYPTION_KEY=${LDAP_ENCRYPTION_KEY}
 
 LOG_DIR=/var/log/foodmood
 
-# ── LDAP (اختیاری — راهنما: docs/LDAP-PRODUCTION.md) ─────────
+# ── LDAP (optional — see docs/LDAP-PRODUCTION.md) ─────────
 # LDAP_URL=ldaps://dc.company.local:636
 # LDAP_SECURITY=ldaps
 # LDAP_BASE_DN=DC=company,DC=local
 # LDAP_BIND_DN=CN=svc-food,DC=company,DC=local
-# LDAP_BIND_PASSWORD=          # جایگزین: ذخیره رمزنگاری‌شده از پنل ادمین
+# LDAP_BIND_PASSWORD=          # or: encrypted value from admin panel
 # LDAP_CA_CERT_PATH=/opt/food/certs/ldap-ca.pem
 # LDAP_USER_FILTER=(sAMAccountName={{username}})
 # LDAP_ALLOWED_HOSTS=dc.company.local
@@ -665,7 +683,7 @@ EOF
 
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/.env"
   chmod 600 "${INSTALL_DIR}/.env"
-  log_ok "فایل .env ساخته شد."
+  log_ok ".env file created."
 }
 
 write_install_info_file() {
@@ -681,51 +699,51 @@ write_install_info_file() {
 
   cat > "$INSTALL_INFO_FILE" <<EOF
 ═══════════════════════════════════════════════════════════════
-  راهنمای نصب سامانه تغذیه — بدون اطلاعات حساس
-  نسخه نصب‌شده: v${installed_version}
-  تاریخ نصب: $(date '+%Y-%m-%d %H:%M:%S %Z')
+  FoodMood install guide — no sensitive data
+  Installed version: v${installed_version}
+  Install date: $(date '+%Y-%m-%d %H:%M:%S %Z')
 ═══════════════════════════════════════════════════════════════
 
-⚠  این فایل عمداً رمز، توکن یا کلید ندارد.
-   رمزها فقط یک‌بار در ترمینال نصب نمایش داده شدند.
-   آن‌ها را در خزانه رمز سازمانی (خارج از سرور) نگه دارید.
+⚠  This file intentionally has no passwords, tokens, or keys.
+   Secrets were shown once in the install terminal.
+   Store them in your org password vault (off this server).
 
-─── MongoDB (بدون رمز) ───────────────────────────────────────
-  نام کاربری : ${MONGO_USER}
-  پایگاه داده: ${DB_NAME}
-  آدرس       : 127.0.0.1:27017
+─── MongoDB (no password) ─────────────────────────────────────
+  Username : ${MONGO_USER}
+  Database : ${DB_NAME}
+  Host     : 127.0.0.1:27017
 
-─── دسترسی وب ─────────────────────────────────────────────────
-  آدرس سامانه: ${access_url}
-$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo "  دامنه       : ${APP_DOMAIN}" )
-$( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  نوع SSL     : ${CERT_MODE}" )
+─── Web access ────────────────────────────────────────────────
+  App URL  : ${access_url}
+$( [[ "${USE_DOMAIN:-0}" -eq 1 ]] && echo "  Domain   : ${APP_DOMAIN}" )
+$( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  SSL type : ${CERT_MODE}" )
 
-─── امنیت سرور ────────────────────────────────────────────────
-  فایروال UFW : $( [[ "${ENABLE_FIREWALL:-0}" -eq 1 ]] && echo "فعال" || echo "غیرفعال" )
-  پورت SSH    : ${SSH_PORT}
-  هاردنینگ    : $( [[ "${ENABLE_HARDENING:-0}" -eq 1 ]] && echo "فعال (sysctl, fail2ban)" || echo "غیرفعال" )
+─── Server security ───────────────────────────────────────────
+  UFW      : $( [[ "${ENABLE_FIREWALL:-0}" -eq 1 ]] && echo "enabled" || echo "disabled" )
+  SSH port : ${SSH_PORT}
+  Hardening: $( [[ "${ENABLE_HARDENING:-0}" -eq 1 ]] && echo "enabled (sysctl, fail2ban)" || echo "disabled" )
 
-─── مسیرها (استاندارد FHS / systemd) ─────────────────────────
-  نصب برنامه  : ${INSTALL_DIR}              (/opt — FHS)
-  تنظیمات اجرا : ${INSTALL_DIR}/.env         (600 — foodapp)
-  لاگ سیستمی   : /var/log/foodmood/          (/var/log — FHS)
-  لاگ متنی     : /var/log/foodmood/system.log
-  گواهی LDAP   : ${INSTALL_DIR}/certs/
-  واحد systemd : /etc/systemd/system/${SERVICE_NAME}.service
-  کاربر سرویس  : ${APP_USER}
-  داده MongoDB : /var/lib/mongodb
-  راهنمای کامل : ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md
-  بررسی نهایی  : sudo bash ${INSTALL_DIR}/deploy/verify-install.sh
+─── Paths (FHS / systemd) ─────────────────────────────────────
+  Application : ${INSTALL_DIR}              (/opt — FHS)
+  Runtime env : ${INSTALL_DIR}/.env         (600 — foodapp)
+  System logs : /var/log/foodmood/          (/var/log — FHS)
+  Text log    : /var/log/foodmood/system.log
+  LDAP certs  : ${INSTALL_DIR}/certs/
+  systemd unit: /etc/systemd/system/${SERVICE_NAME}.service
+  Service user: ${APP_USER}
+  MongoDB data: /var/lib/mongodb
+  Full guide  : ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md
+  Verify      : sudo bash ${INSTALL_DIR}/deploy/verify-install.sh
 
-─── LDAP (اختیاری) ───────────────────────────────────────────
-  راهنمای گواهی CA و Active Directory:
+─── LDAP (optional) ───────────────────────────────────────────
+  CA certificate and Active Directory guide:
   ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md
 
 EOF
 
   chmod 644 "$INSTALL_INFO_FILE"
   chown root:root "$INSTALL_INFO_FILE"
-  # حذف فایل قدیمی در صورت وجود — دیگر رمز روی سرور نگه نمی‌داریم
+  # Remove legacy file — we no longer keep passwords on disk
   rm -f "${INSTALL_DIR}/CREDENTIALS.txt"
 }
 
@@ -748,18 +766,18 @@ reveal_final_secrets_once() {
 
   echo ""
   echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
-  echo -e "${YELLOW}${BOLD}  اطلاعات حساس — فقط یک‌بار در همین ترمینال${NC}"
+  echo -e "${YELLOW}${BOLD}  Sensitive credentials — shown once in this terminal${NC}"
   echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
   echo ""
   echo -e "${BOLD}─── MongoDB ───────────────────────────────────────────────────${NC}"
-  echo "  نام کاربری : ${MONGO_USER}"
-  echo "  رمز عبور   : ${MONGO_PASS}"
-  echo "  پایگاه داده: ${DB_NAME}"
+  echo "  Username : ${MONGO_USER}"
+  echo "  Password : ${MONGO_PASS}"
+  echo "  Database : ${DB_NAME}"
   echo ""
-  echo -e "${BOLD}─── دسترسی وب ─────────────────────────────────────────────────${NC}"
-  echo "  آدرس سامانه: ${access_url}"
+  echo -e "${BOLD}─── Web access ────────────────────────────────────────────────${NC}"
+  echo "  App URL  : ${access_url}"
   echo ""
-  echo -e "${BOLD}─── کلیدهای رمزنگاری (.env) ──────────────────────────────────${NC}"
+  echo -e "${BOLD}─── Encryption keys (.env) ────────────────────────────────────${NC}"
   echo "  SESSION_SECRET  : ${session_secret}"
   echo "  JWT_SECRET      : ${jwt_secret}"
   echo "  BACKUP_SECRET   : ${backup_secret}"
@@ -769,32 +787,41 @@ reveal_final_secrets_once() {
   echo ""
 
   if [[ "$CREATE_SUPERADMIN" -eq 1 ]]; then
-    echo -e "${BOLD}─── سوپرادمین ─────────────────────────────────────────────────${NC}"
+    echo -e "${BOLD}─── Superadmin ────────────────────────────────────────────────${NC}"
     if [[ -n "$SUPERADMIN_CREDS_OUTPUT" ]]; then
       echo "$SUPERADMIN_CREDS_OUTPUT"
     else
-      echo "  (ساخت سوپرادمین انجام نشد یا از قبل وجود داشت)"
+      echo "  (Superadmin was not created or already exists)"
     fi
     echo ""
   fi
 
-  prompt_off_server_ack "اطلاعات نهایی نصب"
+  if [[ "$QUICK_MODE" -eq 1 ]]; then
+    security_off_server_notice
+    echo -e "${DIM}    Save the above off-server, then press Enter to finish.${NC}"
+    read -r -p ""
+    wipe_install_secrets_from_shell
+    log_ok "Install secrets cleared from installer memory."
+    return
+  fi
+
+  prompt_off_server_ack "Final install credentials"
   wipe_install_secrets_from_shell
-  log_ok "تأیید ذخیره خارج از سرور ثبت شد. رمزها از حافظه نصب‌کننده پاک شدند."
+  log_ok "Off-server storage confirmed. Secrets cleared from installer memory."
 }
 
 install_npm_deps() {
-  step_begin "نصب وابستگی‌های Node.js"
+  step_begin "Install Node.js dependencies"
   mkdir -p "${INSTALL_DIR}/certs"
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/certs"
   chmod 750 "${INSTALL_DIR}/certs"
-  log_busy "npm install --omit=dev — معمولاً ۲ تا ۸ دقیقه؛ تا پایان صبر کنید"
+  log_busy "npm install --omit=dev — usually 2-8 minutes; please wait"
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --progress=true"
-  log_ok "npm install انجام شد."
+  log_ok "npm install completed."
 }
 
 setup_systemd() {
-  step_begin "فعال‌سازی سرویس systemd (foodmood)"
+  step_begin "Enable systemd service (foodmood)"
   mkdir -p /var/log/foodmood
   chown "$APP_USER:$APP_GROUP" /var/log/foodmood
   chmod 750 /var/log/foodmood
@@ -811,9 +838,9 @@ setup_systemd() {
   systemctl restart "$SERVICE_NAME"
   sleep 2
   if systemctl is-active --quiet "$SERVICE_NAME"; then
-    log_ok "سرویس ${SERVICE_NAME} فعال شد — با هر بار روشن شدن سرور خودکار بالا می‌آید."
+    log_ok "Service ${SERVICE_NAME} is active — starts automatically on boot."
   else
-    log_err "سرویس بالا نیامد. لاگ: journalctl -u ${SERVICE_NAME} -n 30"
+    log_err "Service failed to start. Log: journalctl -u ${SERVICE_NAME} -n 30"
     exit 1
   fi
 }
@@ -845,7 +872,7 @@ NGINX_HTTP
   nginx -t
   systemctl reload nginx
   SERVER_IP="$server_ip"
-  log_ok "Nginx روی http://${server_ip} پیکربندی شد."
+  log_ok "Nginx configured on http://${server_ip}."
 }
 
 configure_nginx_https_custom() {
@@ -890,7 +917,7 @@ NGINX_CUSTOM
   rm -f /etc/nginx/sites-enabled/default
   nginx -t
   systemctl reload nginx
-  log_ok "Nginx با گواهی اختصاصی روی https://${APP_DOMAIN} پیکربندی شد."
+  log_ok "Nginx configured with custom certificate on https://${APP_DOMAIN}."
 }
 
 configure_nginx_https_letsencrypt() {
@@ -918,16 +945,16 @@ NGINX_LE
   nginx -t
   systemctl reload nginx
 
-  log_info "دریافت گواهی Let's Encrypt برای ${APP_DOMAIN}..."
+  log_info "Requesting Let's Encrypt certificate for ${APP_DOMAIN}..."
   certbot --nginx -d "$APP_DOMAIN" --non-interactive --agree-tos -m "$LE_EMAIL" --redirect
-  log_ok "HTTPS با Let's Encrypt فعال شد: https://${APP_DOMAIN}"
+  log_ok "HTTPS enabled with Let's Encrypt: https://${APP_DOMAIN}"
 }
 
 configure_nginx() {
   if [[ "$USE_NGINX" -ne 1 ]]; then
     return
   fi
-  step_begin "پیکربندی Nginx"
+  step_begin "Configure Nginx"
 
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     if [[ "$CERT_MODE" == "letsencrypt" ]]; then
@@ -944,26 +971,26 @@ create_superadmin_account() {
   if [[ "$CREATE_SUPERADMIN" -ne 1 ]]; then
     return
   fi
-  step_begin "ساخت سوپرادمین"
+  step_begin "Create superadmin account"
   local output
   output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)" || {
-    log_warn "ساخت سوپرادمین ناموفق بود (شاید از قبل وجود دارد):"
+    log_warn "Superadmin creation failed (may already exist):"
     echo "$output"
     return
   }
   SUPERADMIN_CREDS_OUTPUT="$output"
-  log_ok "سوپرادمین '${SUPERADMIN_USER}' ساخته شد — اطلاعات ورود در پایان نصب یک‌بار در ترمینال نمایش داده می‌شود."
+  log_ok "Superadmin '${SUPERADMIN_USER}' created — login shown once at end of install."
 }
 
 run_post_install_verify() {
-  step_begin "بررسی نهایی و پذیرش نصب (verify-install)"
+  step_begin "Post-install verification (verify-install)"
   if [[ -f "${INSTALL_DIR}/deploy/verify-install.sh" ]]; then
     bash "${INSTALL_DIR}/deploy/verify-install.sh" --from-install || {
-      log_err "بررسی نهایی ناموفق — قبل از Go-Live مشکلات را رفع کنید."
+      log_err "Verification failed — fix issues before go-live."
       exit 1
     }
   else
-    log_warn "اسکریپت verify-install.sh پیدا نشد — بررسی خودکار رد شد."
+    log_warn "verify-install.sh not found — automatic check skipped."
   fi
 }
 
@@ -987,28 +1014,32 @@ print_summary() {
 
   echo ""
   show_foodmood_banner
-  echo -e "${GREEN}${BOLD}  ✓ نصب FoodMood با موفقیت انجام شد${NC}"
+  echo -e "${GREEN}${BOLD}  ✓ FoodMood installed successfully${NC}"
   echo ""
-  echo -e "  ${BOLD}آدرس سامانه:${NC}  ${access_url}/login"
-  echo -e "  ${BOLD}پنل مدیریت:${NC}   ${access_url}/admin/dashboard"
+  echo -e "  ${BOLD}App URL:${NC}       ${access_url}/login"
+  echo -e "  ${BOLD}Admin panel:${NC}   ${access_url}/admin/dashboard"
   if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
-    echo -e "  ${BOLD}فایروال UFW:${NC}   فعال — پورت‌های مجاز: ${fw_ports}"
+    echo -e "  ${BOLD}UFW firewall:${NC}  enabled — allowed ports: ${fw_ports}"
   fi
   if [[ "$ENABLE_HARDENING" -eq 1 ]]; then
-    echo -e "  ${BOLD}هاردنینگ:${NC}     sysctl · fail2ban · auto-updates"
+    echo -e "  ${BOLD}Hardening:${NC}     sysctl · fail2ban · auto-updates"
   fi
   echo ""
-  red_box $'✓  نصب کامل شد.\n   اطلاعات حساس فقط یک‌بار در ترمینال نمایش داده شد\n   و تأیید ذخیره خارج از سرور دریافت شد.\n\n   راهنمای بدون رمز: /opt/food/INSTALL_INFO.txt\n   (فقط آدرس‌ها و مسیرها — بدون رمز یا توکن)'
-  echo -e "  ${BOLD}دستورات مفید:${NC}"
+  if [[ "$QUICK_MODE" -eq 1 ]]; then
+    red_box $'✓  Install complete.\n   Sensitive data was shown once in this terminal.\n\n   Non-secret guide: /opt/food/INSTALL_INFO.txt\n   (URLs and paths only — no passwords or tokens)'
+  else
+    red_box $'✓  Install complete.\n   Sensitive data was shown once in this terminal\n   and off-server storage was confirmed.\n\n   Non-secret guide: /opt/food/INSTALL_INFO.txt\n   (URLs and paths only — no passwords or tokens)'
+  fi
+  echo -e "  ${BOLD}Useful commands:${NC}"
   echo "    sudo systemctl status foodmood"
   echo "    sudo journalctl -u foodmood -f"
   echo "    sudo tail -f /var/log/foodmood/system.log"
   echo "    sudo systemctl restart foodmood"
   echo "    sudo bash ${INSTALL_DIR}/deploy/verify-install.sh"
   echo ""
-  echo -e "  ${BOLD}مستندات:${NC}"
-  echo "    ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md  (مسیرها + چک‌لیست Go-Live)"
-  echo "    ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md   (LDAP + گواهی CA)"
+  echo -e "  ${BOLD}Documentation:${NC}"
+  echo "    ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md  (paths + go-live checklist)"
+  echo "    ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md   (LDAP + CA certificate)"
   echo ""
 }
 
@@ -1016,7 +1047,7 @@ main() {
   require_root
   show_foodmood_banner
   show_install_roadmap
-  step_begin "دریافت اطلاعات نصب"
+  step_begin "Collect install inputs"
   collect_inputs
   install_base_packages
   apply_system_hardening
@@ -1035,7 +1066,7 @@ main() {
   write_install_info_file
   reveal_final_secrets_once
   run_post_install_verify
-  step_begin "خلاصه و پایان نصب"
+  step_begin "Summary and finish"
   print_summary
 }
 
