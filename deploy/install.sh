@@ -82,14 +82,54 @@ log_warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 log_err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
 log_busy() { echo -e "${DIM}    ⏳ $*${NC}"; }
 
+progress_percent() {
+  local step="${1:-$STEP_CURRENT}"
+  echo $(( step * 100 / STEP_TOTAL ))
+}
+
+render_progress_bar() {
+  local pct="${1:-0}"
+  local width=24
+  local filled=$(( pct * width / 100 ))
+  local empty=$(( width - filled ))
+  local bar filled_part empty_part
+  filled_part="$(printf '%*s' "$filled" '' | tr ' ' '█')"
+  empty_part="$(printf '%*s' "$empty" '' | tr ' ' '░')"
+  bar="${filled_part}${empty_part}"
+  echo -e "${CYAN}${bar}${NC} ${BOLD}${pct}%${NC}"
+}
+
+show_progress() {
+  local pct
+  pct="$(progress_percent)"
+  echo -e "${BOLD}Install progress:${NC} $(render_progress_bar "$pct")"
+}
+
+log_progress() {
+  local pct
+  pct="$(progress_percent)"
+  echo -e "${DIM}    [${pct}%] $*${NC}"
+}
+
 trap 'log_err "Install stopped at line ${LINENO} (exit code $?). Fix the issue above and re-run."' ERR
 
 step_begin() {
   STEP_CURRENT=$((STEP_CURRENT + 1))
+  local pct start_pct
+  pct="$(progress_percent)"
+  start_pct=$(( (STEP_CURRENT - 1) * 100 / STEP_TOTAL ))
   echo ""
   echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${MAGENTA}${BOLD}  ▶ Step ${STEP_CURRENT}/${STEP_TOTAL}:${NC} ${BOLD}$*${NC}"
+  echo -e "${MAGENTA}${BOLD}  ▶ Step ${STEP_CURRENT}/${STEP_TOTAL}${NC} ${DIM}(${start_pct}% → ${pct}%)${NC}"
+  echo -e "${MAGENTA}${BOLD}  ${BOLD}$*${NC}"
+  echo -e "  $(render_progress_bar "$pct")"
   echo -e "${MAGENTA}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+step_complete() {
+  local pct
+  pct="$(progress_percent)"
+  log_ok "Step ${STEP_CURRENT}/${STEP_TOTAL} complete — ${pct}%"
 }
 
 show_banner() {
@@ -243,6 +283,7 @@ wait_for_mongodb() {
       return 0
     fi
     if (( i % 5 == 0 )); then
+      log_progress "Still waiting for ${label} (attempt ${i}/${attempts})..."
       ensure_mongod_running "$uri" || true
     fi
     sleep 2
@@ -258,6 +299,9 @@ wait_for_api_health() {
     body="$(curl -sf --max-time 5 http://127.0.0.1:3000/api/system/health 2>/dev/null || true)"
     if echo "$body" | grep -q '"healthy":[[:space:]]*true'; then
       return 0
+    fi
+    if (( i % 5 == 0 )); then
+      log_progress "Still waiting for API health (attempt ${i}/${attempts})..."
     fi
     sleep 2
   done
@@ -279,6 +323,7 @@ resolve_project_source() {
     if [[ -n "$candidate" && -f "$candidate/package.json" && -f "$candidate/server.js" ]]; then
       PROJECT_DIR="$candidate"
       log_ok "Using local project source: ${PROJECT_DIR}"
+      step_complete
       return
     fi
   fi
@@ -295,6 +340,7 @@ resolve_project_source() {
   git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
   PROJECT_DIR="$CLONE_DIR"
   log_ok "Source fetched to ${PROJECT_DIR}"
+  step_complete
 }
 
 cleanup_clone() {
@@ -323,6 +369,7 @@ install_base_packages() {
     libgtk-3-0 libnspr4 libnss3 libx11-xcb1 libxcomposite1 \
     libxdamage1 libxrandr2 2>/dev/null || true
   log_ok "Base packages installed."
+  step_complete
 }
 
 # ─── Step 3: hardening ────────────────────────────────────────
@@ -330,6 +377,7 @@ apply_system_hardening() {
   if [[ "$ENABLE_HARDENING" -ne 1 ]]; then
     step_begin "Linux hardening baseline"
     log_warn "Skipped (--no-hardening)."
+    step_complete
     return
   fi
   step_begin "Linux hardening baseline"
@@ -390,6 +438,7 @@ AUTOUP
   systemctl start unattended-upgrades >/dev/null 2>&1 || true
 
   log_ok "Hardening applied (sysctl, SSH, fail2ban, auto-updates)."
+  step_complete
 }
 
 # ─── Step 4: Node.js ──────────────────────────────────────────
@@ -400,6 +449,7 @@ install_nodejs() {
     ver="$(node -v | sed 's/v//' | cut -d. -f1)"
     if [[ "$ver" -ge "$NODE_MAJOR" ]]; then
       log_ok "Node.js $(node -v) already installed."
+      step_complete
       return
     fi
   fi
@@ -407,6 +457,7 @@ install_nodejs() {
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
   apt-get install -y nodejs
   log_ok "Node.js $(node -v) installed."
+  step_complete
 }
 
 # ─── Step 5: MongoDB ──────────────────────────────────────────
@@ -472,6 +523,7 @@ install_mongodb() {
       log_err "MongoDB is installed but not accepting connections."
       exit 1
     fi
+    step_complete
     return
   fi
 
@@ -529,6 +581,7 @@ install_mongodb() {
     exit 1
   fi
   log_ok "MongoDB installed and started."
+  step_complete
 }
 
 # ─── Step 6: browser for PDF export ───────────────────────────
@@ -537,6 +590,7 @@ install_chrome_for_pdf() {
   if apt-get install -y -qq chromium-browser 2>/dev/null \
     || apt-get install -y -qq chromium 2>/dev/null; then
     log_ok "Chromium installed."
+    step_complete
     return
   fi
   log_warn "Chromium not in repo; trying Google Chrome..."
@@ -548,6 +602,7 @@ install_chrome_for_pdf() {
   fi
   rm -f "$chrome_deb"
   log_ok "Google Chrome installed."
+  step_complete
 }
 
 # ─── Step 7: Nginx ────────────────────────────────────────────
@@ -556,6 +611,7 @@ install_nginx_stack() {
   apt-get install -y -qq nginx
   systemctl enable nginx
   log_ok "Nginx installed."
+  step_complete
 }
 
 # ─── Step 8: deploy application ───────────────────────────────
@@ -576,6 +632,7 @@ deploy_application() {
   chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
   chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
   log_ok "Application deployed to ${INSTALL_DIR}."
+  step_complete
 }
 
 # ─── Step 9: MongoDB auth ─────────────────────────────────────
@@ -632,6 +689,7 @@ PY
       exit 1
     fi
   fi
+  step_complete
 }
 
 # ─── Step 10: .env ────────────────────────────────────────────
@@ -694,6 +752,7 @@ EOF
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/.env"
   chmod 600 "${INSTALL_DIR}/.env"
   log_ok ".env file created."
+  step_complete
 }
 
 # ─── Step 11: npm install ─────────────────────────────────────
@@ -719,6 +778,7 @@ install_npm_deps() {
     exit 1
   fi
   log_ok "npm install completed."
+  step_complete
 }
 
 # ─── Step 12: systemd ─────────────────────────────────────────
@@ -755,6 +815,7 @@ setup_systemd() {
     exit 1
   fi
   log_ok "Service ${SERVICE_NAME} is active — starts automatically on boot."
+  step_complete
 }
 
 # ─── Step 13: Nginx config (HTTP on server IP) ────────────────
@@ -784,6 +845,7 @@ NGINX_HTTP
   nginx -t
   systemctl reload nginx
   log_ok "Nginx configured on http://${SERVER_IP}"
+  step_complete
 }
 
 # ─── Step 14: UFW ─────────────────────────────────────────────
@@ -791,6 +853,7 @@ setup_firewall() {
   if [[ "$ENABLE_FIREWALL" -ne 1 ]]; then
     step_begin "Configure UFW firewall"
     log_warn "Skipped (--no-firewall)."
+    step_complete
     return
   fi
   step_begin "Configure UFW firewall"
@@ -804,6 +867,7 @@ setup_firewall() {
   ufw logging medium
   ufw --force enable
   log_ok "UFW enabled — allowed ports: SSH(${SSH_PORT}), HTTP(80)."
+  step_complete
 }
 
 # ─── Step 15: superadmin ──────────────────────────────────────
@@ -822,10 +886,12 @@ create_superadmin_account() {
     if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)"; then
       SUPERADMIN_CREDS_OUTPUT="$output"
       log_ok "Superadmin '${SUPERADMIN_USER}' created — credentials shown at the end."
+      step_complete
       return
     fi
     if echo "$output" | grep -qi 'already exists'; then
       log_warn "Superadmin '${SUPERADMIN_USER}' already exists — skipping creation."
+      step_complete
       return
     fi
     if (( attempt < 3 )); then
@@ -882,6 +948,7 @@ run_post_install_verify() {
     exit 1
   fi
   log_ok "Verification passed."
+  step_complete
 }
 
 # ─── Step 17: summary + credentials ───────────────────────────
@@ -940,16 +1007,14 @@ print_summary() {
   write_install_info_file
 
   echo ""
-  echo -e "${GREEN}${BOLD}  ✓ FoodMood installed successfully${NC}"
+  echo -e "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${GREEN}${BOLD}  ✓ INSTALLATION COMPLETE — 100%${NC}"
+  echo -e "  $(render_progress_bar 100)"
+  echo -e "${GREEN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo ""
-  echo -e "  ${BOLD}App URL:${NC}       http://${SERVER_IP}/login"
+  echo -e "${BOLD}─── دسترسی وب (Web access) ────────────────────────────────────${NC}"
+  echo -e "  ${BOLD}Login:${NC}         http://${SERVER_IP}/login"
   echo -e "  ${BOLD}Admin panel:${NC}   http://${SERVER_IP}/admin/dashboard"
-  if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
-    echo -e "  ${BOLD}UFW firewall:${NC}  enabled — allowed ports: SSH(${SSH_PORT}), HTTP(80)"
-  fi
-  if [[ "$ENABLE_HARDENING" -eq 1 ]]; then
-    echo -e "  ${BOLD}Hardening:${NC}     sysctl · fail2ban · auto-updates"
-  fi
   echo ""
   echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
   echo -e "${YELLOW}${BOLD}  CREDENTIALS — shown ONCE. Save them off-server NOW.${NC}"
@@ -966,6 +1031,14 @@ print_summary() {
   echo "  Username : ${MONGO_USER}"
   echo "  Password : ${MONGO_PASS}"
   echo "  Database : ${DB_NAME}"
+  echo "  Host     : 127.0.0.1:27017"
+  echo ""
+  if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
+    echo -e "  ${BOLD}UFW firewall:${NC}  enabled — SSH(${SSH_PORT}), HTTP(80)"
+  fi
+  if [[ "$ENABLE_HARDENING" -eq 1 ]]; then
+    echo -e "  ${BOLD}Hardening:${NC}     sysctl · fail2ban · auto-updates"
+  fi
   echo ""
   echo -e "${BOLD}─── Encryption keys (.env backup) ─────────────────────────────${NC}"
   echo "  SESSION_SECRET  : ${SESSION_SECRET}"
@@ -989,6 +1062,7 @@ print_summary() {
   echo "    ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md  (paths + go-live checklist)"
   echo "    ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md   (LDAP + CA certificate)"
   echo ""
+  step_complete
 }
 
 # ─── Main ─────────────────────────────────────────────────────
@@ -1010,7 +1084,10 @@ main() {
   log_info "MongoDB user: ${MONGO_USER} (password ${mongo_pass_source})"
   log_info "Superadmin: ${SUPERADMIN_USER}"
   log_info "App URL after install: http://${SERVER_IP}"
-
+  echo ""
+  show_progress
+  echo -e "${DIM}  Estimated time: 10–15 minutes. Do not interrupt.${NC}"
+  echo ""
   resolve_project_source
   install_base_packages
   apply_system_hardening
