@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # One-line FoodMood install from GitHub on a fresh Ubuntu/Debian server
 #
-# Recommended (works with prompts when piped):
-#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash
+# Recommended:
+#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh -o /tmp/food-bootstrap.sh
+#   sudo bash /tmp/food-bootstrap.sh
 #
-# Alternative (download first):
-#   curl -fsSL .../bootstrap.sh -o /tmp/food-bootstrap.sh && sudo bash /tmp/food-bootstrap.sh
+# One-liner (auto re-downloads when piped so prompts work):
+#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash
 #
 # Full interactive install (more prompts):
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- --full
@@ -23,6 +24,22 @@
 #   --quick|-q       Quick install (default): MongoDB only, then auto
 #   --full           Full interactive install (SSL, firewall, superadmin prompts)
 set -euo pipefail
+
+BOOTSTRAP_SOURCE_URL="${BOOTSTRAP_SOURCE_URL:-https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh}"
+
+# curl | bash leaves stdin closed (EOF) — re-run from a file with /dev/tty as stdin
+if [[ ! -t 0 ]] && [[ -z "${FOODMOOD_BOOTSTRAP_REEXEC:-}" ]]; then
+  export FOODMOOD_BOOTSTRAP_REEXEC=1
+  reexec_script="$(mktemp /tmp/food-bootstrap-XXXXXX.sh)"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$BOOTSTRAP_SOURCE_URL" -o "$reexec_script"
+  else
+    echo "[✗] curl is required for one-line install. Or download bootstrap.sh manually." >&2
+    exit 1
+  fi
+  chmod +x "$reexec_script"
+  exec bash "$reexec_script" "$@" </dev/tty
+fi
 
 REPO_URL="${REPO_URL:-https://github.com/5emad/FoodMood.git}"
 BRANCH="main"
@@ -72,4 +89,4 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ▶ Starting install-ubuntu.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-bash "$CLONE_DIR/deploy/install-ubuntu.sh" $QUICK_FLAG
+bash "$CLONE_DIR/deploy/install-ubuntu.sh" $QUICK_FLAG </dev/tty

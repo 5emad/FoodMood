@@ -5,6 +5,8 @@
 #   sudo bash deploy/install-ubuntu.sh --quick      # MongoDB only, then auto (default via bootstrap)
 set -euo pipefail
 
+trap 'echo -e "\033[0;31m[✗]\033[0m Install stopped at line ${LINENO} (exit $?)" >&2' ERR
+
 QUICK_MODE=0
 for arg in "$@"; do
   case "$arg" in
@@ -39,7 +41,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUPERADMIN_CREDS_OUTPUT=""
 
-# curl | bash feeds the script on stdin — read prompts from the real terminal (fd 3)
+# curl | bash leaves stdin closed — reconnect to the real terminal for prompts
 require_interactive_tty() {
   if [[ ! -r /dev/tty ]]; then
     log_err "No interactive terminal detected."
@@ -48,7 +50,17 @@ require_interactive_tty() {
     log_err "  sudo bash /tmp/food-bootstrap.sh"
     exit 1
   fi
-  exec 3<> /dev/tty
+  if [[ ! -t 0 ]]; then
+    exec 0</dev/tty
+  fi
+}
+
+trim_spaces() {
+  local s="$1"
+  s="${s//$'\r'/}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
 }
 
 log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
@@ -166,7 +178,7 @@ prompt_off_server_ack() {
   echo -e "${YELLOW}${BOLD}  ▶ Waiting for your confirmation — installer is not stuck.${NC}"
   echo -e "${DIM}    After saving credentials off-server, type yes and press Enter.${NC}"
   while true; do
-    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply <&3
+    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply </dev/tty || read -r reply || reply=""
     case "${reply,,}" in
       y|yes|confirm) return 0 ;;
       *) log_warn "Type yes after saving credentials in your secure vault." ;;
@@ -215,7 +227,7 @@ prompt_yes_no() {
   local reply=""
   if [[ "$default" == "y" ]]; then hint="Y/n"; else hint="y/N"; fi
   while true; do
-    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply <&3
+    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply </dev/tty || read -r reply || reply=""
     reply="${reply:-$default}"
     case "${reply,,}" in
       y|yes) return 0 ;;
@@ -230,8 +242,10 @@ prompt_required() {
   local label="$2"
   local value=""
   while [[ -z "$value" ]]; do
-    read -r -p "$(echo -e "${CYAN}${label}:${NC} ")" value <&3
-    value="$(echo "$value" | xargs)"
+    printf '%b' "${CYAN}${label}:${NC} " >&2
+    IFS= read -r value </dev/tty || IFS= read -r value || value=""
+    value="$(trim_spaces "$value")"
+    [[ -z "$value" ]] && log_warn "Value cannot be empty."
   done
   printf -v "$__var" '%s' "$value"
 }
@@ -241,8 +255,12 @@ prompt_password_once() {
   local label="$2"
   local pass=""
   while [[ -z "$pass" ]]; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass <&3
-    echo "" >&3
+    printf '%b' "${CYAN}${label}:${NC} " >&2
+    stty -echo </dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
+    IFS= read -r pass </dev/tty || IFS= read -r pass || pass=""
+    stty echo </dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+    echo "" >&2
+    pass="$(trim_spaces "$pass")"
     [[ -z "$pass" ]] && log_warn "Password cannot be empty."
   done
   printf -v "$__var" '%s' "$pass"
@@ -254,10 +272,18 @@ prompt_password_twice() {
   local label="$2"
   local pass1="" pass2=""
   while true; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1 <&3
-    echo "" >&3
-    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2 <&3
-    echo "" >&3
+    printf '%b' "${CYAN}${label}:${NC} " >&2
+    stty -echo </dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
+    IFS= read -r pass1 </dev/tty || IFS= read -r pass1 || pass1=""
+    stty echo </dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+    echo "" >&2
+    printf '%b' "${CYAN}Repeat ${label}:${NC} " >&2
+    stty -echo </dev/tty 2>/dev/null || stty -echo 2>/dev/null || true
+    IFS= read -r pass2 </dev/tty || IFS= read -r pass2 || pass2=""
+    stty echo </dev/tty 2>/dev/null || stty echo 2>/dev/null || true
+    echo "" >&2
+    pass1="$(trim_spaces "$pass1")"
+    pass2="$(trim_spaces "$pass2")"
     if [[ -z "$pass1" ]]; then
       log_warn "Password cannot be empty."
       continue
@@ -287,7 +313,7 @@ collect_ssl_certificate_options() {
   echo "  2) Custom certificate (fullchain and privkey file paths)"
   local cert_choice=""
   while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
-    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice <&3
+    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice </dev/tty || read -r cert_choice || cert_choice=""
   done
   if [[ "$cert_choice" == "1" ]]; then
     CERT_MODE="letsencrypt"
@@ -324,7 +350,8 @@ collect_inputs() {
 
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     log_info "Quick install — enter MongoDB credentials, then all steps run automatically."
-    echo -e "${YELLOW}${BOLD}  ▶ Waiting for your input — type below and press Enter.${NC}"
+    echo -e "${YELLOW}${BOLD}  ▶ Type username, press Enter, then password, press Enter.${NC}"
+    echo -e "${DIM}    Paste one field at a time (not both on one line).${NC}"
     echo ""
     prompt_required MONGO_USER "MongoDB username"
     prompt_password_once MONGO_PASS "MongoDB password"
@@ -821,7 +848,7 @@ reveal_final_secrets_once() {
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     security_off_server_notice
     echo -e "${DIM}    Save the above off-server, then press Enter to finish.${NC}"
-    read -r -p "" <&3
+    read -r -p "" </dev/tty || true
     wipe_install_secrets_from_shell
     log_ok "Install secrets cleared from installer memory."
     return
