@@ -1,7 +1,7 @@
 let Client;
 try { ({ Client } = require('ldapts')); } catch { Client = null; }
 const fs = require('fs');
-const { decryptLdapPassword } = require('./SecurityHelper');
+const { resolveLdapBindPassword } = require('./SecurityHelper');
 
 function insecureLdapAllowed() {
   return process.env.LDAP_ALLOW_INSECURE === 'true';
@@ -14,7 +14,11 @@ function allowedHosts() {
 }
 
 function ldapConfig(settings = {}) {
-  const rawPassword = settings.transientLdapBindPassword || process.env.LDAP_BIND_PASSWORD || '';
+  const bindPassword = resolveLdapBindPassword({
+    transientPassword: settings.transientLdapBindPassword,
+    storedEnc: settings.ldapBindPasswordEnc,
+    envValue: process.env.LDAP_BIND_PASSWORD,
+  });
   return {
     enabled:     settings.ldapEnabled ?? Boolean(process.env.LDAP_URL),
     url:         settings.ldapUrl     || process.env.LDAP_URL    || '',
@@ -22,7 +26,7 @@ function ldapConfig(settings = {}) {
     caCertPath:  settings.ldapCaCertPath || process.env.LDAP_CA_CERT_PATH || '',
     baseDn:      settings.ldapBaseDn  || process.env.LDAP_BASE_DN || 'DC=company,DC=local',
     bindDn:      settings.ldapBindDn  || process.env.LDAP_BIND_DN || '',
-    bindPassword:decryptLdapPassword(rawPassword),
+    bindPassword,
     userFilter:  settings.ldapUserFilter || process.env.LDAP_USER_FILTER || '(sAMAccountName={{username}})',
   };
 }

@@ -567,14 +567,14 @@
                   </div>
                   <div class="form-group">
                     <label class="form-label">Bind Password موقت تست</label>
-                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="فقط برای تست اتصال، ذخیره نمی‌شود" dir="ltr" style="text-align:left" autocomplete="new-password">
+                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="برای ذخیره یا تست — خالی = بدون تغییر" dir="ltr" style="text-align:left" autocomplete="new-password">
                   </div>
                   <div class="form-group">
                     <label class="form-label">User Filter</label>
                     <input class="form-control" id="set_ldapUserFilter" placeholder="(sAMAccountName={{username}})" dir="ltr" style="text-align:left">
                   </div>
                 </div>
-                <div id="ldapPasswordHint" class="capacity-note" style="margin-top:8px">رمز Bind در دیتابیس ذخیره نمی‌شود. برای استفاده عملیاتی، LDAP_BIND_PASSWORD را در متغیر محیطی تنظیم کنید.</div>
+                <div id="ldapPasswordHint" class="capacity-note" style="margin-top:8px">رمز Bind با scrypt + AES-256-GCM + HMAC در دیتابیس ذخیره می‌شود. کلید رمزنگاری: LDAP_ENCRYPTION_KEY در سرور.</div>
               </div>
             </div>
 
@@ -875,9 +875,16 @@ function fillSystemSettingsForm() {
   byId('set_ldapBindDn').value = appSettings.ldapBindDn || '';
   byId('set_ldapBindPassword').value = '';
   byId('set_ldapUserFilter').value = appSettings.ldapUserFilter || '(sAMAccountName={{username}})';
-  byId('ldapPasswordHint').textContent = appSettings.hasLdapBindPassword
-    ? 'رمز Bind از متغیر محیطی LDAP_BIND_PASSWORD خوانده می‌شود و در دیتابیس ذخیره نمی‌شود.'
-    : 'رمز Bind در دیتابیس ذخیره نمی‌شود. برای استفاده عملیاتی، LDAP_BIND_PASSWORD را در متغیر محیطی تنظیم کنید.';
+  const hint = document.getElementById('ldapPasswordHint');
+  if (hint) {
+    if (appSettings.ldapBindPasswordStored) {
+      hint.textContent = 'رمز Bind با رمزنگاری چندلایه (scrypt + AES-256-GCM + HMAC) در دیتابیس ذخیره شده. برای تغییر، رمز جدید وارد و ذخیره کنید.';
+    } else if (appSettings.ldapBindPasswordFromEnv) {
+      hint.textContent = 'رمز Bind از LDAP_BIND_PASSWORD در .env خوانده می‌شود. برای ذخیره امن در DB، رمز را در فرم وارد و «ذخیره تنظیمات» بزنید.';
+    } else {
+      hint.textContent = 'رمز Bind با رمزنگاری چندلایه در DB ذخیره می‌شود. LDAP_ENCRYPTION_KEY روی سرور الزامی است.';
+    }
+  }
 }
 
 async function saveSystemSettings(event) {
@@ -901,6 +908,8 @@ async function saveSystemSettings(event) {
     ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
     ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
   };
+  const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
+  if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
   const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
   if (data.success) {
     appSettings = data.data;

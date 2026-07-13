@@ -43,28 +43,6 @@
   </div>
 </nav>
 
-<!-- دکمه اطلاعیه + کشوی پایین‌به‌بالا -->
-<button type="button" class="ann-fab" id="announcementsTrigger" hidden aria-label="مشاهده اطلاعیه‌ها">
-  <i class="fas fa-bullhorn"></i>
-  <span class="ann-fab-label">اطلاعیه</span>
-  <span class="ann-fab-count" id="announcementsCount"></span>
-</button>
-
-<div class="ann-drawer-overlay" id="announcementsOverlay" hidden></div>
-<div class="ann-drawer" id="announcementsDrawer" aria-hidden="true" role="dialog" aria-labelledby="announcementsDrawerTitle">
-  <div class="ann-drawer-handle" aria-hidden="true"></div>
-  <div class="ann-drawer-header">
-    <div class="ann-drawer-title" id="announcementsDrawerTitle">
-      <i class="fas fa-bullhorn"></i>
-      <span>اطلاعیه‌های فعال</span>
-    </div>
-    <button type="button" class="btn-icon ann-drawer-close" id="announcementsClose" aria-label="بستن">
-      <i class="fas fa-times"></i>
-    </button>
-  </div>
-  <div class="ann-drawer-body" id="announcementsList"></div>
-</div>
-
 <main class="user-portal-shell">
 
   <div class="user-portal-main">
@@ -106,6 +84,30 @@
   </div>
 
 </main>
+
+<!-- اطلاعیه — بعد از main و قبل از اسکریپت -->
+<div id="announcementsUi" class="announcements-ui" hidden>
+  <button type="button" class="ann-fab" id="announcementsTrigger" aria-label="مشاهده اطلاعیه‌ها">
+    <i class="fas fa-bullhorn"></i>
+    <span class="ann-fab-label">اطلاعیه</span>
+    <span class="ann-fab-count" id="announcementsCount"></span>
+  </button>
+
+  <div class="ann-drawer-overlay" id="announcementsOverlay" hidden></div>
+  <div class="ann-drawer" id="announcementsDrawer" aria-hidden="true" role="dialog" aria-labelledby="announcementsDrawerTitle">
+    <div class="ann-drawer-handle" aria-hidden="true"></div>
+    <div class="ann-drawer-header">
+      <div class="ann-drawer-title" id="announcementsDrawerTitle">
+        <i class="fas fa-bullhorn"></i>
+        <span>اطلاعیه‌های فعال</span>
+      </div>
+      <button type="button" class="btn-icon ann-drawer-close" id="announcementsClose" aria-label="بستن">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+    <div class="ann-drawer-body" id="announcementsList"></div>
+  </div>
+</div>
 
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
 <script>
@@ -186,6 +188,39 @@ async function loadMe() {
 
 let announcementsCache = [];
 
+function isDisplayableAnnouncement(item) {
+  const title = String(item?.title || '').trim();
+  const body = String(item?.body || '').trim();
+  return Boolean(title && body);
+}
+
+function syncAnnouncementsUi(items, hasActive) {
+  const root = document.getElementById('announcementsUi');
+  const trigger = document.getElementById('announcementsTrigger');
+  const countEl = document.getElementById('announcementsCount');
+  const list = document.getElementById('announcementsList');
+  const visibleItems = (items || []).filter(isDisplayableAnnouncement);
+  const shouldShow = Boolean(hasActive) && visibleItems.length > 0;
+
+  announcementsCache = shouldShow ? visibleItems : [];
+
+  if (!root || !trigger || !list) return;
+
+  if (!shouldShow) {
+    root.hidden = true;
+    trigger.hidden = true;
+    list.innerHTML = '';
+    if (countEl) countEl.textContent = '';
+    closeAnnouncementsDrawer();
+    return;
+  }
+
+  root.hidden = false;
+  trigger.hidden = false;
+  if (countEl) countEl.textContent = visibleItems.length.toLocaleString('fa-IR');
+  list.innerHTML = renderAnnouncementCards(visibleItems);
+}
+
 function renderAnnouncementCards(items) {
   return items.map((item) => `
     <article class="announcement-card">
@@ -217,27 +252,18 @@ function closeAnnouncementsDrawer() {
 }
 
 async function loadAnnouncements() {
-  const trigger = document.getElementById('announcementsTrigger');
-  const countEl = document.getElementById('announcementsCount');
-  const list = document.getElementById('announcementsList');
-  if (!trigger || !list) return;
+  const root = document.getElementById('announcementsUi');
+  if (!root) return;
 
   try {
     const data = await api('/api/announcements/active');
-    announcementsCache = data.success ? (data.data || []) : [];
-    if (!announcementsCache.length) {
-      trigger.hidden = true;
-      list.innerHTML = '';
-      closeAnnouncementsDrawer();
+    if (!data.success) {
+      syncAnnouncementsUi([], false);
       return;
     }
-
-    trigger.hidden = false;
-    if (countEl) countEl.textContent = announcementsCache.length.toLocaleString('fa-IR');
-    list.innerHTML = renderAnnouncementCards(announcementsCache);
+    syncAnnouncementsUi(data.data || [], data.hasActive ?? (data.data || []).length > 0);
   } catch {
-    trigger.hidden = true;
-    announcementsCache = [];
+    syncAnnouncementsUi([], false);
   }
 }
 
@@ -444,6 +470,7 @@ loadMe();
 loadAnnouncements();
 loadMenu();
 </script>
+
   <%- include('../partials/app-version') %>
 </body>
 </html>

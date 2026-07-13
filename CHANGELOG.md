@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+### Added
+- Linux deployment guide: [docs/LINUX-DEPLOYMENT.md](./docs/LINUX-DEPLOYMENT.md) (FHS paths, Go-Live checklist)
+- Post-install verification: `deploy/verify-install.sh` (ACCEPT/REJECT)
+- Multi-layer LDAP bind password encryption (`LDAP_ENCRYPTION_KEY`)
+
+### Changed
+- Installer runs verify step automatically; `INSTALL_INFO.txt` lists standard paths
+- `update.sh` migrates missing `ANNOUNCEMENT_ENCRYPTION_KEY` / `LDAP_ENCRYPTION_KEY`
+
 ## [1.2.0] - 2026-07-13
 
 ### Added

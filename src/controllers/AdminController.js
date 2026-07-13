@@ -146,7 +146,12 @@ class AdminController {
           if (colorPattern.test(value)) update[key] = value;
         }
       });
-      Object.assign(update, ldapFieldsFromBody(req.body));
+      try {
+        Object.assign(update, ldapFieldsFromBody(req.body));
+      } catch (err) {
+        if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+        throw err;
+      }
 
       if (update.ldapEnabled) {
         const savedSettings = await getSettingsLean();

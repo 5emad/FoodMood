@@ -174,10 +174,40 @@ apply_update() {
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
 
+migrate_env_keys() {
+  local env_file="${INSTALL_DIR}/.env"
+  [[ -f "$env_file" ]] || return 0
+
+  ensure_env_key() {
+    local key="$1"
+    if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+      return 0
+    fi
+    local val
+    val="$(openssl rand -base64 48 | tr -d '\n')"
+    echo "${key}=${val}" >> "$env_file"
+    chown "$APP_USER:$APP_USER" "$env_file"
+    chmod 600 "$env_file"
+    log_warn "کلید ${key} به .env اضافه شد — در خزانه رمز سازمانی ثبت کنید"
+  }
+
+  ensure_env_key ANNOUNCEMENT_ENCRYPTION_KEY
+  ensure_env_key LDAP_ENCRYPTION_KEY
+
+  if ! grep -q '^LOG_DIR=' "$env_file" 2>/dev/null; then
+    echo 'LOG_DIR=/var/log/foodmood' >> "$env_file"
+    chown "$APP_USER:$APP_USER" "$env_file"
+    chmod 600 "$env_file"
+    log_warn "LOG_DIR=/var/log/foodmood به .env اضافه شد"
+  fi
+}
+
 migrate_systemd_service() {
   mkdir -p /var/log/foodmood
   chown "$APP_USER:$APP_USER" /var/log/foodmood
   chmod 750 /var/log/foodmood
+
+  migrate_env_keys
 
   if systemctl list-unit-files food.service >/dev/null 2>&1; then
     systemctl disable food 2>/dev/null || true
@@ -196,6 +226,8 @@ migrate_systemd_service() {
     chown "$APP_USER:$APP_USER" "${INSTALL_DIR}/.env"
     chmod 600 "${INSTALL_DIR}/.env"
   fi
+
+  chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
 }
 
 main() {

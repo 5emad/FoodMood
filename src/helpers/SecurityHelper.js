@@ -57,20 +57,86 @@ function compareSensitiveToken(plaintext, storedHash) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-// ─── LDAP bind-password encryption (AES-256-GCM) ─────────────────────────────
+// ─── LDAP bind-password protection (multi-layer: scrypt + AES-256-GCM + HMAC) ─
 
 const LDAP_ENC_KEY_RAW = process.env.LDAP_ENCRYPTION_KEY;
 const ENC_PREFIX = 'enc:';
+const LDAPSVC_PREFIX = 'ldapsvc:v2:';
 const ALGO = 'aes-256-gcm';
+
+function ldapMasterKeyMaterial() {
+  return LDAP_ENC_KEY_RAW || process.env.BACKUP_SECRET || null;
+}
 
 function getLdapKey() {
   if (!LDAP_ENC_KEY_RAW) return null;
-  return crypto.scryptSync(LDAP_ENC_KEY_RAW, 'ldap-kdf-salt-v1', 32);
+  return crypto.scryptSync(LDAP_ENC_KEY_RAW, 'ldap-kdf-salt-v1', 32, SCRYPT_OPTS);
+}
+
+function deriveLdapRecordKey(master, salt) {
+  return crypto.scryptSync(master, salt, 32, SCRYPT_OPTS);
+}
+
+function encryptLdapBindSecret(plaintext) {
+  const text = String(plaintext || '');
+  if (!text) return '';
+
+  const master = ldapMasterKeyMaterial();
+  if (!master) {
+    const error = new Error('LDAP_ENCRYPTION_KEY در سرور تنظیم نشده است');
+    error.status = 500;
+    throw error;
+  }
+
+  const salt = crypto.randomBytes(16);
+  const key = deriveLdapRecordKey(master, salt);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, key, iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const hmac = crypto.createHmac('sha256', key).update(Buffer.concat([salt, iv, tag, encrypted])).digest();
+
+  return `${LDAPSVC_PREFIX}${salt.toString('base64url')}:${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}:${hmac.toString('hex')}`;
+}
+
+function decryptLdapBindSecret(stored) {
+  const value = String(stored || '');
+  if (!value) return '';
+
+  if (value.startsWith(LDAPSVC_PREFIX)) {
+    const master = ldapMasterKeyMaterial();
+    if (!master) return '';
+
+    try {
+      const parts = value.slice(LDAPSVC_PREFIX.length).split(':');
+      if (parts.length !== 5) return '';
+      const [saltB64, ivHex, tagHex, encHex, hmacHex] = parts;
+      const salt = Buffer.from(saltB64, 'base64url');
+      const iv = Buffer.from(ivHex, 'hex');
+      const tag = Buffer.from(tagHex, 'hex');
+      const enc = Buffer.from(encHex, 'hex');
+      const key = deriveLdapRecordKey(master, salt);
+      const expectedHmac = crypto.createHmac('sha256', key).update(Buffer.concat([salt, iv, tag, enc])).digest();
+      const actualHmac = Buffer.from(hmacHex, 'hex');
+      if (expectedHmac.length !== actualHmac.length || !crypto.timingSafeEqual(expectedHmac, actualHmac)) {
+        return '';
+      }
+      const decipher = crypto.createDecipheriv(ALGO, key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8');
+    } catch {
+      return '';
+    }
+  }
+
+  return decryptLdapPassword(value);
 }
 
 const encryptLdapPassword = (plaintext) => {
+  if (!plaintext) return plaintext;
+  if (LDAP_ENC_KEY_RAW) return encryptLdapBindSecret(plaintext);
   const key = getLdapKey();
-  if (!key || !plaintext) return plaintext;
+  if (!key) return plaintext;
 
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGO, key, iv);
@@ -81,7 +147,11 @@ const encryptLdapPassword = (plaintext) => {
 };
 
 const decryptLdapPassword = (ciphertext) => {
-  if (!ciphertext || !ciphertext.startsWith(ENC_PREFIX)) return ciphertext;
+  if (!ciphertext) return ciphertext;
+  if (String(ciphertext).startsWith(LDAPSVC_PREFIX)) {
+    return decryptLdapBindSecret(ciphertext);
+  }
+  if (!String(ciphertext).startsWith(ENC_PREFIX)) return ciphertext;
 
   const key = getLdapKey();
   if (!key) return '';
@@ -102,6 +172,17 @@ const decryptLdapPassword = (ciphertext) => {
     return '';
   }
 };
+
+function resolveLdapBindPassword({ transientPassword, storedEnc, envValue } = {}) {
+  if (transientPassword) return String(transientPassword);
+  if (storedEnc) {
+    const fromDb = decryptLdapBindSecret(storedEnc);
+    if (fromDb) return fromDb;
+  }
+  if (!envValue) return '';
+  const fromEnv = decryptLdapBindSecret(envValue);
+  return fromEnv || String(envValue);
+}
 
 // ─── Input helpers ────────────────────────────────────────────────────────────
 
@@ -131,6 +212,9 @@ module.exports = {
   compareSensitiveToken,
   encryptLdapPassword,
   decryptLdapPassword,
+  encryptLdapBindSecret,
+  decryptLdapBindSecret,
+  resolveLdapBindPassword,
   validateEmail,
   validatePhone,
   sanitizeInput,

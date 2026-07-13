@@ -26,7 +26,11 @@ class AnnouncementController {
   static async getActive(req, res, next) {
     try {
       const data = await AnnouncementService.listActiveForUser(req.user);
-      return res.json({ success: true, data });
+      return res.json({
+        success: true,
+        hasActive: data.length > 0,
+        data,
+      });
     } catch (error) {
       next(error);
     }

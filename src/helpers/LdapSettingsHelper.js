@@ -1,4 +1,5 @@
 const { defaultSettings } = require('../services/SettingsService');
+const { encryptLdapBindSecret } = require('./SecurityHelper');
 
 function parseBoolean(value) {
   return value === true || value === 'true' || value === '1';
@@ -43,6 +44,11 @@ function ldapFieldsFromBody(body = {}) {
   if (body.ldapBindDn !== undefined) update.ldapBindDn = String(body.ldapBindDn || '').trim();
   if (body.ldapUserFilter !== undefined) {
     update.ldapUserFilter = String(body.ldapUserFilter || '').trim() || defaultSettings.ldapUserFilter;
+  }
+  if (body.ldapClearBindPassword === true || body.ldapClearBindPassword === 'true') {
+    update.ldapBindPasswordEnc = '';
+  } else if (typeof body.ldapBindPassword === 'string' && body.ldapBindPassword.length > 0) {
+    update.ldapBindPasswordEnc = encryptLdapBindSecret(body.ldapBindPassword);
   }
   return update;
 }

@@ -84,6 +84,11 @@ const appSettingSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
+  ldapBindPasswordEnc: {
+    type: String,
+    default: '',
+    select: false,
+  },
   ldapUserFilter: {
     type: String,
     default: '(sAMAccountName={{username}})',

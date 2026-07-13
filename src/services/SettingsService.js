@@ -22,10 +22,14 @@ const defaultSettings = {
 };
 
 function publicSettings(settings) {
-  const raw = settings.toObject ? settings.toObject() : { ...settings };
+  const raw = settings.toObject ? settings.toObject({ getters: false, virtuals: false }) : { ...settings };
+  const storedEnc = raw.ldapBindPasswordEnc || '';
+  delete raw.ldapBindPasswordEnc;
   return {
     ...raw,
-    hasLdapBindPassword: Boolean(process.env.LDAP_BIND_PASSWORD),
+    hasLdapBindPassword: Boolean(storedEnc || process.env.LDAP_BIND_PASSWORD),
+    ldapBindPasswordStored: Boolean(storedEnc),
+    ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
   };
 }
 
@@ -38,7 +42,7 @@ async function getOrCreateSettings() {
 }
 
 async function getSettingsLean() {
-  const settings = await AppSetting.findOne({ key: 'default' }).lean();
+  const settings = await AppSetting.findOne({ key: 'default' }).select('+ldapBindPasswordEnc').lean();
   return settings || { ...defaultSettings };
 }
 

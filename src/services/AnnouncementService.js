@@ -88,13 +88,25 @@ async function listForAdmin() {
   });
 }
 
+function isDisplayableAnnouncement(item) {
+  if (!item || !item.isActive) return false;
+  const title = String(item.title || '').trim();
+  const body = String(item.body || '').trim();
+  if (!title || !body) return false;
+  if (item.expiresAt && new Date(item.expiresAt) <= new Date()) return false;
+  return true;
+}
+
 async function listActiveForUser(user) {
   const departmentIds = await resolveUserDepartmentIds(user);
   const rows = await Announcement.find(buildActiveQuery(departmentIds))
     .sort({ createdAt: -1 })
     .lean();
 
-  return rows.map(decryptAnnouncement).filter((item) => item.title || item.body);
+  return rows
+    .map(decryptAnnouncement)
+    .filter(isDisplayableAnnouncement)
+    .map(({ isActive, ...item }) => item);
 }
 
 async function createAnnouncement({ title, body, audience, departmentIds, isActive, expiresAt, createdBy }) {

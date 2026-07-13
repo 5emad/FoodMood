@@ -29,7 +29,7 @@ DB_NAME="food_ordering"
 SERVICE_NAME="foodmood"
 NODE_MAJOR="20"
 INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
-STEP_TOTAL=15
+STEP_TOTAL=16
 STEP_CURRENT=0
 SSH_PORT=22
 ENABLE_FIREWALL=1
@@ -504,6 +504,7 @@ deploy_application() {
     "$PROJECT_DIR/" "$INSTALL_DIR/"
 
   chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
+  chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
   log_ok "پروژه در ${INSTALL_DIR} مستقر شد."
 }
 
@@ -580,6 +581,7 @@ write_env_file() {
   BACKUP_SECRET="$(rand_secret)"
   PASSWORD_PEPPER="$(rand_secret)"
   ANNOUNCEMENT_ENCRYPTION_KEY="$(rand_secret)"
+  LDAP_ENCRYPTION_KEY="$(rand_secret)"
 
   cat > "${INSTALL_DIR}/.env" <<EOF
 NODE_ENV=production
@@ -592,15 +594,16 @@ MONGODB_TLS=false
 MONGODB_MAX_POOL_SIZE=10
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=8000
 
-  SESSION_SECRET=${SESSION_SECRET}
-  JWT_SECRET=${JWT_SECRET}
-  JWT_EXPIRE=8h
-  SESSION_IDLE_MINUTES=30
-  SESSION_MAX_HOURS=8
-  SESSION_BIND_UA=true
-  BACKUP_SECRET=${BACKUP_SECRET}
-  PASSWORD_PEPPER=${PASSWORD_PEPPER}
-  ANNOUNCEMENT_ENCRYPTION_KEY=${ANNOUNCEMENT_ENCRYPTION_KEY}
+SESSION_SECRET=${SESSION_SECRET}
+JWT_SECRET=${JWT_SECRET}
+JWT_EXPIRE=8h
+SESSION_IDLE_MINUTES=30
+SESSION_MAX_HOURS=8
+SESSION_BIND_UA=true
+BACKUP_SECRET=${BACKUP_SECRET}
+PASSWORD_PEPPER=${PASSWORD_PEPPER}
+ANNOUNCEMENT_ENCRYPTION_KEY=${ANNOUNCEMENT_ENCRYPTION_KEY}
+LDAP_ENCRYPTION_KEY=${LDAP_ENCRYPTION_KEY}
 
 LOG_DIR=/var/log/foodmood
 
@@ -609,7 +612,7 @@ LOG_DIR=/var/log/foodmood
 # LDAP_SECURITY=ldaps
 # LDAP_BASE_DN=DC=company,DC=local
 # LDAP_BIND_DN=CN=svc-food,DC=company,DC=local
-# LDAP_BIND_PASSWORD=
+# LDAP_BIND_PASSWORD=          # جایگزین: ذخیره رمزنگاری‌شده از پنل ادمین
 # LDAP_CA_CERT_PATH=/opt/food/certs/ldap-ca.pem
 # LDAP_USER_FILTER=(sAMAccountName={{username}})
 # LDAP_ALLOWED_HOSTS=dc.company.local
@@ -657,16 +660,21 @@ $( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  نوع SSL  
   پورت SSH    : ${SSH_PORT}
   هاردنینگ    : $( [[ "${ENABLE_HARDENING:-0}" -eq 1 ]] && echo "فعال (sysctl, fail2ban)" || echo "غیرفعال" )
 
-─── مسیرها ────────────────────────────────────────────────────
-  نصب سامانه : ${INSTALL_DIR}
-  فایل env   : ${INSTALL_DIR}/.env  (فقط برای اجرا — کپی دستی توصیه نمی‌شود)
-  لاگ سرویس  : journalctl -u ${SERVICE_NAME} -f
-  لاگ سیستمی  : /var/log/foodmood/system.log
+─── مسیرها (استاندارد FHS / systemd) ─────────────────────────
+  نصب برنامه  : ${INSTALL_DIR}              (/opt — FHS)
+  تنظیمات اجرا : ${INSTALL_DIR}/.env         (600 — foodapp)
+  لاگ سیستمی   : /var/log/foodmood/          (/var/log — FHS)
+  لاگ متنی     : /var/log/foodmood/system.log
+  گواهی LDAP   : ${INSTALL_DIR}/certs/
+  واحد systemd : /etc/systemd/system/${SERVICE_NAME}.service
+  کاربر سرویس  : ${APP_USER}
+  داده MongoDB : /var/lib/mongodb
+  راهنمای کامل : ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md
+  بررسی نهایی  : sudo bash ${INSTALL_DIR}/deploy/verify-install.sh
 
 ─── LDAP (اختیاری) ───────────────────────────────────────────
   راهنمای گواهی CA و Active Directory:
   ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md
-  پوشه گواهی   : ${INSTALL_DIR}/certs/
 
 EOF
 
@@ -677,7 +685,7 @@ EOF
 }
 
 reveal_final_secrets_once() {
-  local access_url session_secret jwt_secret backup_secret pepper
+  local access_url session_secret jwt_secret backup_secret pepper announcement_key ldap_enc_key
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
     access_url="https://${APP_DOMAIN}"
   elif [[ "$USE_NGINX" -eq 1 ]]; then
@@ -690,6 +698,8 @@ reveal_final_secrets_once() {
   jwt_secret="$(grep '^JWT_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
   backup_secret="$(grep '^BACKUP_SECRET=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
   pepper="$(grep '^PASSWORD_PEPPER=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+  announcement_key="$(grep '^ANNOUNCEMENT_ENCRYPTION_KEY=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
+  ldap_enc_key="$(grep '^LDAP_ENCRYPTION_KEY=' "${INSTALL_DIR}/.env" | cut -d= -f2-)"
 
   echo ""
   echo -e "${YELLOW}${BOLD}═══════════════════════════════════════════════════════════════${NC}"
@@ -709,6 +719,8 @@ reveal_final_secrets_once() {
   echo "  JWT_SECRET      : ${jwt_secret}"
   echo "  BACKUP_SECRET   : ${backup_secret}"
   echo "  PASSWORD_PEPPER : ${pepper}"
+  echo "  ANNOUNCEMENT_ENCRYPTION_KEY : ${announcement_key}"
+  echo "  LDAP_ENCRYPTION_KEY          : ${ldap_enc_key}"
   echo ""
 
   if [[ "$CREATE_SUPERADMIN" -eq 1 ]]; then
@@ -897,6 +909,18 @@ create_superadmin_account() {
   log_ok "سوپرادمین '${SUPERADMIN_USER}' ساخته شد — اطلاعات ورود در پایان نصب یک‌بار در ترمینال نمایش داده می‌شود."
 }
 
+run_post_install_verify() {
+  step_begin "بررسی نهایی و پذیرش نصب (verify-install)"
+  if [[ -f "${INSTALL_DIR}/deploy/verify-install.sh" ]]; then
+    bash "${INSTALL_DIR}/deploy/verify-install.sh" --from-install || {
+      log_err "بررسی نهایی ناموفق — قبل از Go-Live مشکلات را رفع کنید."
+      exit 1
+    }
+  else
+    log_warn "اسکریپت verify-install.sh پیدا نشد — بررسی خودکار رد شد."
+  fi
+}
+
 print_summary() {
   local access_url fw_ports
   if [[ "$USE_DOMAIN" -eq 1 ]]; then
@@ -934,8 +958,11 @@ print_summary() {
   echo "    sudo journalctl -u foodmood -f"
   echo "    sudo tail -f /var/log/foodmood/system.log"
   echo "    sudo systemctl restart foodmood"
+  echo "    sudo bash ${INSTALL_DIR}/deploy/verify-install.sh"
   echo ""
-  echo -e "  ${BOLD}LDAP:${NC} پس از نصب → ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md"
+  echo -e "  ${BOLD}مستندات:${NC}"
+  echo "    ${INSTALL_DIR}/docs/LINUX-DEPLOYMENT.md  (مسیرها + چک‌لیست Go-Live)"
+  echo "    ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md   (LDAP + گواهی CA)"
   echo ""
 }
 
@@ -958,6 +985,7 @@ main() {
   create_superadmin_account
   write_install_info_file
   reveal_final_secrets_once
+  run_post_install_verify
   print_summary
 }
 
