@@ -39,12 +39,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUPERADMIN_CREDS_OUTPUT=""
 
-# curl | bash feeds the script on stdin — read prompts from the real terminal
-TTY_DEVICE="/dev/tty"
-if [[ ! -r "$TTY_DEVICE" ]]; then
-  TTY_DEVICE="/dev/stdin"
-fi
-
+# curl | bash feeds the script on stdin — read prompts from the real terminal (fd 3)
 require_interactive_tty() {
   if [[ ! -r /dev/tty ]]; then
     log_err "No interactive terminal detected."
@@ -53,6 +48,7 @@ require_interactive_tty() {
     log_err "  sudo bash /tmp/food-bootstrap.sh"
     exit 1
   fi
+  exec 3<> /dev/tty
 }
 
 log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
@@ -170,7 +166,7 @@ prompt_off_server_ack() {
   echo -e "${YELLOW}${BOLD}  ▶ Waiting for your confirmation — installer is not stuck.${NC}"
   echo -e "${DIM}    After saving credentials off-server, type yes and press Enter.${NC}"
   while true; do
-    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply < "$TTY_DEVICE"
+    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply <&3
     case "${reply,,}" in
       y|yes|confirm) return 0 ;;
       *) log_warn "Type yes after saving credentials in your secure vault." ;;
@@ -219,7 +215,7 @@ prompt_yes_no() {
   local reply=""
   if [[ "$default" == "y" ]]; then hint="Y/n"; else hint="y/N"; fi
   while true; do
-    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply < "$TTY_DEVICE"
+    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply <&3
     reply="${reply:-$default}"
     case "${reply,,}" in
       y|yes) return 0 ;;
@@ -230,34 +226,38 @@ prompt_yes_no() {
 }
 
 prompt_required() {
-  local label="$1"
+  local __var="$1"
+  local label="$2"
   local value=""
   while [[ -z "$value" ]]; do
-    read -r -p "$(echo -e "${CYAN}${label}:${NC} ")" value < "$TTY_DEVICE"
+    read -r -p "$(echo -e "${CYAN}${label}:${NC} ")" value <&3
     value="$(echo "$value" | xargs)"
   done
-  echo "$value"
+  printf -v "$__var" '%s' "$value"
 }
 
 prompt_password_once() {
-  local label="$1"
+  local __var="$1"
+  local label="$2"
   local pass=""
   while [[ -z "$pass" ]]; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass < "$TTY_DEVICE"
-    echo ""
+    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass <&3
+    echo "" >&3
     [[ -z "$pass" ]] && log_warn "Password cannot be empty."
   done
-  echo "$pass"
+  printf -v "$__var" '%s' "$pass"
+  unset pass
 }
 
 prompt_password_twice() {
-  local label="$1"
+  local __var="$1"
+  local label="$2"
   local pass1="" pass2=""
   while true; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1 < "$TTY_DEVICE"
-    echo ""
-    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2 < "$TTY_DEVICE"
-    echo ""
+    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1 <&3
+    echo "" >&3
+    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2 <&3
+    echo "" >&3
     if [[ -z "$pass1" ]]; then
       log_warn "Password cannot be empty."
       continue
@@ -266,7 +266,8 @@ prompt_password_twice() {
       log_warn "Passwords do not match. Try again."
       continue
     fi
-    echo "$pass1"
+    printf -v "$__var" '%s' "$pass1"
+    unset pass1 pass2
     return 0
   done
 }
@@ -286,15 +287,15 @@ collect_ssl_certificate_options() {
   echo "  2) Custom certificate (fullchain and privkey file paths)"
   local cert_choice=""
   while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
-    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice < "$TTY_DEVICE"
+    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice <&3
   done
   if [[ "$cert_choice" == "1" ]]; then
     CERT_MODE="letsencrypt"
-    LE_EMAIL="$(prompt_required "Email for Let's Encrypt")"
+    prompt_required LE_EMAIL "Email for Let's Encrypt"
   else
     CERT_MODE="custom"
-    SSL_FULLCHAIN="$(prompt_required "fullchain path (e.g. /etc/ssl/certs/fullchain.pem)")"
-    SSL_PRIVKEY="$(prompt_required "privkey path (e.g. /etc/ssl/private/privkey.pem)")"
+    prompt_required SSL_FULLCHAIN "fullchain path (e.g. /etc/ssl/certs/fullchain.pem)"
+    prompt_required SSL_PRIVKEY "privkey path (e.g. /etc/ssl/private/privkey.pem)"
     if [[ ! -f "$SSL_FULLCHAIN" || ! -f "$SSL_PRIVKEY" ]]; then
       log_err "Certificate files not found. Check paths."
       exit 1
@@ -307,7 +308,8 @@ collect_web_ssl_options() {
   USE_NGINX=1
   if prompt_yes_no "Use domain name with HTTPS? (instead of IP)" "n"; then
     USE_DOMAIN=1
-    APP_DOMAIN="$(prompt_required "Domain name (e.g. food.company.com)")"
+    APP_DOMAIN=""
+    prompt_required APP_DOMAIN "Domain name (e.g. food.company.com)"
     collect_ssl_certificate_options
     log_info "App URL: https://${APP_DOMAIN}"
   else
@@ -324,8 +326,8 @@ collect_inputs() {
     log_info "Quick install — enter MongoDB credentials, then all steps run automatically."
     echo -e "${YELLOW}${BOLD}  ▶ Waiting for your input — type below and press Enter.${NC}"
     echo ""
-    MONGO_USER="$(prompt_required "MongoDB username")"
-    MONGO_PASS="$(prompt_password_once "MongoDB password")"
+    prompt_required MONGO_USER "MongoDB username"
+    prompt_password_once MONGO_PASS "MongoDB password"
     detect_ssh_port
     CREATE_SUPERADMIN=1
     SUPERADMIN_USER="superadmin"
@@ -341,8 +343,8 @@ collect_inputs() {
 
   red_box $'IMPORTANT:\n   Store database and app secrets in your org password vault OFF this server.\n   Without them, recovery may be impossible.\n   No password file is written on disk — only this terminal shows secrets once.'
 
-  MONGO_USER="$(prompt_required "MongoDB username")"
-  MONGO_PASS="$(prompt_password_twice "MongoDB password")"
+  prompt_required MONGO_USER "MongoDB username"
+  prompt_password_twice MONGO_PASS "MongoDB password"
 
   show_mongo_credentials_once
 
@@ -373,9 +375,10 @@ collect_inputs() {
 
   if prompt_yes_no "Create initial superadmin account?" "y"; then
     CREATE_SUPERADMIN=1
-    SUPERADMIN_USER="$(prompt_required "Superadmin username")"
+    SUPERADMIN_USER=""
+    prompt_required SUPERADMIN_USER "Superadmin username"
     while true; do
-      SUPERADMIN_PASS="$(prompt_password_twice "Superadmin password (min 12 chars, letter+digit+symbol)")"
+      prompt_password_twice SUPERADMIN_PASS "Superadmin password (min 12 chars, letter+digit+symbol)"
       if validate_superadmin_password "$SUPERADMIN_PASS"; then
         break
       fi
@@ -818,7 +821,7 @@ reveal_final_secrets_once() {
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     security_off_server_notice
     echo -e "${DIM}    Save the above off-server, then press Enter to finish.${NC}"
-    read -r -p "" < "$TTY_DEVICE"
+    read -r -p "" <&3
     wipe_install_secrets_from_shell
     log_ok "Install secrets cleared from installer memory."
     return
