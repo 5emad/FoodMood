@@ -45,8 +45,18 @@ command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq g
 CLONE_DIR="$(mktemp -d /tmp/food-install-XXXXXX)"
 trap 'rm -rf "$CLONE_DIR"' EXIT
 
-echo "[*] دریافت سورس از ${REPO_URL} (شاخه ${BRANCH})..."
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ▶ مرحله ۰/۱۷: دریافت سورس از GitHub"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "[*] مخزن: ${REPO_URL}"
+echo "[*] شاخه: ${BRANCH}"
+[[ -n "$QUICK_FLAG" ]] && echo "[*] حالت: نصب سریع (--quick)"
+echo "[*] کلون — ممکن است ۳۰ ثانیه تا ۲ دقیقه طول بکشد..."
 git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
 
-echo "[*] اجرای نصب‌کننده..."
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ▶ شروع نصب‌کننده install-ubuntu.sh"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 bash "$CLONE_DIR/deploy/install-ubuntu.sh" $QUICK_FLAG

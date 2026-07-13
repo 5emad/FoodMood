@@ -2,7 +2,7 @@
 # نصب خودکار سامانه تغذیه روی Ubuntu/Debian
 # اجرا از ریشه پروژه:
 #   sudo bash deploy/install-ubuntu.sh            ← نصب تعاملی کامل
-#   sudo bash deploy/install-ubuntu.sh --quick    ← فقط یوزر/پس دیتابیس را می‌پرسد؛ بقیه خودکار
+#   sudo bash deploy/install-ubuntu.sh --quick    ← فقط MongoDB؛ بقیه خودکار + نمایش ۱۷ مرحله
 set -euo pipefail
 
 QUICK_MODE=0
@@ -29,7 +29,7 @@ DB_NAME="food_ordering"
 SERVICE_NAME="foodmood"
 NODE_MAJOR="20"
 INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
-STEP_TOTAL=16
+STEP_TOTAL=17
 STEP_CURRENT=0
 SSH_PORT=22
 ENABLE_FIREWALL=1
@@ -43,6 +43,45 @@ log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
 log_ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 log_err()   { echo -e "${RED}[✗]${NC} $*" >&2; }
+
+log_busy() {
+  echo -e "${DIM}    ⏳ $*${NC}"
+}
+
+show_install_roadmap() {
+  echo -e "${BOLD}نقشه نصب (${STEP_TOTAL} مرحله):${NC}"
+  local steps=(
+    "دریافت اطلاعات نصب"
+    "نصب بسته‌های پایه"
+    "هاردنینگ پایه لینوکس"
+    "نصب Node.js"
+    "نصب MongoDB"
+    "نصب مرورگر PDF"
+    "نصب Nginx"
+    "استقرار سامانه FoodMood"
+    "پیکربندی امنیت MongoDB"
+    "ساخت تنظیمات محیط (.env)"
+    "نصب وابستگی‌های Node.js"
+    "فعال‌سازی سرویس systemd"
+    "پیکربندی Nginx"
+    "پیکربندی فایروال UFW"
+    "ساخت سوپرادمین"
+    "بررسی نهایی (verify-install)"
+    "خلاصه و پایان نصب"
+  )
+  local i=1
+  for s in "${steps[@]}"; do
+    echo -e "  ${DIM}${i}.${NC} $s"
+    i=$((i + 1))
+  done
+  echo ""
+  if [[ "$QUICK_MODE" -eq 1 ]]; then
+    echo -e "${CYAN}[*]${NC} حالت ${BOLD}سریع${NC}: فقط نام کاربری و رمز MongoDB پرسیده می‌شود."
+    echo -e "${CYAN}[*]${NC} Nginx روی IP سرور، UFW، هاردنینگ و سوپرادمین — خودکار."
+    echo -e "${YELLOW}[!]${NC} اگر چند دقیقه خروجی ندید، احتمالاً apt یا npm در حال اجراست — ${BOLD}قطع نکنید${NC}."
+    echo ""
+  fi
+}
 
 step_begin() {
   STEP_CURRENT=$((STEP_CURRENT + 1))
@@ -109,6 +148,8 @@ prompt_off_server_ack() {
   local stage="$1"
   security_off_server_notice
   local reply=""
+  echo -e "${YELLOW}${BOLD}  ▶ اسکریپت منتظر تأیید شماست — گیر نکرده است.${NC}"
+  echo -e "${DIM}    پس از یادداشت رمزها در خزانه امن، «بله» یا «yes» بزنید و Enter.${NC}"
   while true; do
     read -r -p "$(echo -e "${CYAN}${stage}${NC} — تأیید می‌کنید اطلاعات را ${BOLD}خارج از سرور${NC} ذخیره کردید؟ (بله/yes): ")" reply
     case "${reply,,}" in
@@ -247,8 +288,6 @@ collect_web_ssl_options() {
 }
 
 collect_inputs() {
-  show_foodmood_banner
-
   red_box $'⚠  هشدار مهم:\n   اطلاعات دیتابیس و رمزهای سامانه را حتماً در خزانه رمز\n   سازمانی (خارج از این سرور) نگه دارید.\n   بدون این اطلاعات، بازیابی و دسترسی ممکن است غیرممکن شود.\n   هیچ فایل رمز روی سرور ساخته نمی‌شود — فقط همین ترمینال.'
 
   MONGO_USER="$(prompt_required "نام کاربری دیتابیس MongoDB")"
@@ -259,14 +298,17 @@ collect_inputs() {
   detect_ssh_port
   log_info "پورت SSH شناسایی‌شده: ${SSH_PORT}"
 
-  # ── حالت سریع ───────────────────────────────────────────────────────────────
+  # ── حالت سریع: بدون سوال SSL/دامنه — همه پیش‌فرض خودکار ────────────────
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     CREATE_SUPERADMIN=1
     SUPERADMIN_USER="superadmin"
     SUPERADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)@Fm9"
-    log_info "سوپرادمین '${SUPERADMIN_USER}' با رمز تصادفی ساخته می‌شود."
-    collect_web_ssl_options
-    log_info "فایروال UFW و هاردنینگ پایه به‌صورت خودکار فعال می‌شوند."
+    USE_NGINX=1
+    USE_DOMAIN=0
+    SERVER_IP="$(detect_server_ip)"
+    ENABLE_FIREWALL=1
+    ENABLE_HARDENING=1
+    log_ok "حالت سریع: Nginx روی http://${SERVER_IP} · UFW · هاردنینگ · سوپرادمین ${SUPERADMIN_USER}"
     return
   fi
 
@@ -309,10 +351,11 @@ collect_inputs() {
 
 install_base_packages() {
   step_begin "نصب بسته‌های پایه"
-  log_info "به‌روزرسانی مخازن و نصب بسته‌های پایه..."
+  log_busy "به‌روزرسانی مخازن apt — معمولاً ۱ تا ۳ دقیقه"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq \
+  apt-get update
+  log_busy "نصب بسته‌های پایه — خروجی apt را ببینید؛ صبر کنید"
+  apt-get install -y \
     curl gnupg ca-certificates lsb-release apt-transport-https \
     software-properties-common rsync openssl python3 ufw fail2ban \
     unattended-upgrades apt-listchanges \
@@ -426,8 +469,9 @@ install_nodejs() {
     fi
   fi
   log_info "نصب Node.js ${NODE_MAJOR}.x..."
+  log_busy "دانلود مخزن NodeSource و نصب — ۱ تا ۲ دقیقه"
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-  apt-get install -y -qq nodejs
+  apt-get install -y nodejs
   log_ok "Node.js $(node -v) نصب شد."
 }
 
@@ -438,6 +482,7 @@ install_mongodb() {
     return
   fi
   log_info "نصب MongoDB 7.0..."
+  log_busy "افزودن مخزن MongoDB و نصب — ۲ تا ۵ دقیقه"
   curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
     | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
   local codename distro
@@ -449,8 +494,8 @@ install_mongodb() {
   fi
   echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/${distro} ${codename}/mongodb-org/7.0 multiverse" \
     > /etc/apt/sources.list.d/mongodb-org-7.0.list
-  apt-get update -qq
-  apt-get install -y -qq mongodb-org
+  apt-get update
+  apt-get install -y mongodb-org
   systemctl enable mongod
   systemctl start mongod
   log_ok "MongoDB نصب و راه‌اندازی شد."
@@ -743,7 +788,8 @@ install_npm_deps() {
   mkdir -p "${INSTALL_DIR}/certs"
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/certs"
   chmod 750 "${INSTALL_DIR}/certs"
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
+  log_busy "npm install --omit=dev — معمولاً ۲ تا ۸ دقیقه؛ تا پایان صبر کنید"
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --progress=true"
   log_ok "npm install انجام شد."
 }
 
@@ -968,6 +1014,9 @@ print_summary() {
 
 main() {
   require_root
+  show_foodmood_banner
+  show_install_roadmap
+  step_begin "دریافت اطلاعات نصب"
   collect_inputs
   install_base_packages
   apply_system_hardening
@@ -986,6 +1035,7 @@ main() {
   write_install_info_file
   reveal_final_secrets_once
   run_post_install_verify
+  step_begin "خلاصه و پایان نصب"
   print_summary
 }
 
