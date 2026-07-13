@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-13
+
+### Added
+- Encrypted announcements: admin CRUD, department/all targeting, user bottom-sheet UI
+- DB outage page, structured system logs, `foodmood` systemd unit
+- Hashed session tokens with rotation on login/logout
+- Persian Jalali datepicker for announcement expiry (admin)
+- **LDAP production guide:** [docs/LDAP-PRODUCTION.md](./docs/LDAP-PRODUCTION.md) (certificates, `.env`, troubleshooting)
+- `ANNOUNCEMENT_ENCRYPTION_KEY` in installer `.env` and LDAP placeholders in install script
+
+### Changed
+- Admin theme (burgundy), public URL setting, login/session fixes, table footers
+- Installer creates `/opt/food/certs/`, documents `foodmood` systemd unit consistently
+- LDAP admin save validation fixed (`ldapConfig` mapping)
+
+### Fixed
+- Login password field RTL layout; `/login?expired=1` redirect loop
+- Self-admin deactivation guard; monthly report empty state
+
+### Removed
+- Local-only `START-MONGODB.bat` and `seed.js` from repository
+
 ## [1.1.0] - 2026-07-12
 
 ### Added
@@ -23,6 +45,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 - Initial FoodMood release: food ordering system with security hardening
 - MongoDB session store, LDAP auth, backup encryption, admin panel
 
-[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.1.0...main
+[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.2.0...main
+[1.2.0]: https://github.com/5emad/FoodMood/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/5emad/FoodMood/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/5emad/FoodMood/releases/tag/v1.0.0

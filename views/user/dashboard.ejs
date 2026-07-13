@@ -43,7 +43,31 @@
   </div>
 </nav>
 
-<main style="max-width:1200px;margin:32px auto;padding:0 24px">
+<!-- دکمه اطلاعیه + کشوی پایین‌به‌بالا -->
+<button type="button" class="ann-fab" id="announcementsTrigger" hidden aria-label="مشاهده اطلاعیه‌ها">
+  <i class="fas fa-bullhorn"></i>
+  <span class="ann-fab-label">اطلاعیه</span>
+  <span class="ann-fab-count" id="announcementsCount"></span>
+</button>
+
+<div class="ann-drawer-overlay" id="announcementsOverlay" hidden></div>
+<div class="ann-drawer" id="announcementsDrawer" aria-hidden="true" role="dialog" aria-labelledby="announcementsDrawerTitle">
+  <div class="ann-drawer-handle" aria-hidden="true"></div>
+  <div class="ann-drawer-header">
+    <div class="ann-drawer-title" id="announcementsDrawerTitle">
+      <i class="fas fa-bullhorn"></i>
+      <span>اطلاعیه‌های فعال</span>
+    </div>
+    <button type="button" class="btn-icon ann-drawer-close" id="announcementsClose" aria-label="بستن">
+      <i class="fas fa-times"></i>
+    </button>
+  </div>
+  <div class="ann-drawer-body" id="announcementsList"></div>
+</div>
+
+<main class="user-portal-shell">
+
+  <div class="user-portal-main">
 
   <!-- Page Header -->
   <div class="page-header" style="margin-bottom:28px">
@@ -78,6 +102,8 @@
       <div style="padding:40px;text-align:center"><div class="spinner"></div></div>
     </div>
   </section>
+
+  </div>
 
 </main>
 
@@ -157,6 +183,70 @@ async function loadMe() {
     document.getElementById('userDept').textContent = data.user.department?.name || 'واحد عمومی';
   }
 }
+
+let announcementsCache = [];
+
+function renderAnnouncementCards(items) {
+  return items.map((item) => `
+    <article class="announcement-card">
+      <div class="announcement-card-title">${esc(item.title)}</div>
+      <div class="announcement-card-body">${esc(item.body).replace(/\n/g, '<br>')}</div>
+      ${item.expiresAt ? `<div class="announcement-card-meta"><i class="fas fa-clock"></i> تا ${jdate(item.expiresAt)}</div>` : ''}
+    </article>
+  `).join('');
+}
+
+function openAnnouncementsDrawer() {
+  const drawer = document.getElementById('announcementsDrawer');
+  const overlay = document.getElementById('announcementsOverlay');
+  if (!drawer || !overlay || !announcementsCache.length) return;
+  overlay.hidden = false;
+  drawer.classList.add('is-open');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('ann-drawer-open');
+}
+
+function closeAnnouncementsDrawer() {
+  const drawer = document.getElementById('announcementsDrawer');
+  const overlay = document.getElementById('announcementsOverlay');
+  if (!drawer || !overlay) return;
+  drawer.classList.remove('is-open');
+  drawer.setAttribute('aria-hidden', 'true');
+  overlay.hidden = true;
+  document.body.classList.remove('ann-drawer-open');
+}
+
+async function loadAnnouncements() {
+  const trigger = document.getElementById('announcementsTrigger');
+  const countEl = document.getElementById('announcementsCount');
+  const list = document.getElementById('announcementsList');
+  if (!trigger || !list) return;
+
+  try {
+    const data = await api('/api/announcements/active');
+    announcementsCache = data.success ? (data.data || []) : [];
+    if (!announcementsCache.length) {
+      trigger.hidden = true;
+      list.innerHTML = '';
+      closeAnnouncementsDrawer();
+      return;
+    }
+
+    trigger.hidden = false;
+    if (countEl) countEl.textContent = announcementsCache.length.toLocaleString('fa-IR');
+    list.innerHTML = renderAnnouncementCards(announcementsCache);
+  } catch {
+    trigger.hidden = true;
+    announcementsCache = [];
+  }
+}
+
+document.getElementById('announcementsTrigger')?.addEventListener('click', openAnnouncementsDrawer);
+document.getElementById('announcementsClose')?.addEventListener('click', closeAnnouncementsDrawer);
+document.getElementById('announcementsOverlay')?.addEventListener('click', closeAnnouncementsDrawer);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeAnnouncementsDrawer();
+});
 
 // Full list (no pagination) is needed by the menu to lock already-ordered days.
 async function loadOrders() {
@@ -351,6 +441,7 @@ document.querySelectorAll('.tab-button').forEach(button => {
 });
 
 loadMe();
+loadAnnouncements();
 loadMenu();
 </script>
   <%- include('../partials/app-version') %>

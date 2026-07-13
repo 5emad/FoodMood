@@ -13,14 +13,16 @@
   <div class="auth-wrap">
     <div class="auth-side auth-side--wine">
       <div class="auth-side-title"><%= locals.organizationName || 'سامانه تغذیه' %></div>
-      <div class="auth-side-sub">
-       سامانه توزیع و رزرو غذا
+      <div class="auth-side-carousel" id="authSideCarousel" aria-live="polite">
+        <p class="auth-side-sub auth-side-slide active">سامانه توزیع و رزرو غذا</p>
+        <p class="auth-side-sub auth-side-slide">رزرو آنلاین وعده‌های روزانه سازمان</p>
+        <p class="auth-side-sub auth-side-slide">گزارش‌گیری و مدیریت متمرکز تغذیه</p>
       </div>
-      <div class="auth-side-version">نسخه <%= appVersionMajorFa %></div>
-      <div class="auth-side-dots">
-        <span class="active"></span>
-        <span></span>
-        <span></span>
+      <div class="auth-side-version" title="نسخه <%= appVersion %>">نسخه <%= appVersionFa %></div>
+      <div class="auth-side-dots" id="authSideDots" role="tablist" aria-label="معرفی سامانه">
+        <button type="button" class="active" role="tab" aria-selected="true" aria-label="اسلاید ۱" data-slide="0"></button>
+        <button type="button" role="tab" aria-selected="false" aria-label="اسلاید ۲" data-slide="1"></button>
+        <button type="button" role="tab" aria-selected="false" aria-label="اسلاید ۳" data-slide="2"></button>
       </div>
     </div>
 
@@ -63,7 +65,7 @@
             نام کاربری
           </label>
           <input type="text" class="form-control" id="username" name="username"
-                 placeholder="مثلا ali" required dir="ltr" style="text-align:right" autocomplete="off" autocapitalize="none" spellcheck="false">
+                 placeholder="نام کاربری" required autocomplete="off" autocapitalize="none" spellcheck="false">
         </div>
 
         <div class="form-group">
@@ -71,8 +73,8 @@
             <i class="fas fa-lock" style="color:var(--primary);margin-left:6px"></i>
             کلمه عبور
           </label>
-          <input type="password" class="form-control" id="password" name="password"
-                 placeholder="••••••••" required dir="ltr" style="text-align:right" autocomplete="new-password">
+          <input type="password" class="form-control input-secret" id="password" name="password"
+                 placeholder="••••••••" required dir="ltr" autocomplete="new-password" lang="en">
         </div>
 
         <div class="form-group" id="superTokenGroup" style="display:none">
@@ -80,8 +82,8 @@
             <i class="fas fa-shield-halved" style="color:var(--primary);margin-left:6px"></i>
             توکن امنیتی سوپر ادمین
           </label>
-          <input type="password" class="form-control" id="superToken" name="superToken"
-                 placeholder="توکن یک‌بار نمایش داده‌شده" dir="ltr" style="text-align:left" autocomplete="new-password">
+          <input type="password" class="form-control input-secret" id="superToken" name="superToken"
+                 placeholder="توکن یک‌بار نمایش داده‌شده" dir="ltr" autocomplete="new-password" lang="en">
         </div>
 
         <button type="submit" class="btn btn-primary btn-w100 mt-2" style="padding:13px;font-size:.95rem;">
@@ -93,6 +95,45 @@
   </div>
 
   <script>
+    (function initAuthSideCarousel() {
+      const slides = Array.from(document.querySelectorAll('#authSideCarousel .auth-side-slide'));
+      const dots = Array.from(document.querySelectorAll('#authSideDots [data-slide]'));
+      if (!slides.length || !dots.length) return;
+
+      let index = 0;
+      let timer = null;
+
+      function showSlide(next) {
+        index = (next + slides.length) % slides.length;
+        slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+        dots.forEach((dot, i) => {
+          const on = i === index;
+          dot.classList.toggle('active', on);
+          dot.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+      }
+
+      function startAuto() {
+        stopAuto();
+        timer = setInterval(() => showSlide(index + 1), 4500);
+      }
+
+      function stopAuto() {
+        if (timer) clearInterval(timer);
+        timer = null;
+      }
+
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => {
+          showSlide(Number(dot.dataset.slide) || 0);
+          startAuto();
+        });
+      });
+
+      showSlide(0);
+      startAuto();
+    })();
+
     const APP_BASE = '<%= typeof publicUrl !== "undefined" && publicUrl ? publicUrl.replace(/'/g, "\\'") : "" %>';
     function appPath(path) {
       const normalized = path.startsWith('/') ? path : `/${path}`;

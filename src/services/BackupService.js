@@ -12,6 +12,7 @@ const Order = require('../models/Order');
 const AppSetting = require('../models/AppSetting');
 const Counter = require('../models/Counter');
 const SecurityLog = require('../models/SecurityLog');
+const Announcement = require('../models/Announcement');
 
 /*
  * Proprietary backup layout (only this server can decrypt):
@@ -38,6 +39,7 @@ const collectionMap = {
   appSettings: AppSetting,
   counters: Counter,
   securityLogs: SecurityLog,
+  announcements: Announcement,
 };
 
 function backupSecret() {

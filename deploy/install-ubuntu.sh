@@ -579,6 +579,7 @@ write_env_file() {
   JWT_SECRET="$(rand_secret)"
   BACKUP_SECRET="$(rand_secret)"
   PASSWORD_PEPPER="$(rand_secret)"
+  ANNOUNCEMENT_ENCRYPTION_KEY="$(rand_secret)"
 
   cat > "${INSTALL_DIR}/.env" <<EOF
 NODE_ENV=production
@@ -591,13 +592,27 @@ MONGODB_TLS=false
 MONGODB_MAX_POOL_SIZE=10
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=8000
 
-SESSION_SECRET=${SESSION_SECRET}
-JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRE=8h
-BACKUP_SECRET=${BACKUP_SECRET}
-PASSWORD_PEPPER=${PASSWORD_PEPPER}
+  SESSION_SECRET=${SESSION_SECRET}
+  JWT_SECRET=${JWT_SECRET}
+  JWT_EXPIRE=8h
+  SESSION_IDLE_MINUTES=30
+  SESSION_MAX_HOURS=8
+  SESSION_BIND_UA=true
+  BACKUP_SECRET=${BACKUP_SECRET}
+  PASSWORD_PEPPER=${PASSWORD_PEPPER}
+  ANNOUNCEMENT_ENCRYPTION_KEY=${ANNOUNCEMENT_ENCRYPTION_KEY}
 
 LOG_DIR=/var/log/foodmood
+
+# ── LDAP (اختیاری — راهنما: docs/LDAP-PRODUCTION.md) ─────────
+# LDAP_URL=ldaps://dc.company.local:636
+# LDAP_SECURITY=ldaps
+# LDAP_BASE_DN=DC=company,DC=local
+# LDAP_BIND_DN=CN=svc-food,DC=company,DC=local
+# LDAP_BIND_PASSWORD=
+# LDAP_CA_CERT_PATH=/opt/food/certs/ldap-ca.pem
+# LDAP_USER_FILTER=(sAMAccountName={{username}})
+# LDAP_ALLOWED_HOSTS=dc.company.local
 EOF
 
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/.env"
@@ -647,6 +662,11 @@ $( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  نوع SSL  
   فایل env   : ${INSTALL_DIR}/.env  (فقط برای اجرا — کپی دستی توصیه نمی‌شود)
   لاگ سرویس  : journalctl -u ${SERVICE_NAME} -f
   لاگ سیستمی  : /var/log/foodmood/system.log
+
+─── LDAP (اختیاری) ───────────────────────────────────────────
+  راهنمای گواهی CA و Active Directory:
+  ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md
+  پوشه گواهی   : ${INSTALL_DIR}/certs/
 
 EOF
 
@@ -708,6 +728,9 @@ reveal_final_secrets_once() {
 
 install_npm_deps() {
   step_begin "نصب وابستگی‌های Node.js"
+  mkdir -p "${INSTALL_DIR}/certs"
+  chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/certs"
+  chmod 750 "${INSTALL_DIR}/certs"
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
   log_ok "npm install انجام شد."
 }
@@ -907,10 +930,12 @@ print_summary() {
   echo ""
   red_box $'✓  نصب کامل شد.\n   اطلاعات حساس فقط یک‌بار در ترمینال نمایش داده شد\n   و تأیید ذخیره خارج از سرور دریافت شد.\n\n   راهنمای بدون رمز: /opt/food/INSTALL_INFO.txt\n   (فقط آدرس‌ها و مسیرها — بدون رمز یا توکن)'
   echo -e "  ${BOLD}دستورات مفید:${NC}"
-  echo "    sudo systemctl status food"
+  echo "    sudo systemctl status foodmood"
   echo "    sudo journalctl -u foodmood -f"
   echo "    sudo tail -f /var/log/foodmood/system.log"
-  echo "    sudo systemctl restart food"
+  echo "    sudo systemctl restart foodmood"
+  echo ""
+  echo -e "  ${BOLD}LDAP:${NC} پس از نصب → ${INSTALL_DIR}/docs/LDAP-PRODUCTION.md"
   echo ""
 }
 

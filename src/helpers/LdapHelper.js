@@ -217,4 +217,4 @@ async function testConnection(settings = {}) {
   }
 }
 
-module.exports = { isEnabled, authenticate, testConnection, validateConfig };
+module.exports = { isEnabled, authenticate, testConnection, validateConfig, ldapConfig };

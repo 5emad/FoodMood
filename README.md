@@ -4,6 +4,8 @@
 
 **راهنمای کامل:** [RAHNAMA.md](./RAHNAMA.md)
 
+**استقرار LDAP روی لینوکس (گواهی CA + Active Directory):** [docs/LDAP-PRODUCTION.md](./docs/LDAP-PRODUCTION.md)
+
 ## شروع سریع
 
 ```bash
@@ -54,14 +56,14 @@ bash deploy/make-package.sh
 | هدف | دستور |
 |-----|--------|
 | **آخرین نسخه** (شاخه `main`) | `sudo bash /opt/food/deploy/update.sh` |
-| **نسخه مشخص** | `sudo bash /opt/food/deploy/update.sh --tag v1.1.0` |
+| **نسخه مشخص** | `sudo bash /opt/food/deploy/update.sh --tag v1.2.0` |
 | **بررسی نسخه فعلی** | `sudo bash /opt/food/deploy/update.sh --status` |
 | **لیست نسخه‌ها** | `sudo bash /opt/food/deploy/update.sh --list` |
 
 از GitHub (بدون اسکریپت محلی):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash -s -- --tag v1.1.0
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash -s -- --tag v1.2.0
 ```
 
 **نگهدارنده مخزن** — انتشار نسخه جدید:

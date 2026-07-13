@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const AdminController = require('../controllers/AdminController');
+const AnnouncementController = require('../controllers/AnnouncementController');
 const MenuController = require('../controllers/MenuController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
@@ -38,6 +39,11 @@ router.get('/users', AdminController.getUsers);
 router.post('/users', AdminController.createUser);
 router.put('/users/:id', AdminController.updateUser);
 router.delete('/users/:id', AdminController.deleteUser);
+
+router.get('/announcements', AnnouncementController.list);
+router.post('/announcements', AnnouncementController.create);
+router.put('/announcements/:id', AnnouncementController.update);
+router.delete('/announcements/:id', AnnouncementController.remove);
 
 router.get('/departments', AdminController.getDepartments);
 router.post('/departments', AdminController.createDepartment);

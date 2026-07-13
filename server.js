@@ -20,7 +20,8 @@ const orderRoutes     = require('./src/routes/orderRoutes');
 const adminRoutes     = require('./src/routes/adminRoutes');
 const menuRoutes      = require('./src/routes/menuRoutes');
 const viewRoutes      = require('./src/routes/viewRoutes');
-const userRoutes      = require('./src/routes/userRoutes');
+const userRoutes           = require('./src/routes/userRoutes');
+const announcementRoutes   = require('./src/routes/announcementRoutes');
 const adminViewRoutes = require('./src/routes/adminViewRoutes');
 const ThemeController = require('./src/controllers/ThemeController');
 const MongoSessionStore = require('./src/config/MongoSessionStore');
@@ -220,7 +221,8 @@ app.use('/api/auth',   authRoutes);
 app.use('/api/foods',  foodRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin',  adminRoutes);
-app.use('/api/menu',   menuRoutes);
+app.use('/api/menu',          menuRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // ── View routes (add no-cache to all rendered pages) ─────────────────────────
 app.use('/',       noCache, viewRoutes);

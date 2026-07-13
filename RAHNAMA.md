@@ -15,7 +15,7 @@
 7. [ورود و نقش‌های کاربری](#ورود-و-نقشهای-کاربری)
 8. [پنل مدیریت](#پنل-مدیریت)
 9. [پشتیبان‌گیری و بازیابی](#پشتیبانگیری-و-بازیابی)
-10. [تنظیم LDAP / Active Directory](#تنظیم-ldap--active-directory)
+10. [تنظیم LDAP / Active Directory](#تنظیم-ldap--active-directory) — [راهنمای کامل گواهی و پروداکشن](./docs/LDAP-PRODUCTION.md)
 11. [امنیت](#امنیت)
 12. [عیب‌یابی](#عیبیابی)
 
@@ -190,25 +190,28 @@ openssl rand -base64 48
 
 ## اجرای خودکار با systemd
 
-فایل آماده در `deploy/food.service` قرار دارد.
+نصب خودکار از `deploy/foodmood.service` استفاده می‌کند. در نصب دستی:
 
 ```bash
-sudo cp /opt/food/deploy/food.service /etc/systemd/system/food.service
+sudo cp /opt/food/deploy/foodmood.service /etc/systemd/system/foodmood.service
 sudo systemctl daemon-reload
-sudo systemctl enable food
-sudo systemctl start food
-sudo systemctl status food
+sudo systemctl enable foodmood
+sudo systemctl start foodmood
+sudo systemctl status foodmood
 ```
 
 **بعد از ری‌استارت سرور** سامانه و MongoDB خودکار بالا می‌آیند.
 
 ```bash
 # مشاهده لاگ
-journalctl -u food -f
+sudo journalctl -u foodmood -f
+sudo tail -f /var/log/foodmood/system.log
 
 # ری‌استارت
-sudo systemctl restart food
+sudo systemctl restart foodmood
 ```
+
+> واحد قدیمی `food` دیگر استفاده نمی‌شود. نصب‌کننده خودکار به `foodmood` مهاجرت می‌کند.
 
 ---
 
@@ -221,9 +224,11 @@ sudo systemctl restart food
 | `JWT_SECRET` | بله (پروداکشن) | کلید JWT |
 | `BACKUP_SECRET` | بله (پروداکشن) | کلید رمزنگاری فایل `.fzbackup` |
 | `PASSWORD_PEPPER` | توصیه‌شده | تقویت هش رمز عبور |
-| `LDAP_URL` | خیر | آدرس سرور AD |
-| `LDAP_BIND_PASSWORD` | خیر | رمز Bind (یا از پنل) |
-| `LDAP_ENCRYPTION_KEY` | توصیه‌شده | رمزنگاری Bind در DB |
+| `LDAP_URL` | خیر | آدرس سرور AD (fallback) |
+| `LDAP_BIND_PASSWORD` | برای AD | رمز Bind — **فقط در `.env`** |
+| `LDAP_CA_CERT_PATH` | توصیه‌شده | مسیر گواهی CA روی سرور |
+| `LDAP_ALLOWED_HOSTS` | توصیه‌شده | محدودیت hostname سرور LDAP |
+| `ANNOUNCEMENT_ENCRYPTION_KEY` | توصیه‌شده | رمزنگاری متن اطلاعیه‌ها در DB |
 
 ---
 
@@ -244,7 +249,7 @@ sudo systemctl restart food
 - نصب اولیه `npm install` (یک‌بار)
 - اتصال به MongoDB Atlas (اگر استفاده کنید — توصیه نمی‌شود برای آفلاین)
 
-**بعد از قطع اینترنت** اگر MongoDB و سرویس `food` فعال باشند، کاربران می‌توانند وارد شوند، رزرو کنند و گزارش بگیرند.
+**بعد از قطع اینترنت** اگر MongoDB و سرویس `foodmood` فعال باشند، کاربران می‌توانند وارد شوند، رزرو کنند و گزارش بگیرند.
 
 ---
 
@@ -319,6 +324,8 @@ sudo systemctl restart food
 
 ## تنظیم LDAP / Active Directory
 
+**راهنمای کامل پروداکشن (گواهی CA، `.env`، عیب‌یابی):** [docs/LDAP-PRODUCTION.md](./docs/LDAP-PRODUCTION.md)
+
 از **تنظیمات سامانه** (سوپرادمین):
 
 | فیلد | مثال |
@@ -339,9 +346,10 @@ LDAP_BASE_DN=DC=company,DC=local
 LDAP_BIND_DN=CN=svc-food,DC=company,DC=local
 LDAP_BIND_PASSWORD=...
 LDAP_CA_CERT_PATH=/opt/food/certs/ldap-ca.pem
-LDAP_ENCRYPTION_KEY=کلید-رمزنگاری-bind
 LDAP_ALLOWED_HOSTS=dc.company.local
 ```
+
+> **رمز Bind** فقط در `.env` نگه‌داری می‌شود. پس از تغییر `.env` حتماً `sudo systemctl restart foodmood` بزنید.
 
 **تست اتصال:** دکمه «تست LDAP» در تنظیمات.
 
@@ -373,10 +381,10 @@ LDAP_ALLOWED_HOSTS=dc.company.local
 
 | مشکل | راه‌حل |
 |------|--------|
-| سامانه بالا نمی‌آید | `journalctl -u food -n 50` |
+| سامانه بالا نمی‌آید | `sudo journalctl -u foodmood -n 50` |
 | MongoDB وصل نمی‌شود | `sudo systemctl status mongod` |
 | صفحه بدون استایل | `npm run vendor:sync` |
-| LDAP خطا | تست از پنل + بررسی گواهی و پورت 636 |
+| LDAP خطا | [docs/LDAP-PRODUCTION.md](./docs/LDAP-PRODUCTION.md) — تست پنل، گواهی CA، پورت ۶۳۶ |
 | پشتیبان باز نمی‌شود | `BACKUP_SECRET` همان سرور صادرکننده باشد |
 | PDF ساخته نمی‌شود | Chrome یا Edge روی سرور نصب باشد |
 

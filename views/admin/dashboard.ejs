@@ -8,6 +8,7 @@
   <%- include('../partials/head-assets', { includeSweetAlert: true }) %>
   <link rel="stylesheet" href="/css/enterprise-theme.css">
   <link rel="stylesheet" href="/css/theme-vars.css">
+  <link rel="stylesheet" href="/vendor/jalalidatepicker/jalalidatepicker.min.css">
   <script src="/js/security.js?v=5" defer></script>
 </head>
 <body class="admin-body">
@@ -30,6 +31,7 @@
     <li><div class="sidebar-section-title">تنظیمات</div></li>
     <li><a class="sidebar-link" data-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
     <li><a class="sidebar-link" data-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
+    <li><a class="sidebar-link" data-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
     <li><a class="sidebar-link" data-tab="backup"><i class="fas fa-database"></i><span>پشتیبان‌گیری</span></a></li>
     <% if (user && user.role === 'superadmin') { %>
       <li><a class="sidebar-link" data-tab="system-settings"><i class="fas fa-sliders"></i><span>تنظیمات سامانه</span></a></li>
@@ -307,6 +309,66 @@
       <div class="table-wrap" id="deptsTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
     </section>
 
+    <!-- ===== ANNOUNCEMENTS ===== -->
+    <section id="tab-announcements" class="tab-pane">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مدیریت اطلاعیه‌ها</div>
+          <div class="section-sub">ارسال پیام به همه کاربران یا واحدهای مشخص — متن در دیتابیس رمزنگاری می‌شود</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAddAnnouncement()"><i class="fas fa-plus"></i> اطلاعیه جدید</button>
+      </div>
+      <div id="announcementFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="announcementFormTitle">ثبت اطلاعیه</div>
+          <button class="btn-icon" onclick="closeAnnouncementForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="announcementForm" onsubmit="saveAnnouncement(event)">
+            <input type="hidden" id="editAnnouncementId" value="">
+            <div class="form-group">
+              <label class="form-label">عنوان *</label>
+              <input class="form-control" id="ann_title" required maxlength="120" placeholder="مثال: تعطیلی سلف سرویس">
+            </div>
+            <div class="form-group">
+              <label class="form-label">متن اطلاعیه *</label>
+              <textarea class="form-control" id="ann_body" required rows="4" maxlength="2000" placeholder="متن پیام برای کاربران"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="form-group">
+                <label class="form-label">مخاطب</label>
+                <select class="form-control" id="ann_audience" onchange="toggleAnnouncementDepts()">
+                  <option value="all">همه کاربران سامانه</option>
+                  <option value="department">واحد مشخص</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">وضعیت</label>
+                <select class="form-control" id="ann_active">
+                  <option value="1">فعال (نمایش به کاربران)</option>
+                  <option value="0">غیرفعال</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" id="ann_depts_wrap" style="display:none">
+              <label class="form-label">واحدهای هدف *</label>
+              <select class="form-control" id="ann_departments" multiple size="5"></select>
+              <div class="text-muted" style="font-size:.75rem;margin-top:6px">برای انتخاب چند واحد، Ctrl را نگه دارید</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">تاریخ انقضا (شمسی — اختیاری)</label>
+              <input class="form-control" id="ann_expires" data-jdp data-jdp-only-date placeholder="مثال: ۱۴۰۴/۰۴/۲۰">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+              <button class="btn btn-outline" type="button" onclick="closeAnnouncementForm()">انصراف</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="announcementsTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
     <!-- ===== BACKUP / RESTORE ===== -->
     <section id="tab-backup" class="tab-pane">
       <div class="section-header">
@@ -493,7 +555,7 @@
                   </div>
                   <div class="form-group">
                     <label class="form-label">مسیر CA Certificate</label>
-                    <input class="form-control" id="set_ldapCaCertPath" placeholder="C:\\certs\\domain-ca.pem" dir="ltr" style="text-align:left">
+                    <input class="form-control" id="set_ldapCaCertPath" placeholder="/opt/food/certs/ldap-ca.pem" dir="ltr" style="text-align:left">
                   </div>
                   <div class="form-group">
                     <label class="form-label">Base DN</label>
@@ -528,6 +590,7 @@
 </div>
 
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script src="/vendor/jalalidatepicker/jalalidatepicker.min.js"></script>
 <script>
 // Fallback if Sweetalert2 CDN failed to load
 if (typeof Swal === 'undefined') {
@@ -866,6 +929,7 @@ document.querySelectorAll('.sidebar-link').forEach(link => {
     if (link.dataset.tab === 'weeks') loadWeeksManager();
     if (link.dataset.tab === 'users') loadUsers();
     if (link.dataset.tab === 'departments') loadDepts();
+    if (link.dataset.tab === 'announcements') loadAnnouncementsAdmin();
     if (link.dataset.tab === 'orders') loadOrders();
     if (link.dataset.tab === 'foods') loadFoods();
     if (link.dataset.tab === 'system-settings') loadSettings();
@@ -2133,6 +2197,159 @@ async function deleteDept(id) {
   }))) return;
   const data = await api(`/api/admin/departments/${id}`, { method: 'DELETE' });
   if (data.success) { loadDepts(); notify(data.message || 'واحد حذف شد.'); } else notify(data.message || 'خطا در حذف', 'error');
+}
+
+/* ===== ANNOUNCEMENTS MANAGEMENT ===== */
+const announcementsMap = new Map();
+
+function toggleAnnouncementDepts() {
+  const audience = document.getElementById('ann_audience').value;
+  document.getElementById('ann_depts_wrap').style.display = audience === 'department' ? 'block' : 'none';
+}
+
+async function ensureAnnouncementDeptOptions(selectedIds = []) {
+  if (!departments.length) {
+    const deptData = await api('/api/admin/departments');
+    departments = deptData.success ? deptData.data : [];
+  }
+  const selected = new Set((selectedIds || []).map(String));
+  document.getElementById('ann_departments').innerHTML =
+    departments.map(d => `<option value="${d._id}" ${selected.has(String(d._id)) ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+}
+
+function initAnnouncementDatepicker() {
+  if (!window.jalaliDatepicker) return;
+  jalaliDatepicker.startWatch({
+    autoHide: true,
+    time: false,
+    separatorChars: { date: '/' },
+  });
+}
+
+function openAddAnnouncement() {
+  document.getElementById('editAnnouncementId').value = '';
+  document.getElementById('announcementFormTitle').textContent = 'ثبت اطلاعیه';
+  document.getElementById('ann_title').value = '';
+  document.getElementById('ann_body').value = '';
+  document.getElementById('ann_audience').value = 'all';
+  document.getElementById('ann_active').value = '1';
+  document.getElementById('ann_expires').value = '';
+  toggleAnnouncementDepts();
+  ensureAnnouncementDeptOptions();
+  document.getElementById('announcementFormWrap').style.display = 'block';
+  initAnnouncementDatepicker();
+}
+
+function closeAnnouncementForm() {
+  document.getElementById('announcementFormWrap').style.display = 'none';
+}
+
+async function editAnnouncement(id) {
+  const item = announcementsMap.get(String(id));
+  if (!item) return;
+  document.getElementById('editAnnouncementId').value = id;
+  document.getElementById('announcementFormTitle').textContent = 'ویرایش اطلاعیه';
+  document.getElementById('ann_title').value = item.title || '';
+  document.getElementById('ann_body').value = item.body || '';
+  document.getElementById('ann_audience').value = item.audience || 'all';
+  document.getElementById('ann_active').value = item.isActive ? '1' : '0';
+  document.getElementById('ann_expires').value = item.jalaliExpiresAt || '';
+  toggleAnnouncementDepts();
+  await ensureAnnouncementDeptOptions(item.departmentIds || []);
+  document.getElementById('announcementFormWrap').style.display = 'block';
+  initAnnouncementDatepicker();
+}
+
+async function saveAnnouncement(e) {
+  e.preventDefault();
+  const id = document.getElementById('editAnnouncementId').value;
+  const audience = document.getElementById('ann_audience').value;
+  const deptSelect = document.getElementById('ann_departments');
+  const departmentIds = audience === 'department'
+    ? Array.from(deptSelect.selectedOptions).map(o => o.value)
+    : [];
+  const expiresRaw = document.getElementById('ann_expires').value.trim();
+
+  const payload = {
+    title: document.getElementById('ann_title').value.trim(),
+    body: document.getElementById('ann_body').value.trim(),
+    audience,
+    departmentIds,
+    isActive: document.getElementById('ann_active').value === '1',
+    jalaliExpiresAt: expiresRaw || null,
+  };
+
+  const data = id
+    ? await api(`/api/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+    : await api('/api/admin/announcements', { method: 'POST', body: JSON.stringify(payload) });
+
+  if (data.success) {
+    closeAnnouncementForm();
+    loadAnnouncementsAdmin();
+    notify(data.message || 'اطلاعیه ذخیره شد.');
+  } else {
+    notify(data.message || 'خطا در ذخیره', 'error');
+  }
+}
+
+async function deleteAnnouncement(id) {
+  const item = announcementsMap.get(String(id));
+  if (!(await confirmAction({
+    title: 'حذف اطلاعیه؟',
+    text: item ? `«${item.title}» حذف می‌شود.` : 'این اطلاعیه حذف می‌شود.',
+    confirmText: 'حذف',
+    icon: 'warning',
+  }))) return;
+
+  const data = await api(`/api/admin/announcements/${id}`, { method: 'DELETE' });
+  if (data.success) {
+    loadAnnouncementsAdmin();
+    notify(data.message || 'اطلاعیه حذف شد.');
+  } else {
+    notify(data.message || 'خطا در حذف', 'error');
+  }
+}
+
+async function loadAnnouncementsAdmin() {
+  const [annData, deptData] = await Promise.all([
+    api('/api/admin/announcements'),
+    api('/api/admin/departments'),
+  ]);
+  const items = annData.success ? annData.data : [];
+  departments = deptData.success ? deptData.data : [];
+  announcementsMap.clear();
+  items.forEach(item => announcementsMap.set(String(item._id), item));
+
+  document.getElementById('announcementsTableWrap').innerHTML = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>عنوان</th>
+          <th>مخاطب</th>
+          <th>وضعیت</th>
+          <th>انقضا</th>
+          <th>تاریخ</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>${items.map(item => `
+        <tr>
+          <td style="font-weight:800;max-width:260px">${esc(item.title)}</td>
+          <td>${item.audience === 'all'
+            ? '<span class="badge badge-primary">همه کاربران</span>'
+            : `<span class="badge badge-warning">${esc((item.departments || []).map(d => d.name).join('، ') || 'واحد')}</span>`}</td>
+          <td>${item.isActive
+            ? '<span class="badge badge-success">فعال</span>'
+            : '<span class="badge badge-gray">غیرفعال</span>'}</td>
+          <td>${item.jalaliExpiresAt ? esc(item.jalaliExpiresAt) : '—'}</td>
+          <td>${new Date(item.createdAt).toLocaleString('fa-IR')}</td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-outline btn-sm" onclick="editAnnouncement('${item._id}')"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement('${item._id}')"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>
+      `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">اطلاعیه‌ای ثبت نشده است</td></tr>'}</tbody>
+    </table>`;
 }
 
 /* ===== INIT ===== */

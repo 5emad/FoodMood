@@ -9,7 +9,7 @@ const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const SecurityLog = require('../models/SecurityLog');
 const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
-const { testConnection: testLdapConn, validateConfig: validateLdapConfig } = require('../helpers/LdapHelper');
+const { testConnection: testLdapConn, validateConfig: validateLdapConfig, ldapConfig } = require('../helpers/LdapHelper');
 const { mergeLdapSettings, ldapFieldsFromBody } = require('../helpers/LdapSettingsHelper');
 const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
@@ -151,7 +151,7 @@ class AdminController {
       if (update.ldapEnabled) {
         const savedSettings = await getSettingsLean();
         const candidate = { ...savedSettings, ...update };
-        const validation = validateLdapConfig(candidate);
+        const validation = validateLdapConfig(ldapConfig(candidate));
         if (!validation.valid) {
           return res.status(400).json({ success: false, message: validation.message });
         }
