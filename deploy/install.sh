@@ -25,7 +25,8 @@
 #    --no-firewall           Skip UFW firewall
 #    --no-hardening          Skip Linux hardening
 # ═══════════════════════════════════════════════════════════════
-set -euo pipefail
+# -E propagates the ERR trap into functions so failures report their line
+set -Eeuo pipefail
 
 # ─── Fixed configuration ──────────────────────────────────────
 INSTALL_DIR="/opt/food"
@@ -176,6 +177,93 @@ url_encode() {
   python3 -c 'import urllib.parse,sys; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"
 }
 
+mongo_auth_uri() {
+  local encoded
+  encoded="$(url_encode "$MONGO_PASS")"
+  echo "mongodb://${MONGO_USER}:${encoded}@127.0.0.1:27017/${DB_NAME}?authSource=${DB_NAME}"
+}
+
+mongo_ping() {
+  local uri="${1:-}"
+  if [[ -n "$uri" ]]; then
+    mongosh --quiet "$uri" --eval 'db.runCommand({ ping: 1 }).ok' 2>/dev/null | grep -q '^1$'
+  else
+    mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' 2>/dev/null | grep -q '^1$'
+  fi
+}
+
+mongo_port_listening() {
+  ss -tln 2>/dev/null | grep -q ':27017 ' \
+    || netstat -tln 2>/dev/null | grep -q ':27017 '
+}
+
+start_mongod_direct() {
+  command -v mongod >/dev/null 2>&1 || return 1
+  mkdir -p /var/lib/mongodb /var/log/mongodb
+  chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
+  if [[ -f /etc/mongod.conf ]]; then
+    mongod --config /etc/mongod.conf --fork >/dev/null 2>&1 && return 0
+  fi
+  mongod --dbpath /var/lib/mongodb --logpath /var/log/mongodb/mongod.log --bind_ip 127.0.0.1 --fork >/dev/null 2>&1
+}
+
+ensure_mongod_running() {
+  local uri="${1:-}"
+  if mongo_ping "$uri"; then
+    return 0
+  fi
+  log_warn "MongoDB not responding — starting mongod..."
+  systemctl start mongod 2>/dev/null || true
+  sleep 2
+  if mongo_ping "$uri"; then
+    return 0
+  fi
+  log_warn "MongoDB still not responding — restarting mongod..."
+  systemctl restart mongod 2>/dev/null || true
+  sleep 2
+  if mongo_ping "$uri"; then
+    return 0
+  fi
+  if ! mongo_port_listening; then
+    log_warn "Port 27017 is not listening — starting mongod directly..."
+    start_mongod_direct || true
+    sleep 2
+  fi
+  mongo_ping "$uri"
+}
+
+wait_for_mongodb() {
+  local label="${1:-MongoDB}"
+  local uri="${2:-}"
+  local attempts="${3:-30}"
+  local i
+  log_busy "Waiting for ${label} — up to $((attempts * 2)) seconds"
+  for ((i = 1; i <= attempts; i++)); do
+    if mongo_ping "$uri"; then
+      return 0
+    fi
+    if (( i % 5 == 0 )); then
+      ensure_mongod_running "$uri" || true
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_for_api_health() {
+  local attempts="${1:-30}"
+  local i body
+  log_busy "Waiting for API health — up to $((attempts * 2)) seconds"
+  for ((i = 1; i <= attempts; i++)); do
+    body="$(curl -sf --max-time 5 http://127.0.0.1:3000/api/system/health 2>/dev/null || true)"
+    if echo "$body" | grep -q '"healthy":[[:space:]]*true'; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 # ─── Step 1: fetch source ─────────────────────────────────────
 PROJECT_DIR=""
 CLONE_DIR=""
@@ -226,7 +314,7 @@ install_base_packages() {
   apt-get install -y \
     curl gnupg ca-certificates lsb-release apt-transport-https \
     software-properties-common rsync openssl python3 ufw fail2ban \
-    unattended-upgrades git
+    unattended-upgrades git sudo
   # Browser rendering libs (names differ across releases — non-fatal)
   apt-get install -y fonts-liberation xdg-utils 2>/dev/null || true
   apt-get install -y libasound2t64 2>/dev/null || apt-get install -y libasound2 2>/dev/null || true
@@ -322,39 +410,124 @@ install_nodejs() {
 }
 
 # ─── Step 5: MongoDB ──────────────────────────────────────────
+MONGO_SOURCES_FILE="/etc/apt/sources.list.d/mongodb-org.list"
+
+mongo_packages_available() {
+  apt-cache show mongodb-org-server >/dev/null 2>&1 \
+    || apt-cache show mongodb-org >/dev/null 2>&1
+}
+
+install_mongo_packages() {
+  if apt-get install -y mongodb-org; then
+    return 0
+  fi
+  log_warn "mongodb-org metapackage missing — installing core MongoDB packages..."
+  apt-get install -y \
+    mongodb-org-server \
+    mongodb-org-database \
+    mongodb-org-mongos \
+    mongodb-org-tools \
+    mongodb-mongosh
+}
+
+try_mongo_repo() {
+  local label="$1" key_url="$2" keyring="$3" repo_line="$4"
+  log_info "Trying MongoDB repository: ${label}"
+
+  if ! curl -fsSL --max-time 60 "$key_url" | gpg -o "$keyring" --dearmor --yes 2>/dev/null; then
+    log_warn "${label}: cannot download signing key — skipping."
+    return 1
+  fi
+  echo "$repo_line" > "$MONGO_SOURCES_FILE"
+
+  if ! apt-get update >/tmp/apt-mongo-update.log 2>&1; then
+    log_warn "${label}: repository not reachable (403/blocked) — skipping."
+    rm -f "$MONGO_SOURCES_FILE"
+    apt-get update >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! mongo_packages_available; then
+    log_warn "${label}: MongoDB packages not found in repo — skipping."
+    rm -f "$MONGO_SOURCES_FILE"
+    apt-get update >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  log_busy "${label}: installing MongoDB — 2-5 minutes"
+  if install_mongo_packages; then
+    return 0
+  fi
+  rm -f "$MONGO_SOURCES_FILE"
+  apt-get update >/dev/null 2>&1 || true
+  return 1
+}
+
 install_mongodb() {
   step_begin "Install MongoDB"
   if command -v mongod >/dev/null 2>&1; then
     log_ok "MongoDB already installed."
     systemctl start mongod 2>/dev/null || true
+    if ! wait_for_mongodb "MongoDB"; then
+      log_err "MongoDB is installed but not accepting connections."
+      exit 1
+    fi
     return
   fi
-  log_busy "Adding MongoDB 7.0 repository and installing — 2-5 minutes"
-  curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
-    | gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor --yes
 
-  local codename distro
+  # Clean up any half-configured repo from a previous failed run
+  rm -f "$MONGO_SOURCES_FILE" /etc/apt/sources.list.d/mongodb-org-7.0.list
+
+  local codename distro abrha_component
   codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}")"
   if grep -qi '^ID=ubuntu' /etc/os-release 2>/dev/null; then
     distro="ubuntu"
-    # MongoDB 7.0 publishes for focal/jammy — fall back to jammy on newer releases
+    abrha_component="multiverse"
     case "$codename" in
-      focal|jammy) ;;
-      *) log_warn "Ubuntu '${codename}' has no MongoDB 7.0 repo — using jammy packages."; codename="jammy" ;;
+      focal|jammy|noble) ;;
+      *) log_warn "Ubuntu '${codename}' not in MongoDB repo matrix — using jammy packages."; codename="jammy" ;;
     esac
   else
     distro="debian"
+    abrha_component="main"
     case "$codename" in
       bullseye|bookworm) ;;
-      *) log_warn "Debian '${codename}' has no MongoDB 7.0 repo — using bookworm packages."; codename="bookworm" ;;
+      *) log_warn "Debian '${codename}' not in MongoDB repo matrix — using bookworm packages."; codename="bookworm" ;;
     esac
   fi
-  echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/${distro} ${codename}/mongodb-org/7.0 multiverse" \
-    > /etc/apt/sources.list.d/mongodb-org-7.0.list
-  apt-get update
-  apt-get install -y mongodb-org
+
+  # Repo 1: official MongoDB (blocked with 403 from some regions, e.g. Iran)
+  # Repo 2: Abrha/ParsPack mirror hosted in Iran (mirrors mongodb-org packages)
+  if try_mongo_repo \
+      "official repo.mongodb.org" \
+      "https://www.mongodb.org/static/pgp/server-7.0.asc" \
+      "/usr/share/keyrings/mongodb-server-7.0.gpg" \
+      "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/${distro} ${codename}/mongodb-org/7.0 multiverse"; then
+    :
+  elif try_mongo_repo \
+      "Abrha mirror (Iran) 7.0" \
+      "https://repo.abrha.net/mongodb/${distro}/gpg" \
+      "/usr/share/keyrings/abrha-mongodb.gpg" \
+      "deb [ arch=amd64 signed-by=/usr/share/keyrings/abrha-mongodb.gpg ] https://repo.abrha.net/mongodb/${distro} ${codename}/mongodb-org/7.0 ${abrha_component}"; then
+    :
+  elif try_mongo_repo \
+      "Abrha mirror (Iran) 8.0" \
+      "https://repo.abrha.net/mongodb/${distro}/gpg" \
+      "/usr/share/keyrings/abrha-mongodb.gpg" \
+      "deb [ arch=amd64 signed-by=/usr/share/keyrings/abrha-mongodb.gpg ] https://repo.abrha.net/mongodb/${distro} ${codename}/mongodb-org/8.0 ${abrha_component}"; then
+    :
+  else
+    log_err "MongoDB could not be installed from any repository."
+    log_err "Check network access to repo.mongodb.org or repo.abrha.net and re-run."
+    exit 1
+  fi
+
   systemctl enable mongod
   systemctl start mongod
+  if ! wait_for_mongodb "MongoDB"; then
+    log_err "MongoDB installed but failed to start."
+    exit 1
+  fi
   log_ok "MongoDB installed and started."
 }
 
@@ -408,10 +581,7 @@ deploy_application() {
 # ─── Step 9: MongoDB auth ─────────────────────────────────────
 setup_mongodb_auth() {
   step_begin "Configure MongoDB security"
-  systemctl start mongod
-  sleep 2
-
-  if ! mongosh --quiet --eval "db.runCommand({ ping: 1 })" &>/dev/null; then
+  if ! ensure_mongod_running; then
     log_err "Cannot connect to MongoDB."
     exit 1
   fi
@@ -440,6 +610,7 @@ PY
   fi
 
   local mongod_conf="/etc/mongod.conf"
+  local auth_uri
   if ! grep -q 'authorization: enabled' "$mongod_conf" 2>/dev/null; then
     if grep -q '^security:' "$mongod_conf"; then
       sed -i '/^security:/a\  authorization: enabled' "$mongod_conf"
@@ -447,10 +618,19 @@ PY
       printf '\nsecurity:\n  authorization: enabled\n' >> "$mongod_conf"
     fi
     systemctl restart mongod
-    sleep 2
+    auth_uri="$(mongo_auth_uri)"
+    if ! wait_for_mongodb "MongoDB (authenticated)" "$auth_uri"; then
+      log_err "MongoDB did not become ready after enabling authentication."
+      exit 1
+    fi
     log_ok "MongoDB authentication enabled."
   else
     log_ok "MongoDB authentication already enabled."
+    auth_uri="$(mongo_auth_uri)"
+    if ! wait_for_mongodb "MongoDB (authenticated)" "$auth_uri" 15; then
+      log_err "MongoDB authentication is enabled but the service is not reachable."
+      exit 1
+    fi
   fi
 }
 
@@ -523,7 +703,21 @@ install_npm_deps() {
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/certs"
   chmod 750 "${INSTALL_DIR}/certs"
   log_busy "npm install --omit=dev — usually 2-8 minutes; please wait"
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --progress=true"
+
+  local npm_rc=1
+  if sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --progress=true"; then
+    npm_rc=0
+  else
+    log_warn "npm registry.npmjs.org unreachable — trying npmmirror.com fallback..."
+    if sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --progress=true --registry=https://registry.npmmirror.com"; then
+      npm_rc=0
+    fi
+  fi
+
+  if [[ "$npm_rc" -ne 0 ]]; then
+    log_err "npm install failed from all registries. Check network and re-run."
+    exit 1
+  fi
   log_ok "npm install completed."
 }
 
@@ -543,14 +737,24 @@ setup_systemd() {
   cp "${INSTALL_DIR}/deploy/foodmood.service" "/etc/systemd/system/${SERVICE_NAME}.service"
   systemctl daemon-reload
   systemctl enable "$SERVICE_NAME"
+
+  local auth_uri
+  auth_uri="$(mongo_auth_uri)"
+  if ! ensure_mongod_running "$auth_uri"; then
+    log_err "MongoDB must be running before starting ${SERVICE_NAME}."
+    exit 1
+  fi
+
   systemctl restart "$SERVICE_NAME"
-  sleep 2
-  if systemctl is-active --quiet "$SERVICE_NAME"; then
-    log_ok "Service ${SERVICE_NAME} is active — starts automatically on boot."
-  else
+  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
     log_err "Service failed to start. Log: journalctl -u ${SERVICE_NAME} -n 30"
     exit 1
   fi
+  if ! wait_for_api_health 45; then
+    log_err "Service is running but API is not healthy. Log: journalctl -u ${SERVICE_NAME} -n 30"
+    exit 1
+  fi
+  log_ok "Service ${SERVICE_NAME} is active — starts automatically on boot."
 }
 
 # ─── Step 13: Nginx config (HTTP on server IP) ────────────────
@@ -607,14 +811,33 @@ SUPERADMIN_CREDS_OUTPUT=""
 
 create_superadmin_account() {
   step_begin "Create superadmin account"
-  local output
-  if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)"; then
-    SUPERADMIN_CREDS_OUTPUT="$output"
-    log_ok "Superadmin '${SUPERADMIN_USER}' created — credentials shown at the end."
-  else
-    log_warn "Superadmin creation failed (may already exist):"
-    echo "$output"
+  local auth_uri output attempt
+  auth_uri="$(mongo_auth_uri)"
+  if ! ensure_mongod_running "$auth_uri"; then
+    log_err "MongoDB is not available — cannot create superadmin."
+    exit 1
   fi
+
+  for attempt in 1 2 3; do
+    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)"; then
+      SUPERADMIN_CREDS_OUTPUT="$output"
+      log_ok "Superadmin '${SUPERADMIN_USER}' created — credentials shown at the end."
+      return
+    fi
+    if echo "$output" | grep -qi 'already exists'; then
+      log_warn "Superadmin '${SUPERADMIN_USER}' already exists — skipping creation."
+      return
+    fi
+    if (( attempt < 3 )); then
+      log_warn "Superadmin creation attempt ${attempt}/3 failed — retrying in 5s..."
+      ensure_mongod_running "$auth_uri" || true
+      sleep 5
+    fi
+  done
+
+  log_err "Superadmin creation failed:"
+  echo "$output"
+  exit 1
 }
 
 # ─── Step 16: verification ────────────────────────────────────
@@ -629,21 +852,29 @@ run_post_install_verify() {
     ok=0
   fi
 
-  if systemctl is-active --quiet mongod; then
-    log_ok "systemd: mongod is active"
+  local auth_uri
+  auth_uri="$(mongo_auth_uri)"
+  if mongo_ping "$auth_uri"; then
+    log_ok "MongoDB: accepting authenticated connections"
   else
-    log_err "systemd: mongod is not active"
+    log_err "MongoDB: not accepting connections"
     ok=0
   fi
 
   local body=""
-  body="$(curl -sf --max-time 10 http://127.0.0.1:3000/api/system/health 2>/dev/null || true)"
-  if echo "$body" | grep -q '"healthy":[[:space:]]*true'; then
+  if wait_for_api_health 15; then
+    body="$(curl -sf --max-time 10 http://127.0.0.1:3000/api/system/health 2>/dev/null || true)"
     log_ok "API health: service is healthy"
-  elif [[ -n "$body" ]]; then
-    log_warn "API health: unexpected response — ${body:0:120}"
   else
-    log_warn "API health: no response yet (service may still be warming up)"
+    body="$(curl -sf --max-time 10 http://127.0.0.1:3000/api/system/health 2>/dev/null || true)"
+    if echo "$body" | grep -q '"healthy":[[:space:]]*false'; then
+      log_err "API health: service unhealthy — ${body:0:200}"
+    elif [[ -n "$body" ]]; then
+      log_err "API health: unexpected response — ${body:0:120}"
+    else
+      log_err "API health: no response from http://127.0.0.1:3000/api/system/health"
+    fi
+    ok=0
   fi
 
   if [[ "$ok" -ne 1 ]]; then

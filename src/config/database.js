@@ -63,7 +63,8 @@ const connectDB = async () => {
 
   const usesSrv = mongoUri.startsWith('mongodb+srv://');
   const useTls = process.env.MONGODB_TLS === 'true' || usesSrv;
-  if (isProduction && !useTls) {
+  const isLocalMongo = /mongodb(?:\+srv)?:\/\/(?:[^/@]*@)?(?:127\.0\.0\.1|localhost)(?::|\/)/.test(mongoUri);
+  if (isProduction && !useTls && !isLocalMongo) {
     throw new Error('MongoDB TLS must be enabled in production');
   }
 
