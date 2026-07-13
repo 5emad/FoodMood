@@ -1,0 +1,113 @@
+    <!-- ===== SYSTEM SETTINGS (superadmin only — not sent to regular admins) ===== -->
+    <section id="<%= typeof standalone !== 'undefined' && standalone ? 'system-settings-page' : 'tab-system-settings' %>" class="<%= typeof standalone !== 'undefined' && standalone ? 'super-page-section' : 'tab-pane' %>">
+      <div class="section-header">
+        <div>
+          <div class="section-title">تنظیمات سامانه</div>
+          <div class="section-sub">نام سازمان، محدودیت رزرو و اتصال Active Directory</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="card-header"><div class="card-title">تنظیمات عمومی</div></div>
+        <div class="card-body">
+          <form id="systemSettingsForm" onsubmit="saveSystemSettings(event)">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+              <div class="form-group">
+                <label class="form-label">نام سازمان</label>
+                <input class="form-control" id="set_organizationName" placeholder="مثال: شرکت فرازمان">
+              </div>
+              <div class="form-group">
+                <label class="form-label">آدرس عمومی سامانه (دامنه)</label>
+                <input class="form-control" id="set_publicUrl" placeholder="https://food.example.com" dir="ltr" style="text-align:left">
+                <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">همان دامنه‌ای که هنگام نصب یا در APP_URL تنظیم شده است</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">حداکثر رزرو فعال هر کاربر</label>
+                <input class="form-control" id="set_maxActiveReservations" type="number" min="0" placeholder="0 = بدون محدودیت" dir="ltr" style="text-align:right">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ظرفیت پیش‌فرض هر غذا در هر روز</label>
+                <input class="form-control" id="set_defaultMenuItemCapacity" type="number" min="0" placeholder="مثلا 50" dir="ltr" style="text-align:right">
+              </div>
+              <div class="form-group">
+                <label class="form-label">نمایش قیمت برای کاربران</label>
+                <select class="form-control" id="set_showPricesToUsers">
+                  <option value="true">فعال</option>
+                  <option value="false">غیرفعال</option>
+                </select>
+              </div>
+              <div class="form-group theme-picker">
+                <label class="form-label">رنگ‌بندی سامانه</label>
+                <div class="theme-options" id="themeOptions" role="radiogroup" aria-label="رنگ‌بندی سامانه"></div>
+                <div class="theme-color-fields">
+                  <input id="set_themePrimary" type="color">
+                  <input id="set_themePrimaryLight" type="color">
+                  <input id="set_themePrimaryDark" type="color">
+                  <input id="set_themeGradientFrom" type="color">
+                  <input id="set_themeGradientTo" type="color">
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:18px;border-radius:10px">
+              <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <div class="card-title">تنظیمات LDAP / Active Directory</div>
+                <div class="d-flex gap-2 align-center">
+                  <span id="ldapStatusBadge" class="badge badge-gray" style="font-size:.75rem"><i class="fas fa-circle" style="font-size:.45rem;vertical-align:middle"></i> وضعیت نامشخص</span>
+                  <button type="button" class="btn btn-outline btn-sm no-print" onclick="testLdap(this)">
+                    <i class="fas fa-plug"></i> تست اتصال
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+                  <div class="form-group">
+                    <label class="form-label">وضعیت LDAP</label>
+                    <select class="form-control" id="set_ldapEnabled">
+                      <option value="false">غیرفعال</option>
+                      <option value="true">فعال</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">LDAP URL</label>
+                    <input class="form-control" id="set_ldapUrl" placeholder="ldaps://dc.company.local:636" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">نوع اتصال</label>
+                    <select class="form-control" id="set_ldapSecurity">
+                      <option value="ldaps">LDAPS — پورت ۶۳۶ (پیشنهادی)</option>
+                      <option value="starttls">StartTLS — پورت ۳۸۹ + ارتقاء TLS</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">مسیر CA Certificate</label>
+                    <input class="form-control" id="set_ldapCaCertPath" placeholder="/opt/food/certs/ldap-ca.pem" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Base DN</label>
+                    <input class="form-control" id="set_ldapBaseDn" placeholder="DC=company,DC=local" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Bind DN</label>
+                    <input class="form-control" id="set_ldapBindDn" placeholder="CN=service,CN=Users,DC=company,DC=local" dir="ltr" style="text-align:left">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Bind Password موقت تست</label>
+                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="برای ذخیره یا تست — خالی = بدون تغییر" dir="ltr" style="text-align:left" autocomplete="new-password">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">User Filter</label>
+                    <input class="form-control" id="set_ldapUserFilter" placeholder="(sAMAccountName={{username}})" dir="ltr" style="text-align:left">
+                  </div>
+                </div>
+                <div id="ldapPasswordHint" class="capacity-note" style="margin-top:8px">رمز Bind با scrypt + AES-256-GCM + HMAC در دیتابیس ذخیره می‌شود. کلید رمزنگاری: LDAP_ENCRYPTION_KEY در سرور.</div>
+              </div>
+            </div>
+
+            <div style="margin-top:16px;text-align:left">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره تنظیمات</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>

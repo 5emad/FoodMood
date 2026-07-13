@@ -15,7 +15,7 @@ const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
 const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
-const { defaultSettings, publicSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
+const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
@@ -198,7 +198,15 @@ class AdminController {
           { phone:    { $regex: safe, $options: 'i' } },
         ];
       }
-      if (role) filter.role = role;
+      if (req.user.role !== 'superadmin') {
+        if (role === 'superadmin') {
+          const pageInfo = paginationFromQuery(req.query, { limit: 20, maxLimit: 200 });
+          return res.json({ success: true, data: [], pagination: paginationMeta({ ...pageInfo, total: 0 }) });
+        }
+        filter.role = role || { $ne: 'superadmin' };
+      } else if (role) {
+        filter.role = role;
+      }
       if (department === 'none') filter.departmentId = null;
       else if (department) filter.departmentId = department;
 
@@ -681,6 +689,15 @@ class AdminController {
       const settings = mergeLdapSettings(saved, req.body || {});
       const result = await testLdapConn(settings);
       res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getWorkspaceSettings(req, res, next) {
+    try {
+      const settings = await getOrCreateSettings();
+      res.json({ success: true, data: adminWorkspaceSettings(settings) });
     } catch (error) {
       next(error);
     }

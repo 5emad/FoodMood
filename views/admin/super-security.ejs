@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../../partials/session-security') %>
+  <title>امنیت و لاگ — پنل سوپر ادمین</title>
+  <%- include('../../partials/head-assets', { includeSweetAlert: true }) %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="admin-body">
+
+<%- include('partials/sidebar', { activePage: 'super-security', isSuperadmin: true, sidebarMode: 'external' }) %>
+
+<div class="main-content">
+  <header class="top-header">
+    <div class="date-chip"><i class="far fa-calendar-check"></i><span id="todayDate"></span></div>
+    <div class="header-actions">
+      <a href="/admin/dashboard" class="btn-header btn-site"><i class="fas fa-arrow-right"></i> بازگشت به داشبورد</a>
+      <a href="/logout" class="btn-header btn-logout"><i class="fas fa-sign-out-alt"></i> خروج</a>
+    </div>
+  </header>
+
+  <main class="content-wrapper">
+    <div class="page-header">
+      <div>
+        <div class="ph-badge"><i class="fas fa-shield-halved"></i> سوپر ادمین</div>
+        <div class="ph-title">مرکز امنیت و لاگ‌های سیستمی</div>
+        <div class="ph-sub">ورود، قفل حساب، رخدادهای امنیتی و چرخه عمر سرور</div>
+      </div>
+      <i class="fas fa-shield-halved ph-icon"></i>
+    </div>
+
+    <section class="super-page-section">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مرکز امنیت</div>
+          <div class="section-sub">لاگ ورود، تلاش‌های ناموفق، حساب‌های قفل‌شده و عملیات آنلاک</div>
+        </div>
+        <div class="d-flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-warning btn-sm" onclick="resetOwnSuperToken()"><i class="fas fa-key"></i> تغییر توکن من</button>
+          <button class="btn btn-outline btn-sm" onclick="loadSecurityCenter()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="securityStats">
+        <div class="stat-card"><div class="stat-icon red"><i class="fas fa-lock"></i></div><div><div class="stat-value" id="lockedCount">0</div><div class="stat-label">حساب قفل‌شده</div></div></div>
+        <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-triangle-exclamation"></i></div><div><div class="stat-value" id="failedCount">0</div><div class="stat-label">تلاش ناموفق ۲۴ ساعت</div></div></div>
+        <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-bell"></i></div><div><div class="stat-value" id="securityUnreadCount">0</div><div class="stat-label">رخداد مهم اخیر</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">کاربران قفل‌شده</div></div>
+        <div class="card-body"><div class="table-wrap" id="lockedUsersWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">تلاش‌های ناموفق پرتکرار</div></div>
+        <div class="card-body"><div class="table-wrap" id="failedSummaryWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">آخرین لاگ‌های امنیتی</div></div>
+        <div class="card-body"><div class="table-wrap" id="securityLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-server" style="margin-left:8px;color:var(--primary)"></i> لاگ‌های سیستمی</div>
+          <span id="systemHealthBadge" class="badge badge-success">سالم</span>
+        </div>
+        <div class="card-body">
+          <p class="section-sub" style="margin-bottom:12px">استارت/استاپ سرور، قطع و وصل دیتابیس — فقط سوپر ادمین. کاربران عادی صفحه «در دسترس نیست» می‌بینند.</p>
+          <div class="stat-grid" id="lifecycleStats" style="margin-bottom:16px">
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-play"></i></div><div><div class="stat-value" id="lcServerStarts">0</div><div class="stat-label">استارت سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-stop"></i></div><div><div class="stat-value" id="lcServerStops">0</div><div class="stat-label">استاپ سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-database"></i></div><div><div class="stat-value" id="lcDbConnects">0</div><div class="stat-label">اتصال دیتابیس</div></div></div>
+            <div class="stat-card"><div class="stat-icon red"><i class="fas fa-plug-circle-xmark"></i></div><div><div class="stat-value" id="lcDbDisconnects">0</div><div class="stat-label">قطع دیتابیس</div></div></div>
+          </div>
+          <div id="systemTestWrap" style="display:none;margin-bottom:14px">
+            <button class="btn btn-warning btn-sm" onclick="runDbOutageTest(this)"><i class="fas fa-vial"></i> تست قطعی دیتابیس (۳۰ ثانیه)</button>
+            <span class="text-muted" style="font-size:.8rem;margin-right:10px">فقط حالت تست — صفحه «در دسترس نیست» را در تب ناشناس بررسی کنید</span>
+          </div>
+          <div class="d-flex gap-2" style="flex-wrap:wrap;margin-bottom:12px;align-items:center">
+            <select class="form-control" id="systemLogLevelFilter" style="width:160px" onchange="systemLogLevelFilterChanged()">
+              <option value="">همه سطوح</option>
+              <option value="error">فقط خطا</option>
+              <option value="warn">فقط هشدار</option>
+              <option value="info">فقط اطلاع</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="loadSystemLogs()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+          </div>
+          <div class="table-wrap" id="systemLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+          <div id="systemLogsPagination" class="d-flex gap-2" style="flex-wrap:wrap;justify-content:center;margin-top:14px"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script>
+<%- include('partials/admin-core-scripts') %>
+
+let systemLogPagination = { page: 1, perPage: 15, total: 0, totalPages: 1 };
+
+function securityTypeLabel(type) {
+  return {
+    login_success: 'ورود موفق', login_failed: 'ورود ناموفق', account_locked: 'قفل حساب',
+    account_unlocked: 'آنلاک حساب', super_token_required: 'درخواست توکن',
+    super_token_success: 'توکن موفق', super_token_failed: 'توکن ناموفق',
+    backup_export: 'خروجی پشتیبان', backup_restore: 'بازیابی پشتیبان',
+  }[type] || type;
+}
+
+async function loadSecurityCenter() {
+  const badge = document.getElementById('securityNotifyBadge');
+  const data = await api('/api/admin/security/summary');
+  if (!data.success) { notify(data.message || 'خطا در دریافت اطلاعات امنیتی', 'error'); return; }
+  const { lockedUsers = [], failedSummary = [], recentLogs = [], unreadCount = 0 } = data.data || {};
+  if (badge) {
+    badge.style.display = unreadCount ? 'inline-flex' : 'none';
+    badge.textContent = unreadCount > 99 ? '+99' : String(unreadCount);
+  }
+  document.getElementById('lockedCount').textContent = lockedUsers.length.toLocaleString('fa-IR');
+  document.getElementById('failedCount').textContent = failedSummary.reduce((s, i) => s + Number(i.count || 0), 0).toLocaleString('fa-IR');
+  document.getElementById('securityUnreadCount').textContent = unreadCount.toLocaleString('fa-IR');
+
+  document.getElementById('lockedUsersWrap').innerHTML = `<table class="table"><thead><tr><th>کاربر</th><th>نقش</th><th>تلاش‌ها</th><th>قفل تا</th><th>عملیات</th></tr></thead><tbody>${lockedUsers.map(u => `
+    <tr><td style="font-weight:800">${esc(u.fullName || u.username)}</td><td>${esc(u.role)}</td><td>${Number(u.loginAttempts || 0).toLocaleString('fa-IR')}</td><td>${new Date(u.lockUntil).toLocaleString('fa-IR')}</td>
+    <td><button class="btn btn-success btn-sm" onclick="unlockSecurityUser('${u._id}')"><i class="fas fa-unlock"></i> آنلاک</button></td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">حساب قفل‌شده‌ای وجود ندارد</td></tr>'}</tbody></table>`;
+
+  document.getElementById('failedSummaryWrap').innerHTML = `<table class="table"><thead><tr><th>شناسه</th><th>تعداد</th><th>آخرین IP</th><th>آخرین تلاش</th></tr></thead><tbody>${failedSummary.map(item => `
+    <tr><td style="direction:ltr">${esc(item._id)}</td><td><span class="badge badge-danger">${Number(item.count || 0).toLocaleString('fa-IR')}</span></td><td style="direction:ltr">${esc(item.ip || '-')}</td><td>${new Date(item.lastAt).toLocaleString('fa-IR')}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">موردی ثبت نشده</td></tr>'}</tbody></table>`;
+
+  document.getElementById('securityLogsWrap').innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>نوع</th><th>کاربر</th><th>IP</th><th>پیام</th></tr></thead><tbody>${recentLogs.map(log => `
+    <tr><td style="white-space:nowrap">${new Date(log.createdAt).toLocaleString('fa-IR')}</td><td><span class="badge badge-primary">${esc(securityTypeLabel(log.type))}</span></td><td style="direction:ltr">${esc(log.username || '-')}</td><td style="direction:ltr">${esc(log.ip || '-')}</td><td>${esc(log.message || '-')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">لاگی ثبت نشده</td></tr>'}</tbody></table>`;
+
+  await loadSystemLogs();
+}
+
+function systemLogLevelFilterChanged() { systemLogPagination.page = 1; loadSystemLogs(); }
+function systemLevelLabel(level) { return { error: 'خطا', warn: 'هشدار', info: 'اطلاع' }[level] || level; }
+function systemCategoryLabel(cat) { return { database: 'پایگاه داده', server: 'سرویس', orders: 'سفارش‌ها', auth: 'احراز هویت', lifecycle: 'چرخه عمر', api: 'رابط برنامه' }[cat] || cat; }
+function systemEventLabel(event) {
+  return { server_start: 'راه‌اندازی سرویس', server_stop: 'توقف سرویس', db_connect: 'اتصال پایگاه داده', db_disconnect: 'قطع پایگاه داده', db_reconnect_attempt: 'تلاش اتصال مجدد', service_unavailable: 'قطعی سامانه', service_restored: 'بازیابی سامانه', http_error: 'خطای درخواست', app_error: 'خطای برنامه', unhandled_rejection: 'خطای ناهمگام', uncaught_exception: 'خطای بحرانی', order_job_error: 'خطای سفارش', port_conflict: 'تعارض پورت', bootstrap_error: 'خطای راه‌اندازی', db_test_outage: 'تست قطعی' }[event] || (event || 'رویداد سیستمی');
+}
+function goToSystemLogsPage(page) { loadSystemLogs(Math.min(Math.max(1, Number(page) || 1), Number(systemLogPagination.totalPages || 1))); }
+
+async function loadSystemLogs(page) {
+  const wrap = document.getElementById('systemLogsWrap');
+  const pager = document.getElementById('systemLogsPagination');
+  const badge = document.getElementById('systemHealthBadge');
+  const testWrap = document.getElementById('systemTestWrap');
+  const levelFilter = document.getElementById('systemLogLevelFilter');
+  if (!wrap) return;
+  if (page) systemLogPagination.page = Number(page) || 1;
+  const qs = new URLSearchParams({ page: String(systemLogPagination.page), perPage: String(systemLogPagination.perPage) });
+  if (levelFilter?.value) qs.set('level', levelFilter.value);
+  wrap.innerHTML = '<div style="padding:32px;text-align:center"><div class="spinner"></div></div>';
+  if (pager) pager.innerHTML = '';
+  const data = await api(`/api/admin/system/logs?${qs.toString()}`);
+  if (!data.success) { wrap.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">خطا در دریافت لاگ‌های سیستمی</div>'; return; }
+  const { logs = [], health = {}, lifecycle = {}, pagination = {}, testMode = false } = data.data || {};
+  systemLogPagination = { page: Number(pagination.page || 1), perPage: Number(pagination.perPage || 15), total: Number(pagination.total || 0), totalPages: Number(pagination.totalPages || 1) };
+  if (testWrap) testWrap.style.display = testMode ? 'block' : 'none';
+  const setLc = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = Number(val || 0).toLocaleString('fa-IR'); };
+  setLc('lcServerStarts', lifecycle.serverStarts); setLc('lcServerStops', lifecycle.serverStops); setLc('lcDbConnects', lifecycle.dbConnects); setLc('lcDbDisconnects', lifecycle.dbDisconnects);
+  if (badge) { const ok = health.healthy !== false; badge.className = `badge ${ok ? 'badge-success' : 'badge-danger'}`; badge.textContent = ok ? 'سالم' : 'قطعی'; }
+  wrap.innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>رویداد</th><th>سطح</th><th>بخش</th><th>شرح</th><th>جزئیات فنی</th></tr></thead><tbody>${logs.map(log => `
+    <tr><td style="white-space:nowrap">${log.ts ? new Date(log.ts).toLocaleString('fa-IR') : '-'}</td><td><span class="badge badge-primary">${esc(systemEventLabel(log.event))}</span></td>
+    <td><span class="badge ${log.level === 'error' ? 'badge-danger' : log.level === 'warn' ? 'badge-warning' : 'badge-primary'}">${esc(systemLevelLabel(log.level))}</span></td>
+    <td>${esc(systemCategoryLabel(log.category))}</td><td>${esc(log.message || '-')}</td><td style="direction:ltr;font-size:.72rem">${esc(log.detail || log.url || log.code || '-')}</td></tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">رخدادی ثبت نشده است</td></tr>'}</tbody></table>`;
+  if (pager) pager.innerHTML = renderPaginationBar(systemLogPagination, 'goToSystemLogsPage') || '';
+}
+
+async function runDbOutageTest(btn) {
+  if (!(await confirmAction({ title: 'تست قطعی دیتابیس؟', text: '۳۰ ثانیه دیتابیس قطع می‌شود.', confirmText: 'شروع تست', icon: 'warning' }))) return;
+  btn.disabled = true;
+  const data = await api('/api/system/test-disconnect-db', { method: 'POST', body: JSON.stringify({ seconds: 30 }) });
+  btn.disabled = false;
+  if (data.success) { notify(data.message || 'تست شروع شد'); setTimeout(() => { systemLogPagination.page = 1; loadSystemLogs(); }, 2000); }
+  else notify(data.message || 'تست در دسترس نیست', 'error');
+}
+
+async function unlockSecurityUser(id) {
+  if (!(await confirmAction({ title: 'آنلاک حساب؟', confirmText: 'آنلاک', icon: 'warning' }))) return;
+  const data = await api(`/api/admin/security/users/${id}/unlock`, { method: 'POST' });
+  if (data.success) { notify(data.message || 'حساب آنلاک شد.'); loadSecurityCenter(); }
+  else notify(data.message || 'خطا در آنلاک', 'error');
+}
+
+async function resetOwnSuperToken() {
+  if (!(await confirmAction({ title: 'تغییر توکن سوپر ادمین؟', confirmText: 'تغییر توکن', icon: 'warning' }))) return;
+  const data = await api('/api/admin/security/super-token/reset', { method: 'POST' });
+  if (data.success && data.superToken) { await showSuperToken(data.superToken); loadSecurityCenter(); }
+  else notify(data.message || 'خطا در تغییر توکن', 'error');
+}
+
+loadSecurityCenter();
+</script>
+</body>
+</html>

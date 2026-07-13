@@ -175,7 +175,9 @@ app.get('/api/system/health', (req, res) => {
 });
 
 if (process.env.ALLOW_SYSTEM_TEST === 'true') {
-  app.post('/api/system/test-disconnect-db', async (req, res) => {
+  const authMiddleware = require('./src/middleware/authMiddleware');
+  const roleMiddleware = require('./src/middleware/roleMiddleware');
+  app.post('/api/system/test-disconnect-db', authMiddleware, roleMiddleware(['superadmin']), async (req, res) => {
     const mongoose = require('mongoose');
     const seconds = Math.min(Math.max(Number(req.body?.seconds) || 30, 5), 120);
     try {

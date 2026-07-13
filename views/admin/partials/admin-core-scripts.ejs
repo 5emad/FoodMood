@@ -1,0 +1,96 @@
+if (!window.Swal) {
+  window.Swal = {
+    mixin: function() { return window.Swal; },
+    fire: function(opts) {
+      if (opts && opts.showCancelButton) {
+        return Promise.resolve({ isConfirmed: window.confirm((opts.text || opts.title || '')) });
+      }
+      if (opts && opts.icon !== 'success') window.alert((opts.text || opts.title || ''));
+      return Promise.resolve({ isConfirmed: true });
+    },
+  };
+}
+
+function api(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  return fetch(url, { ...options, credentials: 'same-origin', headers }).then(async r => {
+    if (r.status === 401) { window.location.replace('/login?expired=1'); throw new Error('401'); }
+    const text = await r.text();
+    try { return JSON.parse(text); } catch { return { success: false, message: text || `HTTP ${r.status}` }; }
+  });
+}
+
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderPaginationBar(pagination, goFnName) {
+  const totalPages = Number(pagination.totalPages || 1);
+  const current = Number(pagination.page || 1);
+  const total = Number(pagination.total || 0);
+  if (totalPages <= 1) {
+    return total ? `<div class="table-footer-meta"><span class="page-summary">${total.toLocaleString('fa-IR')} رکورد</span></div>` : '';
+  }
+  const pages = [];
+  const start = Math.max(1, current - 2);
+  const end = Math.min(totalPages, current + 2);
+  for (let page = start; page <= end; page += 1) pages.push(page);
+  return `<div class="pagination-bar">
+    <button class="page-btn" ${current <= 1 ? 'disabled' : ''} onclick="${goFnName}(${current - 1})">قبلی</button>
+    ${pages.map(page => `<button class="page-btn ${page === current ? 'active' : ''}" onclick="${goFnName}(${page})">${page.toLocaleString('fa-IR')}</button>`).join('')}
+    <button class="page-btn" ${current >= totalPages ? 'disabled' : ''} onclick="${goFnName}(${current + 1})">بعدی</button>
+    <span class="page-summary">${Number(pagination.total || 0).toLocaleString('fa-IR')} رکورد</span>
+  </div>`;
+}
+
+const dialog = Swal.mixin({
+  customClass: { popup: 'swal2-rtl' },
+  confirmButtonText: 'باشه',
+  cancelButtonText: 'انصراف',
+  buttonsStyling: true,
+  reverseButtons: true,
+  heightAuto: false,
+});
+
+function notify(message, icon = 'success', title = '') {
+  return dialog.fire({
+    icon,
+    title: title || (icon === 'success' ? 'انجام شد' : 'خطا'),
+    text: message,
+    timer: icon === 'success' ? 2200 : undefined,
+    timerProgressBar: icon === 'success',
+  });
+}
+
+function showSuperToken(token) {
+  return dialog.fire({
+    icon: 'warning',
+    title: 'توکن سوپر ادمین ساخته شد',
+    html: `<div style="text-align:right;line-height:1.9">این توکن فقط همین یک بار نمایش داده می‌شود و در دیتابیس قابل بازیابی نیست.</div><pre style="direction:ltr;text-align:left;background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-all">${esc(token)}</pre>`,
+    confirmButtonText: 'متوجه شدم',
+    timer: undefined,
+    timerProgressBar: false,
+  });
+}
+
+async function confirmAction({ title, text, confirmText = 'تایید', icon = 'question' }) {
+  const result = await dialog.fire({
+    icon,
+    title,
+    text,
+    showCancelButton: true,
+    confirmButtonText: confirmText,
+    cancelButtonText: 'انصراف',
+  });
+  return result.isConfirmed;
+}
+
+const todayEl = document.getElementById('todayDate');
+if (todayEl) {
+  todayEl.textContent = new Date().toLocaleDateString('fa-IR-u-ca-persian', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}

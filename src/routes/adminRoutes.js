@@ -23,6 +23,7 @@ const backupUpload = multer({
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
 
 router.get('/dashboard', AdminController.dashboard);
+router.get('/workspace-settings', AdminController.getWorkspaceSettings);
 router.get('/reports/access', AdminController.getReportsAccess);
 router.get('/reports/months', AdminController.getReportMonths);
 router.get('/reports', AdminController.getReports);
@@ -62,8 +63,8 @@ router.post('/menu-items', MenuController.addItem);
 router.put('/menu-items/:id', MenuController.updateItem);
 router.delete('/menu-items/:id', MenuController.deleteItem);
 
-router.get('/backup/export', AdminController.exportBackup);
-router.post('/backup/restore', backupRestoreLimiter, (req, res, next) => {
+router.get('/backup/export', roleMiddleware(['superadmin']), AdminController.exportBackup);
+router.post('/backup/restore', roleMiddleware(['superadmin']), backupRestoreLimiter, (req, res, next) => {
   backupUpload.single('backupFile')(req, res, (err) => {
     if (err) {
       return res.status(400).json({ success: false, message: err.message || 'خطا در آپلود فایل پشتیبان' });

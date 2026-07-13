@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../../partials/session-security') %>
+  <title>پشتیبان‌گیری — پنل سوپر ادمین</title>
+  <%- include('../../partials/head-assets', { includeSweetAlert: true }) %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="admin-body">
+
+<%- include('partials/sidebar', { activePage: 'super-backup', isSuperadmin: true, sidebarMode: 'external' }) %>
+
+<div class="main-content">
+  <header class="top-header">
+    <div class="date-chip"><i class="far fa-calendar-check"></i><span id="todayDate"></span></div>
+    <div class="header-actions">
+      <a href="/admin/dashboard" class="btn-header btn-site"><i class="fas fa-arrow-right"></i> بازگشت به داشبورد</a>
+      <a href="/logout" class="btn-header btn-logout"><i class="fas fa-sign-out-alt"></i> خروج</a>
+    </div>
+  </header>
+
+  <main class="content-wrapper">
+    <div class="page-header">
+      <div>
+        <div class="ph-badge"><i class="fas fa-database"></i> سوپر ادمین</div>
+        <div class="ph-title">پشتیبان‌گیری و بازیابی</div>
+        <div class="ph-sub">خروجی امن و بازگردانی داده‌های سامانه</div>
+      </div>
+      <i class="fas fa-database ph-icon"></i>
+    </div>
+
+    <section class="super-page-section">
+      <div class="backup-grid">
+        <div class="card backup-card">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-download" style="margin-left:8px;color:var(--primary)"></i> دریافت پشتیبان</div>
+          </div>
+          <div class="card-body">
+            <p class="backup-desc">یک فایل اختصاصی <code>.fzbackup</code> از تمام داده‌های سامانه دریافت کنید.</p>
+            <ul class="backup-features">
+              <li><i class="fas fa-lock"></i> رمزنگاری AES-256-GCM</li>
+              <li><i class="fas fa-fingerprint"></i> امضای دیجیتال</li>
+              <li><i class="fas fa-file-shield"></i> فرمت اختصاصی سامانه</li>
+            </ul>
+            <button class="btn btn-primary" id="exportBackupBtn" onclick="exportBackup(this)">
+              <i class="fas fa-cloud-download-alt"></i> دانلود فایل پشتیبان
+            </button>
+          </div>
+        </div>
+
+        <div class="card backup-card backup-card-danger">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-upload" style="margin-left:8px;color:var(--danger)"></i> بازیابی از پشتیبان</div>
+            <span class="badge badge-danger">حساس</span>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-warning">
+              <i class="fas fa-triangle-exclamation"></i>
+              بازیابی تمام داده‌های فعلی را جایگزین می‌کند. قبل از بازیابی حتماً یک نسخه پشتیبان جدید بگیرید.
+            </div>
+            <div class="backup-upload-zone" id="backupDropZone">
+              <input type="file" id="backupFileInput" accept=".fzbackup" hidden>
+              <i class="fas fa-file-archive backup-upload-icon"></i>
+              <div class="backup-upload-title">فایل پشتیبان را انتخاب کنید</div>
+              <div class="backup-upload-sub">فقط فایل‌های <code>.fzbackup</code></div>
+              <button type="button" class="btn btn-outline btn-sm mt-2" onclick="document.getElementById('backupFileInput').click()">
+                <i class="fas fa-folder-open"></i> انتخاب فایل
+              </button>
+              <div id="backupFileName" class="backup-file-name"></div>
+            </div>
+            <button class="btn btn-danger btn-w100 mt-3" id="restoreBackupBtn" onclick="restoreBackup(this)" disabled>
+              <i class="fas fa-rotate-left"></i> بازیابی داده‌ها
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script>
+<%- include('partials/admin-core-scripts') %>
+
+(function initBackupTab() {
+  const input = document.getElementById('backupFileInput');
+  const nameEl = document.getElementById('backupFileName');
+  const restoreBtn = document.getElementById('restoreBackupBtn');
+  if (!input) return;
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) { nameEl.textContent = ''; restoreBtn.disabled = true; return; }
+    if (!file.name.toLowerCase().endsWith('.fzbackup')) {
+      notify('فقط فایل پشتیبان سامانه (.fzbackup) قابل قبول است.', 'error');
+      input.value = ''; nameEl.textContent = ''; restoreBtn.disabled = true; return;
+    }
+    nameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} کیلوبایت)`;
+    restoreBtn.disabled = false;
+  });
+})();
+
+async function exportBackup(btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال آماده‌سازی...';
+  try {
+    const res = await fetch('/api/admin/backup/export', { credentials: 'same-origin' });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); notify(err.message || 'خطا در ساخت پشتیبان', 'error'); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sazman-food-backup-${new Date().toISOString().slice(0, 10)}.fzbackup`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify('فایل پشتیبان با موفقیت دانلود شد.', 'success');
+  } catch { notify('خطا در دانلود پشتیبان', 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> دانلود فایل پشتیبان'; }
+}
+
+async function restoreBackup(btn) {
+  const input = document.getElementById('backupFileInput');
+  const file = input?.files?.[0];
+  if (!file) { notify('ابتدا فایل پشتیبان را انتخاب کنید.', 'warning'); return; }
+  if (!(await confirmAction({ title: 'بازیابی کامل داده‌ها؟', confirmText: 'بله، بازیابی کن', icon: 'warning' }))) return;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال بازیابی...';
+  try {
+    const form = new FormData();
+    form.append('backupFile', file);
+    const res = await fetch('/api/admin/backup/restore', { method: 'POST', credentials: 'same-origin', body: form });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    const data = await res.json().catch(() => ({ success: false }));
+    if (data.success) { notify(data.message || 'بازیابی انجام شد.', 'success'); setTimeout(() => window.location.reload(), 1800); }
+    else { notify(data.message || 'بازیابی ناموفق بود', 'error'); btn.disabled = false; }
+  } catch { notify('خطا در ارسال فایل پشتیبان', 'error'); btn.disabled = false; }
+  finally { if (!btn.disabled) btn.innerHTML = '<i class="fas fa-rotate-left"></i> بازیابی داده‌ها'; }
+}
+</script>
+</body>
+</html>

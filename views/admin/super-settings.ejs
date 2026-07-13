@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../../partials/session-security') %>
+  <title>تنظیمات سامانه — پنل سوپر ادمین</title>
+  <%- include('../../partials/head-assets', { includeSweetAlert: true }) %>
+  <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
+  <script src="/js/security.js?v=5" defer></script>
+</head>
+<body class="admin-body">
+
+<%- include('partials/sidebar', { activePage: 'super-settings', isSuperadmin: true, sidebarMode: 'external' }) %>
+
+<div class="main-content">
+  <header class="top-header">
+    <div class="date-chip"><i class="far fa-calendar-check"></i><span id="todayDate"></span></div>
+    <div class="header-actions">
+      <button type="button" id="priceToggleBtn" class="btn-header btn-site" onclick="toggleUserPrices()">
+        <i class="fas fa-tags"></i> قیمت برای کاربران
+      </button>
+      <a href="/admin/dashboard" class="btn-header btn-site"><i class="fas fa-arrow-right"></i> بازگشت به داشبورد</a>
+      <a href="/logout" class="btn-header btn-logout"><i class="fas fa-sign-out-alt"></i> خروج</a>
+    </div>
+  </header>
+
+  <main class="content-wrapper">
+    <div class="page-header">
+      <div>
+        <div class="ph-badge"><i class="fas fa-sliders"></i> سوپر ادمین</div>
+        <div class="ph-title">تنظیمات سامانه</div>
+        <div class="ph-sub">نام سازمان، ظاهر، LDAP و محدودیت‌های رزرو</div>
+      </div>
+      <i class="fas fa-sliders ph-icon"></i>
+    </div>
+
+    <%- include('partials/system-settings-tab', { standalone: true }) %>
+  </main>
+</div>
+
+<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
+<script>
+<%- include('partials/admin-core-scripts') %>
+
+let appSettings = {};
+const themePresets = [
+  { id: 'purple', label: 'تم بنفش', themePrimary: '#9B6DFF', themePrimaryLight: '#C4A8FF', themePrimaryDark: '#6C3FD4', themeGradientFrom: '#1A0E38', themeGradientTo: '#2D1460' },
+  { id: 'blue', label: 'تم آبی', themePrimary: '#3B82F6', themePrimaryLight: '#93C5FD', themePrimaryDark: '#2563EB', themeGradientFrom: '#1D4ED8', themeGradientTo: '#3B82F6' },
+  { id: 'classic', label: 'تم کلاسیک', themePrimary: '#1E3A5F', themePrimaryLight: '#C9A227', themePrimaryDark: '#0F1F33', themeGradientFrom: '#0B1726', themeGradientTo: '#1E3A5F' },
+  { id: 'green', label: 'تم سبز', themePrimary: '#10B981', themePrimaryLight: '#6EE7B7', themePrimaryDark: '#047857', themeGradientFrom: '#063F31', themeGradientTo: '#0F766E' },
+  { id: 'orange', label: 'تم نارنجی', themePrimary: '#F97316', themePrimaryLight: '#FDBA74', themePrimaryDark: '#C2410C', themeGradientFrom: '#431407', themeGradientTo: '#9A3412' },
+  { id: 'red', label: 'تم قرمز', themePrimary: '#8E2A3F', themePrimaryLight: '#C96F82', themePrimaryDark: '#5C1526', themeGradientFrom: '#2A070F', themeGradientTo: '#6E1F31' },
+  { id: 'yellow', label: 'تم زرد', themePrimary: '#EAB308', themePrimaryLight: '#FDE047', themePrimaryDark: '#A16207', themeGradientFrom: '#422006', themeGradientTo: '#854D0E' },
+];
+
+async function loadSettings() {
+  const data = await api('/api/admin/settings');
+  if (!data.success) return;
+  appSettings = data.data;
+  fillSystemSettingsForm();
+  const priceToggleBtn = document.getElementById('priceToggleBtn');
+  if (priceToggleBtn) {
+    priceToggleBtn.innerHTML = appSettings.showPricesToUsers
+      ? '<i class="fas fa-tags"></i> قیمت: قابل نمایش'
+      : '<i class="fas fa-eye-slash"></i> قیمت: مخفی';
+  }
+  const sidebarOrgEl = document.getElementById('sidebarOrgName');
+  if (sidebarOrgEl) sidebarOrgEl.textContent = appSettings.organizationName || 'سامانه تغذیه';
+  refreshThemeStylesheet();
+}
+
+function refreshThemeStylesheet() {
+  const link = document.querySelector('link[href^="/css/theme-vars.css"]');
+  if (link) link.href = `/css/theme-vars.css?v=${Date.now()}`;
+}
+
+function currentThemePresetId() {
+  const keys = ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo'];
+  const normalize = value => String(value || '').toLowerCase();
+  const match = themePresets.find(preset => keys.every(key => normalize(appSettings[key]) === normalize(preset[key])));
+  return match ? match.id : '';
+}
+
+function setThemeColorInputs(preset) {
+  ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo'].forEach((key) => {
+    const input = document.getElementById(`set_${key}`);
+    if (input) input.value = preset[key];
+  });
+}
+
+function selectThemePreset(presetId) {
+  const preset = themePresets.find(item => item.id === presetId);
+  if (!preset) return;
+  Object.assign(appSettings, preset);
+  setThemeColorInputs(preset);
+  renderThemeOptions(preset.id);
+}
+
+function renderThemeOptions(activeId = currentThemePresetId()) {
+  const wrapper = document.getElementById('themeOptions');
+  if (!wrapper) return;
+  wrapper.innerHTML = themePresets.map(preset => `
+    <button type="button" class="theme-option ${preset.id === activeId ? 'active' : ''}" onclick="selectThemePreset('${preset.id}')">
+      <span class="theme-swatch" style="background:linear-gradient(135deg,${preset.themeGradientFrom},${preset.themePrimary})"></span>
+      <span>${preset.label}</span>
+    </button>
+  `).join('');
+}
+
+function fillSystemSettingsForm() {
+  const byId = id => document.getElementById(id);
+  if (!byId('set_organizationName')) return;
+  byId('set_organizationName').value = appSettings.organizationName || '';
+  if (byId('set_publicUrl')) byId('set_publicUrl').value = appSettings.publicUrl || '';
+  byId('set_maxActiveReservations').value = Number(appSettings.maxActiveReservations || 0);
+  byId('set_defaultMenuItemCapacity').value = Number(appSettings.defaultMenuItemCapacity ?? 50);
+  byId('set_themePrimary').value = appSettings.themePrimary || '#9B6DFF';
+  byId('set_themePrimaryLight').value = appSettings.themePrimaryLight || '#C4A8FF';
+  byId('set_themePrimaryDark').value = appSettings.themePrimaryDark || '#6C3FD4';
+  byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#3D0F18';
+  byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#5A1624';
+  renderThemeOptions();
+  byId('set_showPricesToUsers').value = String(Boolean(appSettings.showPricesToUsers));
+  byId('set_ldapEnabled').value = String(Boolean(appSettings.ldapEnabled));
+  byId('set_ldapUrl').value = appSettings.ldapUrl || '';
+  byId('set_ldapSecurity').value = appSettings.ldapSecurity || 'ldaps';
+  byId('set_ldapCaCertPath').value = appSettings.ldapCaCertPath || '';
+  byId('set_ldapBaseDn').value = appSettings.ldapBaseDn || '';
+  byId('set_ldapBindDn').value = appSettings.ldapBindDn || '';
+  byId('set_ldapBindPassword').value = '';
+  byId('set_ldapUserFilter').value = appSettings.ldapUserFilter || '(sAMAccountName={{username}})';
+}
+
+async function saveSystemSettings(event) {
+  event.preventDefault();
+  const body = {
+    organizationName: document.getElementById('set_organizationName').value.trim(),
+    publicUrl: document.getElementById('set_publicUrl')?.value.trim() || '',
+    maxActiveReservations: Number(document.getElementById('set_maxActiveReservations').value || 0),
+    defaultMenuItemCapacity: Number(document.getElementById('set_defaultMenuItemCapacity').value || 0),
+    themePrimary: document.getElementById('set_themePrimary').value,
+    themePrimaryLight: document.getElementById('set_themePrimaryLight').value,
+    themePrimaryDark: document.getElementById('set_themePrimaryDark').value,
+    themeGradientFrom: document.getElementById('set_themeGradientFrom').value,
+    themeGradientTo: document.getElementById('set_themeGradientTo').value,
+    showPricesToUsers: document.getElementById('set_showPricesToUsers').value === 'true',
+    ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
+    ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
+    ldapSecurity: document.getElementById('set_ldapSecurity').value,
+    ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
+    ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
+    ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
+    ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
+  };
+  const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
+  if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
+  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
+  if (data.success) {
+    appSettings = data.data;
+    fillSystemSettingsForm();
+    loadSettings();
+    notify(data.message || 'تنظیمات ذخیره شد.');
+  } else {
+    notify(data.message || 'خطا در ذخیره تنظیمات', 'error');
+  }
+}
+
+async function toggleUserPrices() {
+  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ showPricesToUsers: !appSettings.showPricesToUsers }) });
+  if (data.success) { appSettings = data.data; loadSettings(); }
+  else notify(data.message || 'خطا', 'error');
+}
+
+async function testLdap(btn) {
+  const badge = document.getElementById('ldapStatusBadge');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تست...';
+  badge.className = 'badge badge-gray';
+  badge.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="font-size:.45rem"></i> در حال بررسی...';
+  try {
+    const body = {
+      ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
+      ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
+      ldapSecurity: document.getElementById('set_ldapSecurity').value,
+      ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
+      ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
+      ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
+      ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
+    };
+    const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
+    if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
+    const data = await api('/api/admin/settings/test-ldap', { method: 'POST', body: JSON.stringify(body) });
+    if (data.success) {
+      badge.className = 'badge badge-success';
+      badge.innerHTML = '<i class="fas fa-check-circle" style="font-size:.7rem"></i> متصل';
+      notify(data.message, 'success', 'LDAP');
+    } else {
+      badge.className = 'badge badge-danger';
+      badge.innerHTML = '<i class="fas fa-times-circle" style="font-size:.7rem"></i> قطع';
+      notify(data.message, 'error', 'LDAP — خطا');
+    }
+  } catch {
+    badge.className = 'badge badge-danger';
+    badge.innerHTML = '<i class="fas fa-times-circle" style="font-size:.7rem"></i> خطا';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-plug"></i> تست اتصال';
+}
+
+loadSettings();
+</script>
+</body>
+</html>

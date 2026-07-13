@@ -33,6 +33,18 @@ function publicSettings(settings) {
   };
 }
 
+/** Safe subset for regular admin dashboard — no LDAP, URLs, or secrets */
+function adminWorkspaceSettings(settings) {
+  const raw = settings && settings.toObject
+    ? settings.toObject({ getters: false, virtuals: false })
+    : { ...(settings || {}) };
+  return {
+    organizationName: raw.organizationName || 'سامانه تغذیه',
+    defaultMenuItemCapacity: Number(raw.defaultMenuItemCapacity ?? 20),
+    showPricesToUsers: raw.showPricesToUsers !== false,
+  };
+}
+
 async function getOrCreateSettings() {
   return AppSetting.findOneAndUpdate(
     { key: 'default' },
@@ -49,6 +61,7 @@ async function getSettingsLean() {
 module.exports = {
   defaultSettings,
   publicSettings,
+  adminWorkspaceSettings,
   getOrCreateSettings,
   getSettingsLean,
 };
