@@ -5,6 +5,7 @@ const {
   isLocalOrigin,
   shouldSkipCanonicalRedirect,
   buildAppPath,
+  prefersHttps,
 } = require('../helpers/AppUrlHelper');
 
 async function appUrlMiddleware(req, res, next) {
@@ -33,6 +34,15 @@ async function canonicalHostMiddleware(req, res, next) {
     const configured = await getConfiguredPublicUrl();
     const current = requestOrigin(req);
     if (!configured || configured === current) return next();
+    if (!prefersHttps()) {
+      try {
+        const configuredUrl = new URL(configured);
+        const currentUrl = new URL(current);
+        if (configuredUrl.protocol !== currentUrl.protocol) return next();
+      } catch {
+        return next();
+      }
+    }
     if (process.env.NODE_ENV !== 'production' && isLocalOrigin(current) && process.env.FORCE_APP_URL !== 'true') {
       return next();
     }

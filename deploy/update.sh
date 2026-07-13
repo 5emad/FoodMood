@@ -151,6 +151,7 @@ apply_update() {
 
   log_info "نصب وابستگی‌ها..."
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
 
   migrate_systemd_service
 
@@ -193,6 +194,17 @@ migrate_env_keys() {
 
   ensure_env_key ANNOUNCEMENT_ENCRYPTION_KEY
   ensure_env_key LDAP_ENCRYPTION_KEY
+
+  if ! grep -q '^TRUST_TLS=' "$env_file" 2>/dev/null; then
+    if grep -q '^APP_URL=https://' "$env_file" 2>/dev/null; then
+      echo 'TRUST_TLS=true' >> "$env_file"
+    else
+      echo 'TRUST_TLS=false' >> "$env_file"
+    fi
+    chown "$APP_USER:$APP_USER" "$env_file"
+    chmod 600 "$env_file"
+    log_warn "TRUST_TLS به .env اضافه شد (برای HTTP باید false باشد)"
+  fi
 
   if ! grep -q '^LOG_DIR=' "$env_file" 2>/dev/null; then
     echo 'LOG_DIR=/var/log/foodmood' >> "$env_file"

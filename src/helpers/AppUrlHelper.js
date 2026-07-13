@@ -4,12 +4,24 @@ let cachedPublicUrl = '';
 let cacheExpiresAt = 0;
 const CACHE_MS = 30 * 1000;
 
+function prefersHttps() {
+  if (process.env.TRUST_TLS === 'true') return true;
+  return /^https:\/\//i.test(process.env.APP_URL || '');
+}
+
+function defaultScheme() {
+  return prefersHttps() ? 'https' : 'http';
+}
+
 function normalizePublicUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   try {
-    const withProtocol = raw.includes('://') ? raw : `https://${raw}`;
+    const withProtocol = raw.includes('://') ? raw : `${defaultScheme()}://${raw}`;
     const url = new URL(withProtocol);
+    if (!prefersHttps() && url.protocol === 'https:' && !/^https:\/\//i.test(raw)) {
+      url.protocol = 'http:';
+    }
     return `${url.protocol}//${url.host}`;
   } catch {
     return '';
@@ -87,6 +99,8 @@ function shouldSkipCanonicalRedirect(req) {
 
 module.exports = {
   normalizePublicUrl,
+  prefersHttps,
+  defaultScheme,
   requestOrigin,
   getConfiguredPublicUrl,
   refreshPublicUrlCache,

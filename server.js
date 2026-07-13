@@ -89,6 +89,8 @@ app.use(helmet({
     },
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: trustTls ? { policy: 'same-origin' } : false,
+  crossOriginResourcePolicy: trustTls ? { policy: 'same-origin' } : false,
   frameguard:   { action: 'deny' },
   hsts:         trustTls ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   noSniff:      true,
@@ -272,14 +274,16 @@ async function runPostConnectTasks() {
   const { ensureCurrentWeek }                       = require('./src/controllers/AdminController');
   const { finalizeExpiredOrders, ensureOrderNumbers } = require('./src/helpers/OrderStatusHelper');
   const AppSetting = require('./src/models/AppSetting');
-  const { normalizePublicUrl, refreshPublicUrlCache } = require('./src/helpers/AppUrlHelper');
+  const { normalizePublicUrl, refreshPublicUrlCache, prefersHttps } = require('./src/helpers/AppUrlHelper');
   const { refreshOriginPublicUrlCache } = require('./src/middleware/originGuard');
 
   if (process.env.APP_URL) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean();
-    if (!settings?.publicUrl) {
-      const publicUrl = normalizePublicUrl(process.env.APP_URL);
-      if (publicUrl) {
+    const publicUrl = normalizePublicUrl(process.env.APP_URL);
+    if (publicUrl) {
+      const stored = normalizePublicUrl(settings?.publicUrl || '');
+      const shouldSync = !stored || (!prefersHttps() && stored !== publicUrl);
+      if (shouldSync) {
         await AppSetting.updateOne({ key: 'default' }, { $set: { publicUrl } }, { upsert: true });
         refreshPublicUrlCache(publicUrl);
         await refreshOriginPublicUrlCache();
