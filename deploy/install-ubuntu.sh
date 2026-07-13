@@ -1,16 +1,31 @@
 #!/usr/bin/env bash
 # FoodMood automated installer for Ubuntu/Debian
-# From project root:
-#   sudo bash deploy/install-ubuntu.sh              # full interactive (English)
-#   sudo bash deploy/install-ubuntu.sh --quick      # MongoDB only, then auto (default via bootstrap)
+#
+# Quick (no prompts — auto MongoDB credentials, shown at end):
+#   sudo bash deploy/install-ubuntu.sh --quick
+#
+# Quick with your MongoDB credentials:
+#   sudo MONGO_USER=foodadmin MONGO_PASS='YourPass123!' bash deploy/install-ubuntu.sh --quick
+#   sudo bash deploy/install-ubuntu.sh --quick --mongo-user foodadmin --mongo-pass 'YourPass123!'
+#
+# Full interactive:
+#   sudo bash deploy/install-ubuntu.sh
 set -euo pipefail
 
 trap 'echo -e "\033[0;31m[✗]\033[0m Install stopped at line ${LINENO} (exit $?)" >&2' ERR
 
 QUICK_MODE=0
-for arg in "$@"; do
-  case "$arg" in
-    --quick|-q) QUICK_MODE=1 ;;
+ASK_MONGO=0
+CLI_MONGO_USER=""
+CLI_MONGO_PASS=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quick|-q) QUICK_MODE=1; shift ;;
+    --ask-mongo) ASK_MONGO=1; shift ;;
+    --mongo-user) CLI_MONGO_USER="$2"; shift 2 ;;
+    --mongo-pass) CLI_MONGO_PASS="$2"; shift 2 ;;
+    *) shift ;;
   esac
 done
 
@@ -51,8 +66,40 @@ require_interactive_tty() {
     exit 1
   fi
   if [[ ! -t 0 ]]; then
-    exec 0</dev/tty
+    exec 0</dev/tty 2>/dev/null || true
   fi
+}
+
+rand_mongo_password() {
+  openssl rand -base64 18 | tr -d '/+=' | cut -c1-16
+}
+
+resolve_quick_mongo_credentials() {
+  if [[ -n "$CLI_MONGO_USER" ]]; then
+    MONGO_USER="$CLI_MONGO_USER"
+  fi
+  if [[ -n "$CLI_MONGO_PASS" ]]; then
+    MONGO_PASS="$CLI_MONGO_PASS"
+  fi
+
+  if [[ -n "${MONGO_USER:-}" && -n "${MONGO_PASS:-}" ]]; then
+    log_ok "Using provided MongoDB credentials (user: ${MONGO_USER})."
+    return
+  fi
+
+  if [[ "$ASK_MONGO" -eq 1 ]]; then
+    require_interactive_tty
+    log_info "Enter MongoDB credentials:"
+    echo -e "${DIM}    Type username, Enter, then password, Enter. Paste one field at a time.${NC}"
+    echo ""
+    prompt_required MONGO_USER "MongoDB username"
+    prompt_password_once MONGO_PASS "MongoDB password"
+    return
+  fi
+
+  MONGO_USER="${MONGO_USER:-foodadmin}"
+  MONGO_PASS="${MONGO_PASS:-$(rand_mongo_password)!Fm9}"
+  log_info "MongoDB credentials auto-generated (user: ${MONGO_USER}) — shown once at end of install."
 }
 
 trim_spaces() {
@@ -100,8 +147,9 @@ show_install_roadmap() {
   done
   echo ""
   if [[ "$QUICK_MODE" -eq 1 ]]; then
-    echo -e "${CYAN}[*]${NC} ${BOLD}Quick mode${NC}: only MongoDB username and password are asked."
-    echo -e "${CYAN}[*]${NC} Nginx on server IP, UFW, hardening, and superadmin — automatic."
+    echo -e "${CYAN}[*]${NC} ${BOLD}Quick mode${NC}: zero prompts — install runs automatically."
+    echo -e "${CYAN}[*]${NC} MongoDB credentials are auto-generated (or pass MONGO_USER / MONGO_PASS)."
+    echo -e "${CYAN}[*]${NC} Custom creds: ${DIM}sudo MONGO_USER=x MONGO_PASS=y bash bootstrap.sh${NC}"
     echo -e "${YELLOW}[!]${NC} If there is no output for several minutes, apt or npm is still running — ${BOLD}do not interrupt${NC}."
     echo ""
   fi
@@ -346,27 +394,22 @@ collect_web_ssl_options() {
 }
 
 collect_inputs() {
-  require_interactive_tty
-
   if [[ "$QUICK_MODE" -eq 1 ]]; then
-    log_info "Quick install — enter MongoDB credentials, then all steps run automatically."
-    echo -e "${YELLOW}${BOLD}  ▶ Type username, press Enter, then password, press Enter.${NC}"
-    echo -e "${DIM}    Paste one field at a time (not both on one line).${NC}"
-    echo ""
-    prompt_required MONGO_USER "MongoDB username"
-    prompt_password_once MONGO_PASS "MongoDB password"
+    resolve_quick_mongo_credentials
     detect_ssh_port
     CREATE_SUPERADMIN=1
     SUPERADMIN_USER="superadmin"
-    SUPERADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-14)@Fm9"
+    SUPERADMIN_PASS="$(rand_mongo_password)@Fm9"
     USE_NGINX=1
     USE_DOMAIN=0
     SERVER_IP="$(detect_server_ip)"
     ENABLE_FIREWALL=1
     ENABLE_HARDENING=1
-    log_ok "Inputs collected. Continuing automatically — Nginx http://${SERVER_IP}, UFW, hardening, superadmin ${SUPERADMIN_USER}"
+    log_ok "Ready — continuing automatically: Nginx http://${SERVER_IP}, UFW, hardening, superadmin ${SUPERADMIN_USER}"
     return
   fi
+
+  require_interactive_tty
 
   red_box $'IMPORTANT:\n   Store database and app secrets in your org password vault OFF this server.\n   Without them, recovery may be impossible.\n   No password file is written on disk — only this terminal shows secrets once.'
 
