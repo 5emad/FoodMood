@@ -9,7 +9,7 @@
 # روی سرور:
 #   tar -xzf food-install-*.tar.gz
 #   cd food
-#   sudo bash deploy/install-ubuntu.sh --quick
+#   sudo bash deploy/install.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,4 +43,4 @@ echo "انتقال و نصب روی سرور:"
 echo "  scp dist/${PKG_NAME}.tar.gz user@server:/tmp/"
 echo "  ssh user@server"
 echo "  cd /tmp && tar -xzf ${PKG_NAME}.tar.gz && cd food"
-echo "  sudo bash deploy/install-ubuntu.sh --quick"
+echo "  sudo bash deploy/install.sh"

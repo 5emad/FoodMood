@@ -18,26 +18,26 @@ npm start
 
 ## نصب پروداکشن لینوکس
 
-سه روش نصب وجود دارد — همه Node.js و MongoDB را خودشان نصب و پیکربندی می‌کنند:
+نصب با **یک فایل** و **بدون هیچ سوالی** انجام می‌شود — Node.js، MongoDB، Nginx، فایروال و هاردنینگ همه خودکار:
 
-**۱) نصب یک‌خطی از GitHub روی سرور خام (پیشنهادی):**
+**نصب یک‌خطی از GitHub روی سرور خام:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash -s -- --quick
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash
 ```
 
-فقط یوزر و پسورد دیتابیس را می‌پرسد؛ سپس **دامنه و گواهی SSL** (اختیاری)، **فایروال UFW** (SSH + پورت‌های وب)، و **هاردنینگ پایه** خودکار انجام می‌شود. رمزها فقط یک‌بار در ترمینال نمایش داده می‌شوند.
+هیچ سوالی پرسیده نمی‌شود. یوزر/پسورد دیتابیس و سوپرادمین خودکار ساخته می‌شوند و **فقط یک‌بار در پایان نصب** در ترمینال نمایش داده می‌شوند — آن‌ها را در خزانه رمز سازمانی ذخیره کنید.
 
-**۲) نصب سریع از سورس محلی:**
+**نصب از سورس محلی:**
 
 ```bash
-sudo bash deploy/install-ubuntu.sh --quick
+sudo bash deploy/install.sh
 ```
 
-**۳) نصب تعاملی کامل (دامنه، HTTPS، انتخاب نام سوپرادمین):**
+**با یوزر/پسورد دلخواه دیتابیس:**
 
 ```bash
-sudo bash deploy/install-ubuntu.sh
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo MONGO_USER=foodadmin MONGO_PASS='YourPass123!' bash
 ```
 
 **ساخت بسته قابل‌حمل (tar.gz) برای سرورهای بدون دسترسی به اینترنت:**

@@ -43,25 +43,38 @@
 
 ## نصب سریع روی لینوکس
 
-### روش خودکار (توصیه‌شده) — یک اسکریپت، همه‌چیز آماده
+### روش خودکار (توصیه‌شده) — یک فایل، بدون هیچ سوالی
 
-پروژه را روی سرور Ubuntu/Debian کپی کنید، سپس:
+روی سرور خام Ubuntu/Debian فقط یک دستور:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash
+```
+
+یا اگر سورس روی سرور است:
 
 ```bash
 cd food
-chmod +x deploy/install-ubuntu.sh
-sudo bash deploy/install-ubuntu.sh
+sudo bash deploy/install.sh
 ```
 
-اسکریپت به‌صورت تعاملی:
+اسکریپت **هیچ سوالی نمی‌پرسد** و همه‌چیز را خودکار انجام می‌دهد:
 
 | مرحله | کار |
 |--------|-----|
-| دیتابیس | نام کاربری و رمز MongoDB را می‌پرسد (با **هشدار قرمز** برای نگه‌داری امن) |
-| Nginx | نصب پروکسی معکوس (اختیاری) |
-| دامنه + HTTPS | در صورت انتخاب: نام دامنه + Let's Encrypt یا گواهی اختصاصی |
+| دیتابیس | یوزر `foodadmin` + پسورد قوی خودکار (یا مقدار شما از env/flag) |
 | سامانه | Node.js 20، MongoDB 7، Chromium (PDF)، npm install، systemd |
-| سوپرادمین | ساخت حساب اولیه (اختیاری) |
+| وب | Nginx روی IP سرور (`http://IP`) |
+| امنیت | UFW + هاردنینگ (sysctl، fail2ban، auto-updates) |
+| سوپرادمین | حساب `superadmin` با پسورد خودکار |
+
+**همه رمزها فقط یک‌بار در پایان نصب** در ترمینال نمایش داده می‌شوند.
+
+**یوزر/پسورد دلخواه دیتابیس:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo MONGO_USER=foodadmin MONGO_PASS='YourPass123!' bash
+```
 
 **خروجی مهم پس از نصب:**
 
@@ -83,11 +96,11 @@ sudo bash /opt/food/deploy/verify-install.sh
 
 **سه حالت دسترسی:**
 
-| انتخاب شما | آدرس نهایی |
+| حالت | آدرس نهایی |
 |------------|------------|
-| بدون Nginx | `http://IP:3000` |
-| Nginx + IP | `http://IP` |
-| Nginx + دامنه + HTTPS | `https://دامنه` |
+| پیش‌فرض (Nginx + IP) | `http://IP` |
+| `--no-firewall` / `--no-hardening` | همان، بدون UFW/هاردنینگ |
+| دامنه + HTTPS | دستی پس از نصب (گواهی + کانفیگ Nginx) |
 
 ---
 
@@ -128,7 +141,7 @@ sudo bash /opt/food/deploy/update.sh --status
 ### نصب اولیه نسخه مشخص
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash -s -- --tag v1.1.0 --quick
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash -s -- --tag v1.3.0
 ```
 
 ---
