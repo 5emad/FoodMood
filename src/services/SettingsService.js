@@ -4,6 +4,7 @@ const defaultSettings = {
   key: 'default',
   showPricesToUsers: true,
   organizationName: 'سامانه تغذیه',
+  publicUrl: '',
   maxActiveReservations: 0,
   defaultMenuItemCapacity: 20,
   themePrimary: '#9B6DFF',

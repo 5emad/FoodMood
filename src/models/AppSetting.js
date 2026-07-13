@@ -15,6 +15,11 @@ const appSettingSchema = new mongoose.Schema({
     default: 'سامانه تغذیه',
     trim: true,
   },
+  publicUrl: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   maxActiveReservations: {
     type: Number,
     default: 0,

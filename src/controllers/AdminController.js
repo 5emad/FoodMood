@@ -21,7 +21,8 @@ const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks } = require('../s
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
 const { renderReportHtml } = require('../views/ReportPdfView');
-const { nextReportNumber } = require('../helpers/ReportNumberHelper');
+const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
+const { refreshOriginPublicUrlCache } = require('../middleware/originGuard');
 
 function firstString(value) {
   if (Array.isArray(value)) return value.find((item) => typeof item === 'string') || '';
@@ -47,6 +48,18 @@ function passwordPolicyError(role) {
 function meetsPasswordPolicy(password, role) {
   const isSuper = role === 'superadmin';
   return validatePasswordPolicy(password, { minLength: isSuper ? 12 : 8, requireSymbol: isSuper });
+}
+
+const ROLE_RANK = { user: 0, admin: 1, superadmin: 2 };
+
+function isAdminRole(role) {
+  return role === 'admin' || role === 'superadmin';
+}
+
+async function countActiveAdmins(excludeId = null) {
+  const filter = { role: { $in: ['admin', 'superadmin'] }, status: 'active' };
+  if (excludeId) filter._id = { $ne: excludeId };
+  return User.countDocuments(filter);
 }
 
 function generateOneTimeSuperToken() {
@@ -116,6 +129,10 @@ class AdminController {
       if (req.body.organizationName !== undefined) {
         update.organizationName = String(req.body.organizationName || '').trim() || defaultSettings.organizationName;
       }
+      if (req.body.publicUrl !== undefined) {
+        const raw = String(req.body.publicUrl || '').trim();
+        update.publicUrl = raw ? normalizePublicUrl(raw) : '';
+      }
       if (req.body.maxActiveReservations !== undefined) {
         update.maxActiveReservations = Math.max(Number(req.body.maxActiveReservations || 0), 0);
       }
@@ -151,6 +168,10 @@ class AdminController {
         { $set: update },
         { new: true }
       );
+      if (update.publicUrl !== undefined) {
+        refreshPublicUrlCache(settings.publicUrl);
+        await refreshOriginPublicUrlCache();
+      }
       res.json({ success: true, message: 'تنظیمات بروزرسانی شد', data: publicSettings(settings) });
     } catch (error) {
       next(error);
@@ -189,6 +210,30 @@ class AdminController {
         success: true,
         data: users,
         pagination: paginationMeta({ ...pageInfo, total }),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getSystemLogs(req, res, next) {
+    try {
+      const { readLogsPaginated, readLifecycleStats } = require('../services/SystemLogService');
+      const { getHealthStatus } = require('../helpers/HealthState');
+      const page = Number(req.query.page) || 1;
+      const perPage = Number(req.query.perPage) || undefined;
+      const level = String(req.query.level || '').toLowerCase();
+      const { logs, pagination } = readLogsPaginated({ page, perPage, level });
+      res.json({
+        success: true,
+        data: {
+          health: getHealthStatus(),
+          lifecycle: readLifecycleStats(),
+          logs,
+          pagination,
+          logDir: process.env.LOG_DIR || '',
+          testMode: process.env.ALLOW_SYSTEM_TEST === 'true',
+        },
       });
     } catch (error) {
       next(error);
@@ -356,6 +401,29 @@ class AdminController {
         }
       }
 
+      const isSelf = String(req.user.id) === String(id);
+      const nextRole = normalizedRole || user.role;
+      const nextStatus = normalizedStatus || user.status;
+
+      if (isSelf) {
+        if (normalizedStatus === 'inactive') {
+          return res.status(400).json({ message: 'امکان غیرفعال‌سازی حساب خودتان وجود ندارد' });
+        }
+        if (normalizedRole && ROLE_RANK[normalizedRole] < ROLE_RANK[user.role]) {
+          return res.status(400).json({ message: 'امکان تنزل نقش حساب خودتان وجود ندارد' });
+        }
+      }
+
+      const removesAdminAccess = isAdminRole(user.role) && (
+        nextStatus === 'inactive' || !isAdminRole(nextRole)
+      );
+      if (removesAdminAccess) {
+        const remainingAdmins = await countActiveAdmins(id);
+        if (remainingAdmins === 0) {
+          return res.status(400).json({ message: 'حداقل یک مدیر فعال در سامانه باید باقی بماند' });
+        }
+      }
+
       Object.assign(user, {
         username: normalizedUsername || user.username,
         fullName: normalizedFullName || user.fullName,
@@ -397,6 +465,13 @@ class AdminController {
 
       if (user.role === 'superadmin' && req.user.role !== 'superadmin') {
         return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب سوپر ادمین را حذف کند' });
+      }
+
+      if (isAdminRole(user.role)) {
+        const remainingAdmins = await countActiveAdmins(id);
+        if (remainingAdmins === 0) {
+          return res.status(400).json({ message: 'حداقل یک مدیر فعال در سامانه باید باقی بماند' });
+        }
       }
 
       await User.findByIdAndDelete(id);

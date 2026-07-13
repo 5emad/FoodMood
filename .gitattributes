@@ -1,3 +1,4 @@
 # اسکریپت‌های شل باید همیشه LF باشند وگرنه روی لینوکس اجرا نمی‌شوند
 *.sh text eol=lf
 deploy/food.service text eol=lf
+deploy/foodmood.service text eol=lf

@@ -29,6 +29,7 @@ router.get('/settings', roleMiddleware(['superadmin']), AdminController.getSetti
 router.put('/settings', roleMiddleware(['superadmin']), AdminController.updateSettings);
 router.post('/settings', roleMiddleware(['superadmin']), AdminController.updateSettings);
 router.post('/settings/test-ldap', roleMiddleware(['superadmin']), AdminController.testLdapConnection);
+router.get('/system/logs', roleMiddleware(['superadmin']), AdminController.getSystemLogs);
 router.get('/security/summary', roleMiddleware(['superadmin']), AdminController.getSecuritySummary);
 router.post('/security/users/:id/unlock', roleMiddleware(['superadmin']), AdminController.unlockUser);
 router.post('/security/super-token/reset', roleMiddleware(['superadmin']), AdminController.resetOwnSuperToken);

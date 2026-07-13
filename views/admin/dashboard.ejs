@@ -40,9 +40,10 @@
   </ul>
   <div class="sidebar-footer">
     <div class="user-avatar">م</div>
-    <div>
+    <div class="sidebar-footer-info">
       <span class="sidebar-user-name">مدیر سیستم</span>
       <span class="sidebar-user-role">دسترسی ارشد</span>
+      <span class="sidebar-app-version">نسخه <%= appVersionMajorFa %><% if (appVersion && String(appVersion) !== String(appVersionMajor)) { %> (<%= appVersionFa %>)<% } %></span>
     </div>
   </div>
 </aside>
@@ -107,9 +108,7 @@
             </select>
           </div>
         </div>
-        <div id="monthlyReportWrap">
-          <div class="empty-state"><i class="fas fa-calendar"></i><p>یک ماه را انتخاب کنید.</p></div>
-        </div>
+        <div id="monthlyReportWrap"></div>
       </div>
     </section>
 
@@ -178,6 +177,37 @@
       <div class="card">
         <div class="card-header"><div class="card-title">آخرین لاگ‌های امنیتی</div></div>
         <div class="card-body"><div class="table-wrap" id="securityLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-server" style="margin-left:8px;color:var(--primary)"></i> لاگ‌های سیستمی</div>
+          <span id="systemHealthBadge" class="badge badge-success">سالم</span>
+        </div>
+        <div class="card-body">
+          <p class="section-sub" style="margin-bottom:12px">استارت/استاپ سرور، قطع و وصل دیتابیس — فقط برای سوپر ادمین. کاربران صفحه آرامش‌بخش «در دسترس نیست» می‌بینند.</p>
+          <div class="stat-grid" id="lifecycleStats" style="margin-bottom:16px">
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-play"></i></div><div><div class="stat-value" id="lcServerStarts">0</div><div class="stat-label">استارت سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-stop"></i></div><div><div class="stat-value" id="lcServerStops">0</div><div class="stat-label">استاپ سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-database"></i></div><div><div class="stat-value" id="lcDbConnects">0</div><div class="stat-label">اتصال دیتابیس</div></div></div>
+            <div class="stat-card"><div class="stat-icon red"><i class="fas fa-plug-circle-xmark"></i></div><div><div class="stat-value" id="lcDbDisconnects">0</div><div class="stat-label">قطع دیتابیس</div></div></div>
+          </div>
+          <div id="systemTestWrap" style="display:none;margin-bottom:14px">
+            <button class="btn btn-warning btn-sm" onclick="runDbOutageTest(this)"><i class="fas fa-vial"></i> تست قطعی دیتابیس (۳۰ ثانیه)</button>
+            <span class="text-muted" style="font-size:.8rem;margin-right:10px">فقط حالت تست — صفحه «در دسترس نیست» را در تب ناشناس بررسی کنید</span>
+          </div>
+          <div class="d-flex gap-2" style="flex-wrap:wrap;margin-bottom:12px;align-items:center">
+            <select class="form-control" id="systemLogLevelFilter" style="width:160px" onchange="systemLogLevelFilterChanged()">
+              <option value="">همه سطوح</option>
+              <option value="error">فقط خطا</option>
+              <option value="warn">فقط هشدار</option>
+              <option value="info">فقط اطلاع</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="loadSystemLogs()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+          </div>
+          <div class="table-wrap" id="systemLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+          <div id="systemLogsPagination" class="d-flex gap-2" style="flex-wrap:wrap;justify-content:center;margin-top:14px"></div>
+        </div>
       </div>
     </section>
     <% } %>
@@ -399,6 +429,11 @@
                 <input class="form-control" id="set_organizationName" placeholder="مثال: شرکت فرازمان">
               </div>
               <div class="form-group">
+                <label class="form-label">آدرس عمومی سامانه (دامنه)</label>
+                <input class="form-control" id="set_publicUrl" placeholder="https://food.example.com" dir="ltr" style="text-align:left">
+                <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">همان دامنه‌ای که هنگام نصب یا در APP_URL تنظیم شده است</div>
+              </div>
+              <div class="form-group">
                 <label class="form-label">حداکثر رزرو فعال هر کاربر</label>
                 <input class="form-control" id="set_maxActiveReservations" type="number" min="0" placeholder="0 = بدون محدودیت" dir="ltr" style="text-align:right">
               </div>
@@ -513,17 +548,20 @@ let weeks = [];
 let currentWeeklyData = null;
 let currentMonthlyData = null;
 const currentUserRole = '<%= user && user.role ? user.role : "" %>';
+const currentUserId = '<%= user && user.id ? user.id : "" %>';
 let orderPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
+let systemLogPagination = { page: 1, perPage: 15, total: 0, totalPages: 1 };
 let appSettings = {
   showPricesToUsers: true,
   organizationName: 'سامانه تغذیه',
+  publicUrl: '',
   maxActiveReservations: 0,
   defaultMenuItemCapacity: 50,
-  themePrimary: '#9B6DFF',
-  themePrimaryLight: '#C4A8FF',
-  themePrimaryDark: '#6C3FD4',
-  themeGradientFrom: '#1A0E38',
-  themeGradientTo: '#2D1460',
+  themePrimary: '#8E2A3F',
+  themePrimaryLight: '#B84A62',
+  themePrimaryDark: '#5A1624',
+  themeGradientFrom: '#3D0F18',
+  themeGradientTo: '#5A1624',
 };
 let currentSubTab = 'weekly';
 
@@ -615,10 +653,20 @@ function esc(value) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+function renderEmptyState({ icon = 'fa-inbox', title, desc = '' }) {
+  return `<div class="empty-state">
+    <div class="empty-state-icon"><i class="fas ${esc(icon)}"></i></div>
+    <div class="empty-state-title">${esc(title)}</div>
+    ${desc ? `<div class="empty-state-desc">${esc(desc)}</div>` : ''}
+  </div>`;
+}
 function renderPaginationBar(pagination, goFnName) {
   const totalPages = Number(pagination.totalPages || 1);
-  if (totalPages <= 1) return '';
   const current = Number(pagination.page || 1);
+  const total = Number(pagination.total || 0);
+  if (totalPages <= 1) {
+    return total ? `<div class="table-footer-meta"><span class="page-summary">${total.toLocaleString('fa-IR')} رکورد</span></div>` : '';
+  }
   const pages = [];
   const start = Math.max(1, current - 2);
   const end = Math.min(totalPages, current + 2);
@@ -746,13 +794,14 @@ function fillSystemSettingsForm() {
   const byId = id => document.getElementById(id);
   if (!byId('set_organizationName')) return;
   byId('set_organizationName').value = appSettings.organizationName || '';
+  if (byId('set_publicUrl')) byId('set_publicUrl').value = appSettings.publicUrl || '';
   byId('set_maxActiveReservations').value = Number(appSettings.maxActiveReservations || 0);
   byId('set_defaultMenuItemCapacity').value = Number(appSettings.defaultMenuItemCapacity ?? 50);
   byId('set_themePrimary').value = appSettings.themePrimary || '#9B6DFF';
   byId('set_themePrimaryLight').value = appSettings.themePrimaryLight || '#C4A8FF';
   byId('set_themePrimaryDark').value = appSettings.themePrimaryDark || '#6C3FD4';
-  byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#1A0E38';
-  byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#2D1460';
+  byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#3D0F18';
+  byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#5A1624';
   renderThemeOptions();
   byId('set_showPricesToUsers').value = String(Boolean(appSettings.showPricesToUsers));
   byId('set_ldapEnabled').value = String(Boolean(appSettings.ldapEnabled));
@@ -772,6 +821,7 @@ async function saveSystemSettings(event) {
   event.preventDefault();
   const body = {
     organizationName: document.getElementById('set_organizationName').value.trim(),
+    publicUrl: document.getElementById('set_publicUrl')?.value.trim() || '',
     maxActiveReservations: Number(document.getElementById('set_maxActiveReservations').value || 0),
     defaultMenuItemCapacity: Number(document.getElementById('set_defaultMenuItemCapacity').value || 0),
     themePrimary: document.getElementById('set_themePrimary').value,
@@ -896,6 +946,141 @@ async function loadSecurityCenter() {
         </tr>
       `).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">لاگی ثبت نشده</td></tr>'}</tbody>
     </table>`;
+
+  await loadSystemLogs();
+}
+
+function systemLogLevelFilterChanged() {
+  systemLogPagination.page = 1;
+  loadSystemLogs();
+}
+
+function systemLevelLabel(level) {
+  return { error: 'خطا', warn: 'هشدار', info: 'اطلاع' }[level] || level;
+}
+
+function systemCategoryLabel(cat) {
+  return {
+    database: 'پایگاه داده',
+    server: 'سرویس',
+    orders: 'سفارش‌ها',
+    auth: 'احراز هویت',
+    lifecycle: 'چرخه عمر',
+    api: 'رابط برنامه',
+  }[cat] || cat;
+}
+
+function systemEventLabel(event) {
+  return {
+    server_start: 'راه‌اندازی سرویس',
+    server_stop: 'توقف سرویس',
+    db_connect: 'اتصال پایگاه داده',
+    db_disconnect: 'قطع پایگاه داده',
+    db_reconnect_attempt: 'تلاش اتصال مجدد',
+    service_unavailable: 'قطعی سامانه',
+    service_restored: 'بازیابی سامانه',
+    http_error: 'خطای درخواست',
+    app_error: 'خطای برنامه',
+    unhandled_rejection: 'خطای ناهمگام',
+    uncaught_exception: 'خطای بحرانی',
+    order_job_error: 'خطای سفارش',
+    port_conflict: 'تعارض پورت',
+    bootstrap_error: 'خطای راه‌اندازی',
+    db_test_outage: 'تست قطعی',
+  }[event] || (event || 'رویداد سیستمی');
+}
+
+function goToSystemLogsPage(page) {
+  const totalPages = Number(systemLogPagination.totalPages || 1);
+  const next = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  loadSystemLogs(next);
+}
+
+async function loadSystemLogs(page) {
+  const wrap = document.getElementById('systemLogsWrap');
+  const pager = document.getElementById('systemLogsPagination');
+  const badge = document.getElementById('systemHealthBadge');
+  const testWrap = document.getElementById('systemTestWrap');
+  const levelFilter = document.getElementById('systemLogLevelFilter');
+  if (!wrap) return;
+
+  if (page) systemLogPagination.page = Number(page) || 1;
+
+  const level = levelFilter?.value || '';
+  const qs = new URLSearchParams({
+    page: String(systemLogPagination.page),
+    perPage: String(systemLogPagination.perPage),
+  });
+  if (level) qs.set('level', level);
+
+  wrap.innerHTML = '<div style="padding:32px;text-align:center"><div class="spinner"></div></div>';
+  if (pager) pager.innerHTML = '';
+
+  const data = await api(`/api/admin/system/logs?${qs.toString()}`);
+  if (!data.success) {
+    wrap.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted)">خطا در دریافت لاگ‌های سیستمی</div>';
+    return;
+  }
+  const { logs = [], health = {}, lifecycle = {}, pagination = {}, testMode = false } = data.data || {};
+  systemLogPagination = {
+    page: Number(pagination.page || systemLogPagination.page || 1),
+    perPage: Number(pagination.perPage || systemLogPagination.perPage || 15),
+    total: Number(pagination.total || 0),
+    totalPages: Number(pagination.totalPages || 1),
+  };
+  if (testWrap) testWrap.style.display = testMode ? 'block' : 'none';
+
+  const setLc = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = Number(val || 0).toLocaleString('fa-IR'); };
+  setLc('lcServerStarts', lifecycle.serverStarts);
+  setLc('lcServerStops', lifecycle.serverStops);
+  setLc('lcDbConnects', lifecycle.dbConnects);
+  setLc('lcDbDisconnects', lifecycle.dbDisconnects);
+
+  if (badge) {
+    const ok = health.healthy !== false;
+    badge.className = `badge ${ok ? 'badge-success' : 'badge-danger'}`;
+    badge.textContent = ok ? 'سالم' : 'قطعی';
+  }
+  wrap.innerHTML = `
+    <table class="table">
+      <thead><tr><th>زمان</th><th>رویداد</th><th>سطح</th><th>بخش</th><th>شرح</th><th>جزئیات فنی</th></tr></thead>
+      <tbody>${logs.map(log => `
+        <tr>
+          <td style="white-space:nowrap">${log.ts ? new Date(log.ts).toLocaleString('fa-IR') : '-'}</td>
+          <td><span class="badge badge-primary">${esc(systemEventLabel(log.event))}</span></td>
+          <td><span class="badge ${log.level === 'error' ? 'badge-danger' : log.level === 'warn' ? 'badge-warning' : 'badge-primary'}">${esc(systemLevelLabel(log.level))}</span></td>
+          <td>${esc(systemCategoryLabel(log.category))}</td>
+          <td>${esc(log.message || '-')}</td>
+          <td style="direction:ltr;font-size:.72rem;color:var(--text-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc([log.detail, log.url, log.code].filter(Boolean).join(' | '))}">${esc(log.detail || log.url || log.code || '-')}</td>
+        </tr>
+      `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">رخدادی ثبت نشده است</td></tr>'}</tbody>
+    </table>`;
+
+  if (pager) {
+    const bar = renderPaginationBar(systemLogPagination, 'goToSystemLogsPage');
+    const summary = systemLogPagination.total
+      ? `<span class="page-summary">${Number(systemLogPagination.total).toLocaleString('fa-IR')} رخداد ثبت‌شده</span>`
+      : '';
+    pager.innerHTML = bar || (summary ? `<div class="table-footer-meta">${summary}</div>` : '');
+  }
+}
+
+async function runDbOutageTest(btn) {
+  if (!(await confirmAction({
+    title: 'تست قطعی دیتابیس؟',
+    text: '۳۰ ثانیه دیتابیس قطع می‌شود. در تب ناشناس مرورگر صفحه FOODMOOD را ببینید.',
+    confirmText: 'شروع تست',
+    icon: 'warning',
+  }))) return;
+  btn.disabled = true;
+  const data = await api('/api/system/test-disconnect-db', { method: 'POST', body: JSON.stringify({ seconds: 30 }) });
+  btn.disabled = false;
+  if (data.success) {
+    notify(data.message || 'تست شروع شد');
+    setTimeout(() => { systemLogPagination.page = 1; loadSystemLogs(); }, 2000);
+  } else {
+    notify(data.message || 'تست در دسترس نیست (ALLOW_SYSTEM_TEST=true)', 'error');
+  }
 }
 
 async function unlockSecurityUser(id) {
@@ -1081,7 +1266,14 @@ function renderMonthlyTable(r) {
     && String(o?.userId?.username || '').toLowerCase() !== 'superadmin'
     && String(o?.userId?.fullName || '').toLowerCase() !== 'superadmin'
   );
-  if (!orders.length) { wrap.innerHTML = '<div class="empty-state"><p>در این ماه سفارشی یافت نشد.</p></div>'; return; }
+  if (!orders.length) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-calendar-xmark',
+      title: 'سفارشی در این ماه ثبت نشده',
+      desc: 'برای بازه انتخاب‌شده هیچ سفارشی در سامانه ثبت نشده است.',
+    });
+    return;
+  }
   const userMap = {};
   orders.forEach(o => {
     if (o.status === 'cancelled') return;
@@ -1094,7 +1286,14 @@ function renderMonthlyTable(r) {
   const rows = Object.values(userMap).sort((a, b) => b.count - a.count);
   const totalCount = rows.reduce((s, u) => s + u.count, 0);
   const totalPrice = rows.reduce((s, u) => s + u.price, 0);
-  if (!rows.length) { wrap.innerHTML = '<div class="empty-state"><p>در این ماه سفارش فعالی یافت نشد.</p></div>'; return; }
+  if (!rows.length) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-clipboard-list',
+      title: 'سفارش فعالی یافت نشد',
+      desc: 'در این ماه سفارش لغوشده یا فعالی برای نمایش در گزارش وجود ندارد.',
+    });
+    return;
+  }
   wrap.innerHTML = `<div class="table-wrap">
     <table class="report-table">
       <thead><tr><th>#</th><th style="text-align:right">نام فرد</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
@@ -1109,6 +1308,16 @@ function renderMonthlyTable(r) {
     </table></div>` + renderMissingUsersTable(r);
 }
 
+function showMonthlyReportPlaceholder() {
+  const wrap = document.getElementById('monthlyReportWrap');
+  if (!wrap) return;
+  wrap.innerHTML = renderEmptyState({
+    icon: 'fa-calendar-days',
+    title: 'انتخاب ماه گزارش',
+    desc: 'از فهرست بالا، ماه شمسی مورد نظر را انتخاب کنید تا گزارش ماهیانه نمایش داده شود.',
+  });
+}
+
 async function buildMonthOptions() {
   const sel = document.getElementById('monthSelect');
   if (!sel) return;
@@ -1116,8 +1325,12 @@ async function buildMonthOptions() {
   const data = await api('/api/admin/reports/months');
   const months = data.success ? data.data : [];
   if (!months.length) {
-    sel.innerHTML = '<option value="">ماهی دارای سفارش نیست</option>';
-    document.getElementById('monthlyReportWrap').innerHTML = '<div class="empty-state"><i class="fas fa-calendar"></i><p>هنوز سفارشی برای گزارش ماهیانه ثبت نشده است.</p></div>';
+    sel.innerHTML = '<option value="">ماهی با سفارش ثبت‌شده وجود ندارد</option>';
+    document.getElementById('monthlyReportWrap').innerHTML = renderEmptyState({
+      icon: 'fa-chart-column',
+      title: 'گزارش ماهیانه در دسترس نیست',
+      desc: 'هنوز سفارشی در سامانه ثبت نشده است. پس از ثبت سفارش توسط کاربران، گزارش‌های ماهانه در این بخش نمایش داده می‌شوند.',
+    });
     return;
   }
   sel.innerHTML = months
@@ -1720,7 +1933,9 @@ async function loadUsers(page = userPagination.page || 1) {
           <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
           <td style="white-space:nowrap">
             <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')"><i class="fas fa-edit"></i></button>
-            <button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')"><i class="fas fa-trash"></i></button>
+            ${String(u._id) === String(currentUserId)
+              ? '<span class="badge badge-gray" title="حساب خودتان قابل حذف نیست">شما</span>'
+              : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')"><i class="fas fa-trash"></i></button>`}
           </td>
         </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">کاربری ثبت نشده</td></tr>'}
       </tbody>
@@ -1739,12 +1954,47 @@ function populateDeptSelect(selectedId) {
     departments.map(d => `<option value="${d._id}" ${String(d._id) === String(selectedId) ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
 }
 
+function resetUserFormGuards() {
+  const statusEl = document.getElementById('uf_status');
+  const roleEl = document.getElementById('uf_role');
+  if (statusEl) {
+    statusEl.disabled = false;
+    statusEl.title = '';
+  }
+  if (roleEl) {
+    Array.from(roleEl.options).forEach((opt) => { opt.disabled = false; });
+    roleEl.title = '';
+  }
+}
+
+function applySelfUserFormGuards(userId, userRole) {
+  resetUserFormGuards();
+  if (String(userId) !== String(currentUserId)) return;
+
+  const statusEl = document.getElementById('uf_status');
+  const roleEl = document.getElementById('uf_role');
+  if (statusEl) {
+    statusEl.value = 'active';
+    statusEl.disabled = true;
+    statusEl.title = 'امکان غیرفعال‌سازی حساب خودتان وجود ندارد';
+  }
+  if (roleEl) {
+    const ranks = { user: 0, admin: 1, superadmin: 2 };
+    const currentRank = ranks[userRole] ?? 0;
+    Array.from(roleEl.options).forEach((opt) => {
+      opt.disabled = (ranks[opt.value] ?? 0) < currentRank;
+    });
+    roleEl.title = 'امکان تنزل نقش حساب خودتان وجود ندارد';
+  }
+}
+
 function openAddUser() {
   editingUserId = null;
   document.getElementById('userFormTitle').textContent = 'افزودن کاربر';
   document.getElementById('editUserId').value = '';
   document.getElementById('userForm').reset();
   document.getElementById('uf_role').value = 'admin';
+  resetUserFormGuards();
   populateDeptSelect('');
   document.getElementById('userFormWrap').style.display = 'block';
   document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
@@ -1764,6 +2014,7 @@ function openEditUser(id) {
   document.getElementById('uf_role').value = u.role || 'user';
   document.getElementById('uf_status').value = u.status || 'active';
   populateDeptSelect(u.departmentId?._id || u.departmentId || '');
+  applySelfUserFormGuards(id, u.role || 'user');
   document.getElementById('userFormWrap').style.display = 'block';
   document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
 }
@@ -1771,6 +2022,7 @@ function openEditUser(id) {
 function closeUserForm() {
   document.getElementById('userFormWrap').style.display = 'none';
   editingUserId = null;
+  resetUserFormGuards();
 }
 
 async function saveUser(event) {
@@ -1785,6 +2037,9 @@ async function saveUser(event) {
     status: document.getElementById('uf_status').value,
     departmentId: document.getElementById('uf_dept').value || null,
   };
+  if (id && String(id) === String(currentUserId)) {
+    body.status = 'active';
+  }
   const pwd = document.getElementById('uf_password').value;
   if (pwd) body.password = pwd;
   const data = id
@@ -1885,6 +2140,7 @@ if (currentUserRole === 'superadmin') loadSettings();
 loadWeeks().then(() => loadWeeklyReport());
 initBackupTab();
 if (document.getElementById('securityNotifyBadge')) loadSecurityCenter();
+showMonthlyReportPlaceholder();
 buildMonthOptions();
 </script>
 </body>

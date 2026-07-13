@@ -11,14 +11,12 @@
 </head>
 <body class="auth-body">
   <div class="auth-wrap">
-    <div class="auth-side">
-      <div class="auth-side-icon">
-        <i class="fas fa-utensils"></i>
-      </div>
+    <div class="auth-side auth-side--wine">
       <div class="auth-side-title"><%= locals.organizationName || 'سامانه تغذیه' %></div>
       <div class="auth-side-sub">
        سامانه توزیع و رزرو غذا
       </div>
+      <div class="auth-side-version">نسخه <%= appVersionMajorFa %></div>
       <div class="auth-side-dots">
         <span class="active"></span>
         <span></span>
@@ -44,7 +42,14 @@
         </div>
       <% } %>
 
-      <% if (locals.error) { %>
+      <% if (locals.inactive) { %>
+        <div class="alert alert-danger">
+          <i class="fas fa-exclamation-triangle"></i>
+          حساب کاربری شما غیرفعال است. برای فعال‌سازی با مدیر سامانه تماس بگیرید.
+        </div>
+      <% } %>
+
+      <% if (locals.error && !locals.inactive) { %>
         <div class="alert alert-danger">
           <i class="fas fa-exclamation-triangle"></i>
           <%= error %>
@@ -88,6 +93,12 @@
   </div>
 
   <script>
+    const APP_BASE = '<%= typeof publicUrl !== "undefined" && publicUrl ? publicUrl.replace(/'/g, "\\'") : "" %>';
+    function appPath(path) {
+      const normalized = path.startsWith('/') ? path : `/${path}`;
+      return APP_BASE ? `${APP_BASE.replace(/\/$/, '')}${normalized}` : normalized;
+    }
+
     const form = document.getElementById('loginForm');
     const submitButton = form.querySelector('button[type="submit"]');
     const defaultButtonHtml = submitButton.innerHTML;
@@ -136,8 +147,8 @@
 
         if (data.success) {
           window.location.href = data.user.mustSetFullName
-            ? '/complete-profile'
-            : (['admin', 'superadmin'].includes(data.user.role) ? '/admin/dashboard' : '/user/dashboard');
+            ? appPath('/complete-profile')
+            : (['admin', 'superadmin'].includes(data.user.role) ? appPath('/admin/dashboard') : appPath('/user/dashboard'));
           return;
         }
 
@@ -165,7 +176,7 @@
         });
         const data = await response.json();
         if (data.success) {
-          window.location.href = '/admin/dashboard';
+          window.location.href = appPath('/admin/dashboard');
           return;
         }
         showError(data.message || 'توکن امنیتی اشتباه است');
@@ -177,5 +188,6 @@
       }
     }, true);
   </script>
+  <%- include('../partials/app-version') %>
 </body>
 </html>

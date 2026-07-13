@@ -7,11 +7,11 @@ function validColor(value, fallback) {
 class ThemeController {
   static async variables(_req, res) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean().catch(() => null);
-    const primary = validColor(settings?.themePrimary, '#9B6DFF');
-    const primaryLight = validColor(settings?.themePrimaryLight, '#C4A8FF');
-    const primaryDark = validColor(settings?.themePrimaryDark, '#6C3FD4');
-    const gradientFrom = validColor(settings?.themeGradientFrom, '#1A0E38');
-    const gradientTo = validColor(settings?.themeGradientTo, '#2D1460');
+    const primary = validColor(settings?.themePrimary, '#8E2A3F');
+    const primaryLight = validColor(settings?.themePrimaryLight, '#B84A62');
+    const primaryDark = validColor(settings?.themePrimaryDark, '#5A1624');
+    const gradientFrom = validColor(settings?.themeGradientFrom, '#3D0F18');
+    const gradientTo = validColor(settings?.themeGradientTo, '#5A1624');
 
     res.type('text/css');
     res.setHeader('Cache-Control', 'no-store');

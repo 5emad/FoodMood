@@ -1,37 +1,95 @@
 const User = require('../models/User');
-const AppSetting = require('../models/AppSetting');
 const { comparePassword } = require('../helpers/SecurityHelper');
 const { generateToken } = require('../helpers/TokenHelper');
-const crypto = require('crypto');
 const {
   assertActiveSession,
   commitAuthenticatedSession,
   invalidateSession,
 } = require('../helpers/SessionSecurityHelper');
+const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
+const { buildAbsoluteUrl } = require('../helpers/AppUrlHelper');
+const { issueSession } = require('../services/SessionTokenService');
+
+async function getLoginViewModel(req, overrides = {}) {
+  let settings = defaultSettings;
+  try {
+    settings = await getSettingsLean();
+  } catch {
+    settings = defaultSettings;
+  }
+
+  return {
+    organizationName: settings?.organizationName || 'سامانه تغذیه',
+    publicUrl: resPublicUrl(req, settings),
+    expired: false,
+    idle: false,
+    inactive: false,
+    error: null,
+    ...overrides,
+  };
+}
+
+function resPublicUrl(req, settings) {
+  const configured = String(settings?.publicUrl || process.env.APP_URL || '').trim();
+  if (configured) return configured.replace(/\/$/, '');
+  const host = req?.get?.('host');
+  return host ? `${req.protocol}://${host}` : '';
+}
+
+async function getActiveSessionRedirect(session) {
+  if (!session?.token || session.authSource === 'ldap') {
+    if (!session?.token) return null;
+    const role = session.userRole || 'user';
+    return ['admin', 'superadmin'].includes(role) ? '/admin/dashboard' : '/user/dashboard';
+  }
+
+  if (!session.userId) return null;
+  const user = await User.findById(session.userId).select('status role').lean();
+  if (!user || user.status !== 'active') return null;
+  return ['admin', 'superadmin'].includes(user.role) ? '/admin/dashboard' : '/user/dashboard';
+}
+
+async function redirectTo(req, res, path) {
+  const target = await buildAbsoluteUrl(req, path);
+  return res.redirect(target);
+}
 
 class ViewController {
   static async renderLogin(req, res, next) {
-    if (req.session?.token) {
-      const sessionCheck = assertActiveSession(req);
-      if (!sessionCheck.ok) {
-        await invalidateSession(req, res, sessionCheck.reason);
-        const settings = await AppSetting.findOne({ key: 'default' }).lean().catch(() => null);
-        return res.render('auth/login', {
-          organizationName: settings?.organizationName || 'سامانه تغذیه',
-          expired: sessionCheck.reason !== 'idle',
-          idle: sessionCheck.reason === 'idle',
-        });
-      }
-      return res.redirect(['admin', 'superadmin'].includes(req.session.userRole) ? '/admin/dashboard' : '/user/dashboard');
-    }
-
     try {
-      const settings = await AppSetting.findOne({ key: 'default' }).lean();
-      return res.render('auth/login', {
-        organizationName: settings?.organizationName || 'سامانه تغذیه',
-        expired: req.query.expired === '1',
-        idle: req.query.idle === '1',
-      });
+      if (req.session?.token) {
+        const sessionCheck = assertActiveSession(req);
+
+        if (!sessionCheck.ok) {
+          await invalidateSession(req, res, sessionCheck.reason);
+          return res.render('auth/login', await getLoginViewModel(req, {
+            expired: sessionCheck.reason !== 'idle',
+            idle: sessionCheck.reason === 'idle',
+            error: sessionCheck.message,
+          }));
+        }
+
+        const redirectPath = await getActiveSessionRedirect(req.session);
+        if (redirectPath) {
+          return redirectTo(req, res, redirectPath);
+        }
+
+        await invalidateSession(req, res, 'expired');
+        return res.render('auth/login', await getLoginViewModel(req, {
+          inactive: true,
+          error: 'حساب کاربری شما غیرفعال است',
+        }));
+      }
+
+      const expired = req.query.expired === '1';
+      const idle = req.query.idle === '1';
+      const inactive = req.query.inactive === '1';
+
+      const viewModel = await getLoginViewModel(req, { expired, idle, inactive });
+      if (inactive && !viewModel.error) {
+        viewModel.error = 'حساب کاربری شما غیرفعال است';
+      }
+      return res.render('auth/login', viewModel);
     } catch (error) {
       return next(error);
     }
@@ -49,12 +107,10 @@ class ViewController {
         ],
       });
 
-      const loginView = (status, error) => res.status(status).render('auth/login', {
-        error,
-        organizationName: 'سامانه تغذیه',
-        expired: false,
-        idle: false,
-      });
+      const loginView = async (status, error, extra = {}) => {
+        const body = await getLoginViewModel(req, { error, ...extra });
+        return res.status(status).render('auth/login', body);
+      };
 
       if (user?.isLocked) {
         const min = Math.ceil((user.lockUntil - Date.now()) / 60000);
@@ -74,14 +130,17 @@ class ViewController {
       if (user && !['admin', 'superadmin'].includes(user.role)) {
         return loginView(401, 'ورود کاربران فقط از طریق Active Directory انجام می‌شود');
       }
-      if (user.status !== 'active') return loginView(403, 'حساب کاربری شما غیرفعال است');
-      if (user.role === 'superadmin') return loginView(403, 'ورود سوپر ادمین فقط از مسیر امن دو مرحله‌ای انجام می‌شود.');
+      if (user.status !== 'active') {
+        return loginView(403, 'حساب کاربری شما غیرفعال است', { inactive: true });
+      }
+      if (user.role === 'superadmin') {
+        return loginView(403, 'ورود سوپر ادمین فقط از مسیر امن دو مرحله‌ای انجام می‌شود.');
+      }
 
-      const sessionId = crypto.randomUUID();
-      await User.findByIdAndUpdate(user._id, {
-        loginAttempts: 0,
-        lockUntil: null,
-        activeSessionId: sessionId,
+      const sessionId = await issueSession({
+        userId: user._id,
+        authSource: 'local',
+        req,
       });
 
       const token = generateToken(user._id, user.email, user.role, user.username, sessionId);
@@ -95,19 +154,18 @@ class ViewController {
         fullName: user.fullName,
       });
 
-      return res.redirect('/admin/dashboard');
+      return redirectTo(req, res, '/admin/dashboard');
     } catch (error) {
       return next(error);
     }
   }
 
   static async logout(req, res) {
-    const userId = req.session?.authSource === 'local' ? req.session?.userId : null;
-    if (userId) await User.findByIdAndUpdate(userId, { activeSessionId: null }).catch(() => {});
     await invalidateSession(req, res, 'logout');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
-    res.redirect('/login');
+    const target = await buildAbsoluteUrl(req, '/login');
+    res.redirect(target);
   }
 }
 

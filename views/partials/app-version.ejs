@@ -1,0 +1,7 @@
+<div class="app-version-badge" aria-label="نسخه سامانه FoodMood">
+  <span class="app-version-label">نسخه</span>
+  <span class="app-version-number"><%= appVersionMajorFa %></span>
+  <% if (appVersion && String(appVersion) !== String(appVersionMajor)) { %>
+    <span class="app-version-detail">(<%= appVersionFa %>)</span>
+  <% } %>
+</div>
