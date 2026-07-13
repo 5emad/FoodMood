@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # One-line FoodMood install from GitHub on a fresh Ubuntu/Debian server
 #
-# Usage (on server):
+# Recommended (works with prompts when piped):
 #   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh | sudo bash
+#
+# Alternative (download first):
+#   curl -fsSL .../bootstrap.sh -o /tmp/food-bootstrap.sh && sudo bash /tmp/food-bootstrap.sh
 #
 # Full interactive install (more prompts):
 #   curl -fsSL .../bootstrap.sh | sudo bash -s -- --full

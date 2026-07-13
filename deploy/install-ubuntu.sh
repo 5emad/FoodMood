@@ -39,6 +39,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUPERADMIN_CREDS_OUTPUT=""
 
+# curl | bash feeds the script on stdin — read prompts from the real terminal
+TTY_DEVICE="/dev/tty"
+if [[ ! -r "$TTY_DEVICE" ]]; then
+  TTY_DEVICE="/dev/stdin"
+fi
+
+require_interactive_tty() {
+  if [[ ! -r /dev/tty ]]; then
+    log_err "No interactive terminal detected."
+    log_err "Download the script first, then run it:"
+    log_err "  curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/bootstrap.sh -o /tmp/food-bootstrap.sh"
+    log_err "  sudo bash /tmp/food-bootstrap.sh"
+    exit 1
+  fi
+}
+
 log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
 log_ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
 log_warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
@@ -154,7 +170,7 @@ prompt_off_server_ack() {
   echo -e "${YELLOW}${BOLD}  ▶ Waiting for your confirmation — installer is not stuck.${NC}"
   echo -e "${DIM}    After saving credentials off-server, type yes and press Enter.${NC}"
   while true; do
-    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply
+    read -r -p "$(echo -e "${CYAN}${stage}${NC} — Confirm saved ${BOLD}off-server${NC}? (yes): ")" reply < "$TTY_DEVICE"
     case "${reply,,}" in
       y|yes|confirm) return 0 ;;
       *) log_warn "Type yes after saving credentials in your secure vault." ;;
@@ -203,7 +219,7 @@ prompt_yes_no() {
   local reply=""
   if [[ "$default" == "y" ]]; then hint="Y/n"; else hint="y/N"; fi
   while true; do
-    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply
+    read -r -p "$(echo -e "${CYAN}${question}${NC} [${hint}]: ")" reply < "$TTY_DEVICE"
     reply="${reply:-$default}"
     case "${reply,,}" in
       y|yes) return 0 ;;
@@ -217,7 +233,7 @@ prompt_required() {
   local label="$1"
   local value=""
   while [[ -z "$value" ]]; do
-    read -r -p "$(echo -e "${CYAN}${label}:${NC} ")" value
+    read -r -p "$(echo -e "${CYAN}${label}:${NC} ")" value < "$TTY_DEVICE"
     value="$(echo "$value" | xargs)"
   done
   echo "$value"
@@ -227,7 +243,7 @@ prompt_password_once() {
   local label="$1"
   local pass=""
   while [[ -z "$pass" ]]; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass
+    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass < "$TTY_DEVICE"
     echo ""
     [[ -z "$pass" ]] && log_warn "Password cannot be empty."
   done
@@ -238,9 +254,9 @@ prompt_password_twice() {
   local label="$1"
   local pass1="" pass2=""
   while true; do
-    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1
+    read -r -s -p "$(echo -e "${CYAN}${label}:${NC} ")" pass1 < "$TTY_DEVICE"
     echo ""
-    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2
+    read -r -s -p "$(echo -e "${CYAN}Repeat ${label}:${NC} ")" pass2 < "$TTY_DEVICE"
     echo ""
     if [[ -z "$pass1" ]]; then
       log_warn "Password cannot be empty."
@@ -270,7 +286,7 @@ collect_ssl_certificate_options() {
   echo "  2) Custom certificate (fullchain and privkey file paths)"
   local cert_choice=""
   while [[ ! "$cert_choice" =~ ^[12]$ ]]; do
-    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice
+    read -r -p "$(echo -e "${CYAN}Choose [1/2]:${NC} ")" cert_choice < "$TTY_DEVICE"
   done
   if [[ "$cert_choice" == "1" ]]; then
     CERT_MODE="letsencrypt"
@@ -302,8 +318,11 @@ collect_web_ssl_options() {
 }
 
 collect_inputs() {
+  require_interactive_tty
+
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     log_info "Quick install — enter MongoDB credentials, then all steps run automatically."
+    echo -e "${YELLOW}${BOLD}  ▶ Waiting for your input — type below and press Enter.${NC}"
     echo ""
     MONGO_USER="$(prompt_required "MongoDB username")"
     MONGO_PASS="$(prompt_password_once "MongoDB password")"
@@ -799,7 +818,7 @@ reveal_final_secrets_once() {
   if [[ "$QUICK_MODE" -eq 1 ]]; then
     security_off_server_notice
     echo -e "${DIM}    Save the above off-server, then press Enter to finish.${NC}"
-    read -r -p ""
+    read -r -p "" < "$TTY_DEVICE"
     wipe_install_secrets_from_shell
     log_ok "Install secrets cleared from installer memory."
     return
