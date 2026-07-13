@@ -31,10 +31,10 @@ async function main() {
     activeSessionId: String,
   }, { strict: false }));
 
-  const admins = await User.find({ role: 'admin' }).lean();
+  const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } }).lean();
 
   if (!admins.length) {
-    console.log('⚠ هیچ حساب ادمینی پیدا نشد.');
+    console.log('⚠ هیچ حساب مدیری پیدا نشد.');
     await mongoose.disconnect();
     return;
   }
@@ -57,10 +57,10 @@ activeSessionId: ${a.activeSessionId || 'null'}
 
   if (arg === 'reset') {
     const res = await User.updateMany(
-      { role: 'admin' },
+      { role: { $in: ['admin', 'superadmin'] } },
       { $set: { loginAttempts: 0, lockUntil: null, status: 'active' } }
     );
-    console.log(`✔ قفل حساب ادمین برداشته شد. (${res.modifiedCount} حساب آپدیت شد)`);
+    console.log(`✔ قفل و غیرفعالی حساب‌های مدیری برداشته شد. (${res.modifiedCount} حساب آپدیت شد)`);
   }
 
   if (arg === 'resetpw' && newPw) {
@@ -75,10 +75,10 @@ activeSessionId: ${a.activeSessionId || 'null'}
     const hash = await hashPassword(newPw);
 
     const res = await User.updateMany(
-      { role: 'admin' },
+      { role: { $in: ['admin', 'superadmin'] } },
       { $set: { password: hash, loginAttempts: 0, lockUntil: null, status: 'active', activeSessionId: null } }
     );
-    console.log(`✔ رمز عبور همه ادمین‌ها تغییر کرد. (${res.modifiedCount} حساب)`);
+    console.log(`✔ رمز عبور همه مدیران تغییر کرد. (${res.modifiedCount} حساب)`);
     console.log(`  رمز جدید: ${newPw}`);
   }
 

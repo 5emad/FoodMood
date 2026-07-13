@@ -1,6 +1,6 @@
 const crypto = require('crypto');
-const User = require('../models/User');
 const { writeSecurityLog } = require('../services/SecurityLogService');
+const { revokeUserSessions, touchSession } = require('../services/SessionTokenService');
 
 const DEFAULT_IDLE_MINUTES = 30;
 const DEFAULT_MAX_HOURS = 8;
@@ -121,9 +121,16 @@ async function invalidateSession(req, res, reason) {
   await writeSecurityLog(req, logType, null, `Session ended: ${reason}`, { username, reason });
 
   const userId = req.session?.authSource === 'local' ? req.session?.userId : null;
-  if (userId) {
-    await User.findByIdAndUpdate(userId, { activeSessionId: null }).catch(() => {});
-  }
+  const authSource = req.session?.authSource || 'local';
+  const sessionId = req.session?.sessionId || null;
+
+  await revokeUserSessions({
+    userId,
+    username: username || null,
+    authSource,
+    sessionId,
+    reason,
+  });
 
   return new Promise((resolve) => {
     if (!req.session) {
@@ -147,4 +154,5 @@ module.exports = {
   getSessionPolicy,
   commitAuthenticatedSession,
   invalidateSession,
+  touchStoredSession: touchSession,
 };

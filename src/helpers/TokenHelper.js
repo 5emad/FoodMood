@@ -4,7 +4,15 @@ const DEFAULT_EXPIRE = '8h';
 
 const generateToken = (userId, email, role, username, sessionId) => {
   return jwt.sign(
-    { id: String(userId), email, username, role, sessionId, authSource: 'local' },
+    {
+      id: String(userId),
+      email,
+      username,
+      role,
+      sessionId,
+      jti: sessionId,
+      authSource: 'local',
+    },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || DEFAULT_EXPIRE },
   );
@@ -21,6 +29,7 @@ const generateLdapToken = ({ username, email, fullName, department, sessionId })
       department: department || null,
       role: 'user',
       sessionId,
+      jti: sessionId,
     },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRE || DEFAULT_EXPIRE },

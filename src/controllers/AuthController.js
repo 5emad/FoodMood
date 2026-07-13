@@ -12,6 +12,7 @@ const {
   touchSessionActivity,
   invalidateSession,
 } = require('../helpers/SessionSecurityHelper');
+const { issueSession, revokeUserSessions } = require('../services/SessionTokenService');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS   = 30 * 60 * 1000; // 30 min
@@ -52,11 +53,12 @@ async function handleFailedLogin(user) {
   await User.findByIdAndUpdate(user._id, update);
 }
 
-async function handleSuccessfulLogin(user, sessionId) {
-  await User.findByIdAndUpdate(user._id, {
-    loginAttempts: 0,
-    lockUntil: null,
-    activeSessionId: sessionId,
+async function handleSuccessfulLogin(user, sessionId, req) {
+  return issueSession({
+    userId: user._id,
+    authSource: 'local',
+    sessionId,
+    req,
   });
 }
 
@@ -133,7 +135,7 @@ class AuthController {
           });
         }
 
-        await handleSuccessfulLogin(user, sessionId);
+        await handleSuccessfulLogin(user, sessionId, req);
         await writeSecurityLog(req, 'login_success', user, 'Local admin login success');
 
         const token = generateToken(user._id, user.email, user.role, user.username, sessionId);
@@ -159,7 +161,11 @@ class AuthController {
       if (!canUseLocalAuth && LdapHelper.isEnabled(settings || {})) {
         const ldapResult = await LdapHelper.authenticate(identifier, password, settings || {});
         if (ldapResult) {
-          const sessionId = crypto.randomUUID();
+          const sessionId = await issueSession({
+            username: ldapResult.username,
+            authSource: 'ldap',
+            req,
+          });
           const ldapUser = {
             authSource: 'ldap',
             id: `ldap:${ldapResult.username}`,
@@ -254,7 +260,7 @@ class AuthController {
       }
 
       const sessionId = pending.sessionId || crypto.randomUUID();
-      await handleSuccessfulLogin(user, sessionId);
+      await handleSuccessfulLogin(user, sessionId, req);
       user.superTokenLastUsedAt = new Date();
       await user.save();
 
@@ -315,11 +321,6 @@ class AuthController {
     try {
       const username = req.session?.username || req.user?.username;
       await writeSecurityLog(req, 'logout_success', null, 'User logout', { username });
-
-      const userId = req.user?.authSource === 'local' ? (req.user?.id || req.session?.userId) : null;
-      if (userId) {
-        await User.findByIdAndUpdate(userId, { activeSessionId: null }).catch(() => {});
-      }
 
       await invalidateSession(req, res, 'logout');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -402,7 +403,7 @@ class AuthController {
 
       user.password          = await hashPassword(newPassword);
       user.mustChangePassword= false;
-      // Rotate session to force re-login (new session from new password)
+      await revokeUserSessions({ userId: user._id, authSource: 'local', reason: 'password_change', revokeAll: true });
       user.activeSessionId   = null;
       await user.save();
 
