@@ -26,7 +26,7 @@ INSTALL_DIR="/opt/food"
 APP_USER="foodapp"
 APP_GROUP="foodapp"
 DB_NAME="food_ordering"
-SERVICE_NAME="food"
+SERVICE_NAME="foodmood"
 NODE_MAJOR="20"
 INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
 STEP_TOTAL=15
@@ -596,6 +596,8 @@ JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRE=8h
 BACKUP_SECRET=${BACKUP_SECRET}
 PASSWORD_PEPPER=${PASSWORD_PEPPER}
+
+LOG_DIR=/var/log/foodmood
 EOF
 
   chown "$APP_USER:$APP_GROUP" "${INSTALL_DIR}/.env"
@@ -644,6 +646,7 @@ $( [[ "${USE_DOMAIN:-0}" -eq 1 && -n "${CERT_MODE:-}" ]] && echo "  نوع SSL  
   نصب سامانه : ${INSTALL_DIR}
   فایل env   : ${INSTALL_DIR}/.env  (فقط برای اجرا — کپی دستی توصیه نمی‌شود)
   لاگ سرویس  : journalctl -u ${SERVICE_NAME} -f
+  لاگ سیستمی  : /var/log/foodmood/system.log
 
 EOF
 
@@ -710,14 +713,24 @@ install_npm_deps() {
 }
 
 setup_systemd() {
-  step_begin "فعال‌سازی سرویس systemd"
-  cp "${INSTALL_DIR}/deploy/food.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+  step_begin "فعال‌سازی سرویس systemd (foodmood)"
+  mkdir -p /var/log/foodmood
+  chown "$APP_USER:$APP_GROUP" /var/log/foodmood
+  chmod 750 /var/log/foodmood
+
+  if systemctl list-unit-files food.service >/dev/null 2>&1; then
+    systemctl disable food 2>/dev/null || true
+    systemctl stop food 2>/dev/null || true
+    rm -f /etc/systemd/system/food.service
+  fi
+
+  cp "${INSTALL_DIR}/deploy/foodmood.service" "/etc/systemd/system/${SERVICE_NAME}.service"
   systemctl daemon-reload
   systemctl enable "$SERVICE_NAME"
   systemctl restart "$SERVICE_NAME"
   sleep 2
   if systemctl is-active --quiet "$SERVICE_NAME"; then
-    log_ok "سرویس ${SERVICE_NAME} در حال اجراست."
+    log_ok "سرویس ${SERVICE_NAME} فعال شد — با هر بار روشن شدن سرور خودکار بالا می‌آید."
   else
     log_err "سرویس بالا نیامد. لاگ: journalctl -u ${SERVICE_NAME} -n 30"
     exit 1
@@ -895,7 +908,8 @@ print_summary() {
   red_box $'✓  نصب کامل شد.\n   اطلاعات حساس فقط یک‌بار در ترمینال نمایش داده شد\n   و تأیید ذخیره خارج از سرور دریافت شد.\n\n   راهنمای بدون رمز: /opt/food/INSTALL_INFO.txt\n   (فقط آدرس‌ها و مسیرها — بدون رمز یا توکن)'
   echo -e "  ${BOLD}دستورات مفید:${NC}"
   echo "    sudo systemctl status food"
-  echo "    sudo journalctl -u food -f"
+  echo "    sudo journalctl -u foodmood -f"
+  echo "    sudo tail -f /var/log/foodmood/system.log"
   echo "    sudo systemctl restart food"
   echo ""
 }

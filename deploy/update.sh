@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_URL="${REPO_URL:-https://github.com/5emad/FoodMood.git}"
 INSTALL_DIR="/opt/food"
 APP_USER="foodapp"
-SERVICE_NAME="food"
+SERVICE_NAME="foodmood"
 BRANCH="main"
 TAG=""
 LIST_TAGS=0
@@ -152,6 +152,8 @@ apply_update() {
   log_info "نصب وابستگی‌ها..."
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
 
+  migrate_systemd_service
+
   log_info "راه‌اندازی مجدد سرویس..."
   systemctl restart "$SERVICE_NAME"
   sleep 2
@@ -170,6 +172,30 @@ apply_update() {
     echo "  مرجع گیت    : ${TAG:-$BRANCH}"
     echo "  تاریخ       : $(date '+%Y-%m-%d %H:%M:%S %Z')"
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
+}
+
+migrate_systemd_service() {
+  mkdir -p /var/log/foodmood
+  chown "$APP_USER:$APP_USER" /var/log/foodmood
+  chmod 750 /var/log/foodmood
+
+  if systemctl list-unit-files food.service >/dev/null 2>&1; then
+    systemctl disable food 2>/dev/null || true
+    systemctl stop food 2>/dev/null || true
+    rm -f /etc/systemd/system/food.service
+  fi
+
+  if [[ -f "${INSTALL_DIR}/deploy/foodmood.service" ]]; then
+    cp "${INSTALL_DIR}/deploy/foodmood.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl daemon-reload
+    systemctl enable "$SERVICE_NAME"
+  fi
+
+  if ! grep -q '^LOG_DIR=' "${INSTALL_DIR}/.env" 2>/dev/null; then
+    echo 'LOG_DIR=/var/log/foodmood' >> "${INSTALL_DIR}/.env"
+    chown "$APP_USER:$APP_USER" "${INSTALL_DIR}/.env"
+    chmod 600 "${INSTALL_DIR}/.env"
+  fi
 }
 
 main() {

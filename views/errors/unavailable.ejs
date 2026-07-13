@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>FOODMOOD — سامانه در دسترس نیست</title>
+  <link rel="stylesheet" href="/vendor/vazirmatn/vazirmatn.css">
+  <link rel="stylesheet" href="/css/unavailable.css">
+</head>
+<body class="unavail-body">
+
+  <div class="unavail-bg" aria-hidden="true"></div>
+  <div class="unavail-glow unavail-glow--1" aria-hidden="true"></div>
+  <div class="unavail-glow unavail-glow--2" aria-hidden="true"></div>
+
+  <div class="unavail-wrap">
+    <!-- پنل قرمز شرابی — برند -->
+    <aside class="unavail-side">
+      <div class="unavail-brand" aria-label="FOODMOOD">FOODMOOD</div>
+      <p class="unavail-side-sub">سامانه توزیع و رزرو غذا</p>
+      <p class="unavail-side-version">نسخه <%= appVersionMajorFa %></p>
+      <div class="unavail-dots" aria-hidden="true">
+        <span class="active"></span>
+        <span></span>
+        <span></span>
+      </div>
+    </aside>
+
+    <!-- پنل پیام آرامش‌بخش -->
+    <main class="unavail-card" role="main">
+      <h1 class="unavail-title">در حال حاضر سامانه تغذیه در دسترس نمی‌باشد</h1>
+      <p class="unavail-desc">
+        تیم فنی در حال بررسی وضعیت هستند.<br>
+        لطفاً چند دقیقه دیگر دوباره مراجعه کنید.
+      </p>
+
+      <div class="unavail-calm" aria-hidden="true">
+        <span class="unavail-ring"></span>
+        <span class="unavail-ring unavail-ring--2"></span>
+        <span class="unavail-ring unavail-ring--3"></span>
+      </div>
+
+      <div class="unavail-status" role="status" aria-live="polite">
+        <span class="unavail-status-dot"></span>
+        <span>در حال بازیابی سامانه…</span>
+      </div>
+    </main>
+  </div>
+
+  <div class="unavail-footer-badge">نسخه <%= appVersionMajorFa %></div>
+
+  <script src="/js/unavailable-ambient.js" defer></script>
+</body>
+</html>

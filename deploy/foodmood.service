@@ -1,0 +1,35 @@
+[Unit]
+Description=FoodMood — سامانه تغذیه سازمانی
+Documentation=https://github.com/5emad/FoodMood
+After=network-online.target mongod.service
+Wants=network-online.target mongod.service
+
+[Service]
+Type=simple
+User=foodapp
+Group=foodapp
+WorkingDirectory=/opt/food
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/food/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StartLimitInterval=300
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=foodmood
+
+LogsDirectory=foodmood
+LogsDirectoryMode=0750
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/food /var/log/foodmood
+
+[Install]
+WantedBy=multi-user.target

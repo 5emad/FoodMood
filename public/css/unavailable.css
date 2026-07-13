@@ -1,0 +1,289 @@
+/* FOODMOOD — صفحه قطعی سامانه · تم قرمز شرابی */
+:root {
+  --wine:        #8E2A3F;
+  --wine-dark:   #5A1624;
+  --wine-deep:   #3D0F18;
+  --wine-light:  #B84A62;
+  --wine-soft:   #D4738A;
+  --wine-glow:   rgba(142, 42, 63, .35);
+  --wine-border: rgba(184, 74, 98, .28);
+  --cream:       #FDF8F9;
+  --text-muted:  #6B5A5E;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+}
+
+.unavail-body {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(142, 42, 63, .10), transparent 60%),
+    radial-gradient(700px 460px at -10% 105%, rgba(184, 74, 98, .08), transparent 62%),
+    linear-gradient(180deg, #FFFFFF 0%, #FFF9FA 42%, #FDF0F2 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.unavail-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 0%, rgba(142, 42, 63, .06), transparent 70%);
+}
+
+.unavail-glow {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(60px);
+  animation: unavailFloat 14s ease-in-out infinite alternate;
+}
+
+.unavail-glow--1 {
+  width: 420px; height: 420px;
+  top: -120px; left: -80px;
+  background: rgba(142, 42, 63, .14);
+}
+
+.unavail-glow--2 {
+  width: 380px; height: 380px;
+  bottom: -100px; right: -60px;
+  background: rgba(184, 74, 98, .10);
+  animation-direction: alternate-reverse;
+  animation-duration: 16s;
+}
+
+@keyframes unavailFloat {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(40px, 30px) scale(1.1); }
+}
+
+/* ── کارت دو بخشی (مثل صفحه ورود) ── */
+.unavail-wrap {
+  display: flex;
+  width: 100%;
+  max-width: 920px;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow:
+    0 34px 90px rgba(90, 22, 36, .18),
+    0 0 0 1px var(--wine-border);
+  position: relative;
+  z-index: 1;
+  animation: unavailFadeUp .7s ease both;
+}
+
+@keyframes unavailFadeUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* پنل شرابی */
+.unavail-side {
+  width: 340px;
+  flex-shrink: 0;
+  background: linear-gradient(165deg, var(--wine-deep) 0%, var(--wine-dark) 45%, #2A0810 100%);
+  padding: 52px 38px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border-left: 1px solid var(--wine-border);
+}
+
+.unavail-side::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 320px; height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 115, 138, .14) 0%, transparent 70%);
+}
+
+.unavail-side::after {
+  content: '';
+  position: absolute;
+  bottom: -80px; left: -80px;
+  width: 260px; height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(142, 42, 63, .20) 0%, transparent 70%);
+}
+
+.unavail-brand {
+  font-size: clamp(2rem, 6vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: .14em;
+  color: #fff;
+  direction: ltr;
+  text-shadow: 0 0 50px var(--wine-glow);
+  margin-bottom: 18px;
+  position: relative;
+  animation: brandBreath 7s ease-in-out infinite;
+}
+
+@keyframes brandBreath {
+  0%, 100% { opacity: .92; text-shadow: 0 0 40px var(--wine-glow); }
+  50%      { opacity: 1;   text-shadow: 0 0 70px rgba(184, 74, 98, .45); }
+}
+
+.unavail-side-sub {
+  font-size: .84rem;
+  color: rgba(255, 255, 255, .55);
+  line-height: 1.8;
+  position: relative;
+}
+
+.unavail-side-version {
+  font-size: .78rem;
+  font-weight: 700;
+  color: rgba(212, 115, 138, .95);
+  letter-spacing: .04em;
+  margin-top: 10px;
+  position: relative;
+}
+
+.unavail-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 36px;
+  position: relative;
+}
+
+.unavail-dots span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--wine-border);
+  transition: all .4s ease;
+}
+
+.unavail-dots span.active {
+  background: var(--wine-soft);
+  width: 28px;
+  border-radius: 4px;
+}
+
+/* پنل سفید — پیام */
+.unavail-card {
+  flex: 1;
+  background: rgba(253, 248, 249, .97);
+  backdrop-filter: blur(30px);
+  padding: 48px 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.unavail-title {
+  font-size: clamp(1.15rem, 3.5vw, 1.55rem);
+  font-weight: 900;
+  color: var(--wine-dark);
+  line-height: 1.85;
+  margin-bottom: 16px;
+  max-width: 400px;
+}
+
+.unavail-desc {
+  font-size: .9rem;
+  color: var(--text-muted);
+  line-height: 2;
+  margin-bottom: 32px;
+  max-width: 380px;
+}
+
+/* حلقه‌های آرامش‌بخش */
+.unavail-calm {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 28px;
+}
+
+.unavail-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(142, 42, 63, .18);
+  animation: ringPulse 4s ease-in-out infinite;
+}
+
+.unavail-ring--2 {
+  inset: 12px;
+  border-color: rgba(142, 42, 63, .12);
+  animation-delay: 1.3s;
+}
+
+.unavail-ring--3 {
+  inset: 24px;
+  border-color: rgba(184, 74, 98, .20);
+  animation-delay: 2.6s;
+}
+
+@keyframes ringPulse {
+  0%, 100% { transform: scale(1);    opacity: .5; }
+  50%      { transform: scale(1.06); opacity: 1; }
+}
+
+.unavail-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .6rem 1.5rem;
+  border-radius: 999px;
+  background: rgba(142, 42, 63, .08);
+  border: 1px solid var(--wine-border);
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--wine);
+}
+
+.unavail-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--wine);
+  animation: statusPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(142, 42, 63, .45); }
+  50%      { opacity: .55; box-shadow: 0 0 0 10px rgba(142, 42, 63, 0); }
+}
+
+.unavail-footer-badge {
+  position: fixed;
+  bottom: 18px;
+  left: 18px;
+  padding: .35rem .85rem;
+  border-radius: 999px;
+  background: rgba(61, 15, 24, .88);
+  color: rgba(255, 255, 255, .85);
+  font-size: .72rem;
+  font-weight: 700;
+  z-index: 2;
+  border: 1px solid var(--wine-border);
+}
+
+@media (max-width: 680px) {
+  .unavail-wrap { flex-direction: column; }
+  .unavail-side { width: 100%; padding: 36px 24px; border-left: none; border-bottom: 1px solid var(--wine-border); }
+  .unavail-dots { display: none; }
+  .unavail-card { padding: 32px 24px; }
+  .unavail-calm { width: 80px; height: 80px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
