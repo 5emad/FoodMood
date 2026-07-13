@@ -113,19 +113,25 @@ show_status() {
 }
 
 fetch_source() {
-  local clone_dir
-  clone_dir="$(mktemp -d /tmp/food-update-XXXXXX)"
+  CLONE_DIR="$(mktemp -d /tmp/food-update-XXXXXX)"
 
   if [[ -n "$TAG" ]]; then
     log_info "Fetching ${TAG} from ${REPO_URL}..."
-    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$clone_dir"
+    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$CLONE_DIR"
   else
     log_info "Fetching branch ${BRANCH} from ${REPO_URL}..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$clone_dir"
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
   fi
+}
 
-  NEW_VERSION="$(python3 -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])' "$clone_dir/package.json")"
-  echo "$clone_dir"
+read_package_version() {
+  local pkg="${1:-${INSTALL_DIR}/package.json}"
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$pkg" 2>/dev/null || echo "?"
+}
+
+read_git_commit() {
+  local dir="$1"
+  git -C "$dir" rev-parse --short HEAD 2>/dev/null || echo "?"
 }
 
 set_env_kv() {
@@ -257,8 +263,10 @@ migrate_systemd_service() {
 
 apply_update() {
   local source_dir="$1"
-  local old_version new_version server_ip
+  local old_version new_version source_commit installed_after server_ip
   old_version="$(read_installed_version)"
+  new_version="$(read_package_version "${source_dir}/package.json")"
+  source_commit="$(read_git_commit "$source_dir")"
 
   if [[ ! -d "$INSTALL_DIR" ]]; then
     log_err "Install path ${INSTALL_DIR} not found. Run install.sh first."
@@ -270,12 +278,15 @@ apply_update() {
     exit 1
   fi
 
-  new_version="$NEW_VERSION"
   server_ip="$(detect_server_ip)"
   echo ""
   echo -e "${MAGENTA}${BOLD}  FoodMood Update${NC}"
-  echo -e "  ${BOLD}From:${NC} v${old_version}  →  ${BOLD}To:${NC} v${new_version} (${TAG:-$BRANCH})"
+  echo -e "  ${BOLD}From:${NC} v${old_version}  →  ${BOLD}To:${NC} v${new_version} (${TAG:-$BRANCH} @ ${source_commit})"
   echo ""
+
+  if [[ "$old_version" == "$new_version" ]]; then
+    log_warn "Same semver — files and fixes still sync from GitHub commit ${source_commit}."
+  fi
 
   log_info "Backing up .env..."
   cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
@@ -310,9 +321,16 @@ apply_update() {
     exit 1
   fi
 
+  installed_after="$(read_installed_version)"
+  if [[ "$installed_after" != "$new_version" ]]; then
+    log_err "package.json on disk is still v${installed_after} (expected v${new_version})."
+    exit 1
+  fi
+  log_ok "Installed version confirmed: v${installed_after}"
+
   verify_http_deployment || true
 
-  log_ok "Update complete — FoodMood v${new_version} is running."
+  log_ok "Update complete — FoodMood v${new_version} (${source_commit}) is running."
   echo ""
   echo -e "${GREEN}${BOLD}  Open in browser (use http, not https):${NC}"
   echo -e "  ${BOLD}http://${server_ip}/login${NC}"
@@ -325,11 +343,14 @@ apply_update() {
     echo ""
     echo "─── Last update ───────────────────────────────────────────────"
     echo "  Version     : v${new_version}"
+    echo "  Git commit  : ${source_commit}"
     echo "  Git ref     : ${TAG:-$BRANCH}"
     echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "  App URL     : http://${server_ip}"
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
+
+CLONE_DIR=""
 
 main() {
   require_root
@@ -347,14 +368,13 @@ main() {
   fi
 
   if [[ -n "$TAG" && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    log_err "Invalid tag format. Example: v1.3.8"
+    log_err "Invalid tag format. Example: v1.3.9"
     exit 1
   fi
 
-  NEW_VERSION=""
-  source_dir="$(fetch_source)"
-  trap 'rm -rf "$source_dir"' EXIT
-  apply_update "$source_dir"
+  fetch_source
+  trap 'rm -rf "$CLONE_DIR"' EXIT
+  apply_update "$CLONE_DIR"
 }
 
 main "$@"
