@@ -1564,11 +1564,23 @@ async function downloadPdf() {
       const weekId = document.getElementById('reportWeekSelect')?.value;
       url += weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
     }
-    const res = await fetch(url, { credentials: 'same-origin' });
+    const res = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/pdf, application/json' } });
     if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    const contentType = res.headers.get('Content-Type') || '';
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      notify(err.message || 'خطا در ساخت PDF', 'error');
+      let msg = 'خطا در ساخت PDF';
+      if (contentType.includes('application/json')) {
+        const err = await res.json().catch(() => ({}));
+        msg = err.message || err.detail || msg;
+      } else {
+        const text = await res.text().catch(() => '');
+        if (text.includes('در دسترس نمی')) msg = 'سامانه موقتاً در دسترس نیست — چند لحظه بعد دوباره تلاش کنید';
+      }
+      notify(msg, 'error', 'PDF');
+      return;
+    }
+    if (!contentType.includes('pdf') && !contentType.includes('octet-stream')) {
+      notify('پاسخ سرور فایل PDF نیست — احتمالاً خطای موقت سامانه', 'error', 'PDF');
       return;
     }
     const blob = await res.blob();

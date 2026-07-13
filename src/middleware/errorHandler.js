@@ -14,13 +14,28 @@ const errorHandler = (err, req, res, next) => {
     markUnhealthy('database', err.message);
   }
 
+  const isApiRequest = req.originalUrl.startsWith('/api/');
+
   if (isServerError && !isSuperadminSession(req)) {
-    return renderUnavailable(req, res, 503);
+    if (!isApiRequest) {
+      return renderUnavailable(req, res, 503);
+    }
+    if (isDatabaseError(err)) {
+      return res.status(503).json({
+        success: false,
+        code: 'SERVICE_UNAVAILABLE',
+        message: 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد',
+      });
+    }
   }
 
   const safeMessage = (err.status && status < 500)
     ? err.message
-    : (process.env.NODE_ENV === 'production' ? 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد' : (err.message || 'خطای داخلی سرور'));
+    : (err.expose
+      ? err.message
+      : (process.env.NODE_ENV === 'production' && isServerError
+        ? 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد'
+        : (err.message || 'خطای داخلی سرور')));
 
   if (req.accepts(['html', 'json']) === 'html' && !req.originalUrl.startsWith('/api/')) {
     if (isServerError) return renderUnavailable(req, res, 503);
@@ -32,9 +47,11 @@ const errorHandler = (err, req, res, next) => {
 
   res.status(isServerError ? 503 : status).json({
     success: false,
-    code: isServerError ? 'SERVICE_UNAVAILABLE' : 'REQUEST_ERROR',
-    message: isServerError ? 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد' : safeMessage,
-    ...(process.env.NODE_ENV !== 'production' && isServerError && { detail: err.message }),
+    code: isServerError
+      ? (isDatabaseError(err) ? 'SERVICE_UNAVAILABLE' : 'SERVER_ERROR')
+      : 'REQUEST_ERROR',
+    message: safeMessage,
+    ...(process.env.NODE_ENV !== 'production' && isServerError && safeMessage !== err.message && { detail: err.message }),
   });
 };
 

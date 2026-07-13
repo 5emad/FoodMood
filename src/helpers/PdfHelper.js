@@ -31,7 +31,10 @@ async function findChrome() {
       // Try the next browser path.
     }
   }
-  throw new Error('Chrome یا Edge برای ساخت PDF پیدا نشد');
+  const error = new Error('Chrome یا Edge برای ساخت PDF پیدا نشد — روی سرور Chromium نصب کنید');
+  error.status = 503;
+  error.expose = true;
+  throw error;
 }
 
 function injectLocalFonts(html, fontCss) {
@@ -66,6 +69,11 @@ async function htmlToPdfBuffer(html) {
     ], { timeout: 60000 });
 
     return await fs.readFile(pdfPath);
+  } catch (error) {
+    const wrapped = new Error(`خطا در ساخت PDF: ${error.message || 'نامشخص'}`);
+    wrapped.status = 503;
+    wrapped.expose = true;
+    throw wrapped;
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }

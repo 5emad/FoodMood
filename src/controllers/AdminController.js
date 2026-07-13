@@ -19,6 +19,7 @@ const { defaultSettings, publicSettings, getOrCreateSettings, getSettingsLean } 
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
+const { nextReportNumber } = require('../helpers/ReportNumberHelper');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
 const { renderReportHtml } = require('../views/ReportPdfView');
 const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
@@ -745,8 +746,17 @@ class AdminController {
       res.setHeader('Content-Disposition', `attachment; filename="food-report-${reportNumber}.pdf"`);
       res.send(pdf);
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
-      next(error);
+      if (error.status && error.expose) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+      return res.status(503).json({
+        success: false,
+        message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
+        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
+      });
     }
   }
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <%- include('../partials/session-security') %>
   <title>پرتال تغذیه سازمانی</title>
-  <%- include('../partials/head-assets', { includeSweetAlert: true }) %>
+  <%- include('../partials/head-assets', { includeSweetAlert: false }) %>
   <link rel="stylesheet" href="/css/enterprise-theme.css">
   <link rel="stylesheet" href="/css/theme-vars.css">
   <script src="/js/security.js?v=5" defer></script>
@@ -109,17 +109,7 @@
   </div>
 </div>
 
-<script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
 <script>
-if (typeof Swal === 'undefined') {
-  window.Swal = {
-    fire: function(opts) {
-      if (opts && opts.icon !== 'success') window.alert(opts.title || '');
-      return Promise.resolve({ isConfirmed: true });
-    },
-  };
-}
-
 let ordersCache = [];
 let menuCache = null;
 let showPricesToUsers = true;
@@ -138,21 +128,21 @@ function api(url, options = {}) {
 }
 
 function toast(message, type = 'success') {
-  Swal.fire({
-    toast: true,
-    position: 'top-start',
-    icon: type === 'error' ? 'error' : 'success',
-    title: message,
-    showConfirmButton: false,
-    timer: type === 'error' ? 4200 : 3200,
-    timerProgressBar: true,
-    customClass: { popup: 'user-toast', container: 'user-toast-wrap' },
-    didOpen: popup => {
-      popup.setAttribute('dir', 'rtl');
-      popup.addEventListener('mouseenter', Swal.stopTimer);
-      popup.addEventListener('mouseleave', Swal.resumeTimer);
-    },
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const icons = { success: 'check-circle', error: 'exclamation-circle', warning: 'triangle-exclamation', info: 'circle-info' };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<i class="fas fa-${icons[type] || icons.success}"></i><span>${esc(message)}</span>`;
+  container.appendChild(el);
+  requestAnimationFrame(() => {
+    el.style.animation = 'slideInToast .4s cubic-bezier(.175,.885,.32,1.275) forwards';
   });
+  const duration = type === 'error' ? 4200 : 3200;
+  setTimeout(() => {
+    el.style.animation = 'fadeOut .4s forwards';
+    setTimeout(() => el.remove(), 400);
+  }, duration);
 }
 
 function money(value) { return Number(value || 0).toLocaleString('fa-IR') + ' تومان'; }
@@ -441,8 +431,14 @@ async function placeOrder(menuItemId, btn) {
       }
       return toast(data.message || 'ثبت سفارش ناموفق بود', 'error');
     }
-    toast(data.message || 'سفارش با موفقیت ثبت شد');
+    toast(data.message || 'رزرو شما با موفقیت ثبت شد', 'success');
     await loadMenu();
+  } catch (e) {
+    if (e?.message !== '401' && btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      toast('خطا در اتصال — لطفاً دوباره تلاش کنید', 'error');
+    }
   } finally {
     pendingMenuItems.delete(menuItemId);
   }

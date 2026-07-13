@@ -5,14 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
-### Added
-- Linux deployment guide: [docs/LINUX-DEPLOYMENT.md](./docs/LINUX-DEPLOYMENT.md) (FHS paths, Go-Live checklist)
-- Post-install verification: `deploy/verify-install.sh` (ACCEPT/REJECT)
-- Multi-layer LDAP bind password encryption (`LDAP_ENCRYPTION_KEY`)
+## [1.2.1] - 2026-07-13
+
+### Fixed
+- PDF weekly/monthly download: missing `nextReportNumber` import caused 503 errors
+- API errors no longer masked as generic outage message (except real DB failures)
+- Health gate auto-recovers when MongoDB reconnects but stale unhealthy flag remains
+- User portal reservation toast notifications (native toast instead of broken SweetAlert)
+- PDF client validates response content-type before download
 
 ### Changed
-- Installer runs verify step automatically; `INSTALL_INFO.txt` lists standard paths
-- `update.sh` migrates missing `ANNOUNCEMENT_ENCRYPTION_KEY` / `LDAP_ENCRYPTION_KEY`
+- Clearer PDF/Chromium error messages in admin panel
 
 ## [1.2.0] - 2026-07-13
 
@@ -54,7 +57,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 - Initial FoodMood release: food ordering system with security hardening
 - MongoDB session store, LDAP auth, backup encryption, admin panel
 
-[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.2.0...main
+[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.2.1...main
+[1.2.1]: https://github.com/5emad/FoodMood/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/5emad/FoodMood/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/5emad/FoodMood/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/5emad/FoodMood/releases/tag/v1.0.0
