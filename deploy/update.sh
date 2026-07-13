@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# به‌روزرسانی سامانه FoodMood روی سرور نصب‌شده (/opt/food)
+# ═══════════════════════════════════════════════════════════════
+#  FoodMood — update installed server (/opt/food)
 #
-# آخرین نسخه (شاخه main):
-#   sudo bash /opt/food/deploy/update.sh
+#  One-line update (latest main + HTTP/CSS fix):
+#    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
 #
-# نسخه مشخص (تگ):
-#   sudo bash /opt/food/deploy/update.sh --tag v1.1.0
+#  From local clone:
+#    sudo bash /opt/food/deploy/update.sh
 #
-# شاخه دیگر:
-#   sudo bash /opt/food/deploy/update.sh --branch develop
+#  Specific version:
+#    curl -fsSL .../deploy/update.sh | sudo bash -s -- --tag v1.3.8
 #
-# فقط بررسی نسخه فعلی و موجود:
-#   sudo bash /opt/food/deploy/update.sh --status
-#
-# نصب یک‌خطی از GitHub (اگر اسکریپت محلی نیست):
-#   curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash -s -- --tag v1.1.0
+#  Status only:
+#    sudo bash /opt/food/deploy/update.sh --status
+# ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/5emad/FoodMood.git}"
@@ -47,18 +46,36 @@ while [[ $# -gt 0 ]]; do
     --list)   LIST_TAGS=1; shift ;;
     --status) SHOW_STATUS=1; shift ;;
     -h|--help)
-      sed -n '2,18p' "$0"
+      sed -n '2,16p' "$0"
       exit 0
       ;;
-    *) log_err "گزینه ناشناخته: $1"; exit 1 ;;
+    *) log_err "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    log_err "باید با root اجرا شود: sudo bash deploy/update.sh"
+    log_err "Run as root: curl -fsSL .../deploy/update.sh | sudo bash"
     exit 1
   fi
+}
+
+detect_server_ip() {
+  local ip=""
+  if [[ -f "${INSTALL_DIR}/.env" ]]; then
+    local app_url
+    app_url="$(grep '^APP_URL=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    app_url="${app_url#http://}"
+    app_url="${app_url#https://}"
+    ip="${app_url%%/*}"
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="127.0.0.1"
+  fi
+  echo "$ip"
 }
 
 read_installed_version() {
@@ -71,7 +88,7 @@ read_installed_version() {
 }
 
 list_remote_tags() {
-  log_info "نسخه‌های منتشرشده در ${REPO_URL}:"
+  log_info "Released tags on ${REPO_URL}:"
   git ls-remote --tags "$REPO_URL" 2>/dev/null \
     | awk '{print $2}' \
     | sed 's|refs/tags/||' \
@@ -81,14 +98,16 @@ list_remote_tags() {
 }
 
 show_status() {
-  local current
+  local current server_ip
   current="$(read_installed_version)"
+  server_ip="$(detect_server_ip)"
   echo ""
-  echo -e "${BOLD}نسخه نصب‌شده:${NC}  v${current}"
-  echo -e "${BOLD}مسیر نصب:${NC}      ${INSTALL_DIR}"
-  echo -e "${BOLD}وضعیت سرویس:${NC}   $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'نامشخص')"
+  echo -e "${BOLD}Installed version:${NC}  v${current}"
+  echo -e "${BOLD}Install path:${NC}       ${INSTALL_DIR}"
+  echo -e "${BOLD}Service:${NC}            $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
+  echo -e "${BOLD}App URL:${NC}            http://${server_ip}/login"
   echo ""
-  echo -e "${BOLD}آخرین تگ‌های GitHub:${NC}"
+  echo -e "${BOLD}Latest GitHub tags:${NC}"
   list_remote_tags
   echo ""
 }
@@ -98,81 +117,60 @@ fetch_source() {
   clone_dir="$(mktemp -d /tmp/food-update-XXXXXX)"
 
   if [[ -n "$TAG" ]]; then
-    log_info "دریافت نسخه ${TAG} از ${REPO_URL}..." >&2
-    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$clone_dir" >&2
+    log_info "Fetching ${TAG} from ${REPO_URL}..."
+    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$clone_dir"
   else
-    log_info "دریافت شاخه ${BRANCH} از ${REPO_URL}..." >&2
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$clone_dir" >&2
+    log_info "Fetching branch ${BRANCH} from ${REPO_URL}..."
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$clone_dir"
   fi
 
   NEW_VERSION="$(python3 -c 'import json; print(json.load(open("package.json", encoding="utf-8"))["version"])' "$clone_dir/package.json")"
   echo "$clone_dir"
 }
 
-apply_update() {
-  local source_dir="$1"
-  local old_version new_version
-  old_version="$(read_installed_version)"
-
-  if [[ ! -d "$INSTALL_DIR" ]]; then
-    log_err "مسیر نصب ${INSTALL_DIR} پیدا نشد. ابتدا install-ubuntu.sh را اجرا کنید."
-    exit 1
-  fi
-
-  if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
-    log_err "فایل .env در ${INSTALL_DIR} نیست — به‌روزرسانی بدون تنظیمات امن نیست."
-    exit 1
-  fi
-
-  new_version="$NEW_VERSION"
-  echo ""
-  echo -e "${MAGENTA}${BOLD}  FoodMood Update${NC}"
-  echo -e "  ${BOLD}از:${NC} v${old_version}  →  ${BOLD}به:${NC} v${new_version} (${TAG:-$BRANCH})"
-  echo ""
-
-  if [[ "$old_version" == "$new_version" && -z "$TAG" ]]; then
-    log_warn "نسخه package.json تغییری نکرده — فقط فایل‌های سورس همگام می‌شوند."
-  fi
-
-  log_info "پشتیبان از .env..."
-  cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
-
-  log_info "همگام‌سازی فایل‌ها (حفظ .env و node_modules)..."
-  rsync -a --delete \
-    --exclude node_modules \
-    --exclude .git \
-    --exclude .env \
-    --exclude INSTALL_INFO.txt \
-    --exclude '*.log' \
-    "$source_dir/" "$INSTALL_DIR/"
-
-  chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
-  chmod 600 "${INSTALL_DIR}/.env"
-
-  log_info "نصب وابستگی‌ها..."
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
-
-  migrate_systemd_service
-
-  log_info "راه‌اندازی مجدد سرویس..."
-  systemctl restart "$SERVICE_NAME"
-  sleep 2
-
-  if systemctl is-active --quiet "$SERVICE_NAME"; then
-    log_ok "به‌روزرسانی موفق — FoodMood v${new_version} در حال اجراست."
+set_env_kv() {
+  local env_file="$1" key="$2" value="$3"
+  if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
   else
-    log_err "سرویس بالا نیامد. لاگ: journalctl -u ${SERVICE_NAME} -n 40"
-    exit 1
+    echo "${key}=${value}" >> "$env_file"
+  fi
+}
+
+uses_https_app_url() {
+  local env_file="$1"
+  grep -q '^APP_URL=https://' "$env_file" 2>/dev/null \
+    && grep -q '^TRUST_TLS=true' "$env_file" 2>/dev/null
+}
+
+repair_http_deployment() {
+  local env_file="${INSTALL_DIR}/.env"
+  [[ -f "$env_file" ]] || return 0
+
+  if uses_https_app_url "$env_file"; then
+    log_info "HTTPS mode detected — skipping HTTP repair."
+    return 0
   fi
 
-  {
-    echo ""
-    echo "─── آخرین به‌روزرسانی ───────────────────────────────────────"
-    echo "  نسخه        : v${new_version}"
-    echo "  مرجع گیت    : ${TAG:-$BRANCH}"
-    echo "  تاریخ       : $(date '+%Y-%m-%d %H:%M:%S %Z')"
-  } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
+  local server_ip http_url
+  server_ip="$(detect_server_ip)"
+  http_url="http://${server_ip}"
+
+  log_info "Repairing HTTP deployment (CSS/login) for ${http_url} ..."
+  set_env_kv "$env_file" "TRUST_TLS" "false"
+  set_env_kv "$env_file" "APP_URL" "$http_url"
+  set_env_kv "$env_file" "ALLOWED_ORIGINS" "$http_url"
+  chown "$APP_USER:$APP_USER" "$env_file"
+  chmod 600 "$env_file"
+
+  local mongo_uri
+  mongo_uri="$(grep '^MONGODB_URI=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  if [[ -n "$mongo_uri" ]] && command -v mongosh >/dev/null 2>&1; then
+    mongosh "$mongo_uri" --quiet --eval \
+      "db.appsettings.updateOne({key:'default'}, {\$set:{publicUrl:'${http_url}'}}, {upsert:true})" \
+      >/dev/null 2>&1 || log_warn "Could not update MongoDB publicUrl (non-fatal)."
+    log_ok "MongoDB publicUrl set to ${http_url}"
+  fi
 }
 
 migrate_env_keys() {
@@ -189,29 +187,50 @@ migrate_env_keys() {
     echo "${key}=${val}" >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_warn "کلید ${key} به .env اضافه شد — در خزانه رمز سازمانی ثبت کنید"
+    log_warn "Added missing ${key} to .env — save it in your password vault"
   }
 
   ensure_env_key ANNOUNCEMENT_ENCRYPTION_KEY
   ensure_env_key LDAP_ENCRYPTION_KEY
 
-  if ! grep -q '^TRUST_TLS=' "$env_file" 2>/dev/null; then
-    if grep -q '^APP_URL=https://' "$env_file" 2>/dev/null; then
-      echo 'TRUST_TLS=true' >> "$env_file"
-    else
-      echo 'TRUST_TLS=false' >> "$env_file"
-    fi
-    chown "$APP_USER:$APP_USER" "$env_file"
-    chmod 600 "$env_file"
-    log_warn "TRUST_TLS به .env اضافه شد (برای HTTP باید false باشد)"
-  fi
-
   if ! grep -q '^LOG_DIR=' "$env_file" 2>/dev/null; then
     echo 'LOG_DIR=/var/log/foodmood' >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_warn "LOG_DIR=/var/log/foodmood به .env اضافه شد"
+    log_warn "Added LOG_DIR=/var/log/foodmood to .env"
   fi
+
+  repair_http_deployment
+}
+
+verify_http_deployment() {
+  local server_ip http_url hsts css_code
+  server_ip="$(detect_server_ip)"
+  http_url="http://${server_ip}"
+
+  if uses_https_app_url "${INSTALL_DIR}/.env"; then
+    return 0
+  fi
+
+  log_info "Verifying HTTP assets and headers..."
+  hsts="$(curl -sI --max-time 10 "${http_url}/login" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="strict-transport-security"{print $2; exit}')"
+  css_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 "${http_url}/css/enterprise-theme.css" 2>/dev/null || echo '000')"
+
+  if [[ "$css_code" == "200" ]]; then
+    log_ok "CSS served: ${http_url}/css/enterprise-theme.css"
+  else
+    log_err "CSS check failed (HTTP ${css_code})"
+    return 1
+  fi
+
+  if echo "$hsts" | grep -qi 'max-age=0'; then
+    log_ok "HSTS cleared for browser (max-age=0)"
+  elif [[ -z "$hsts" ]]; then
+    log_ok "No HSTS header on HTTP (good)"
+  else
+    log_warn "Unexpected HSTS: ${hsts}"
+  fi
+  return 0
 }
 
 migrate_systemd_service() {
@@ -233,19 +252,89 @@ migrate_systemd_service() {
     systemctl enable "$SERVICE_NAME"
   fi
 
-  if ! grep -q '^LOG_DIR=' "${INSTALL_DIR}/.env" 2>/dev/null; then
-    echo 'LOG_DIR=/var/log/foodmood' >> "${INSTALL_DIR}/.env"
-    chown "$APP_USER:$APP_USER" "${INSTALL_DIR}/.env"
-    chmod 600 "${INSTALL_DIR}/.env"
+  chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
+}
+
+apply_update() {
+  local source_dir="$1"
+  local old_version new_version server_ip
+  old_version="$(read_installed_version)"
+
+  if [[ ! -d "$INSTALL_DIR" ]]; then
+    log_err "Install path ${INSTALL_DIR} not found. Run install.sh first."
+    exit 1
   fi
 
-  chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
+  if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
+    log_err ".env missing in ${INSTALL_DIR} — unsafe to update."
+    exit 1
+  fi
+
+  new_version="$NEW_VERSION"
+  server_ip="$(detect_server_ip)"
+  echo ""
+  echo -e "${MAGENTA}${BOLD}  FoodMood Update${NC}"
+  echo -e "  ${BOLD}From:${NC} v${old_version}  →  ${BOLD}To:${NC} v${new_version} (${TAG:-$BRANCH})"
+  echo ""
+
+  log_info "Backing up .env..."
+  cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
+
+  log_info "Syncing application files (keeping .env)..."
+  rsync -a --delete \
+    --exclude node_modules \
+    --exclude .git \
+    --exclude .env \
+    --exclude INSTALL_INFO.txt \
+    --exclude '*.log' \
+    "$source_dir/" "$INSTALL_DIR/"
+
+  chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
+  chmod 600 "${INSTALL_DIR}/.env"
+
+  log_info "Installing npm dependencies..."
+  if ! sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"; then
+    log_warn "npmjs.org unreachable — trying npmmirror.com..."
+    sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --registry=https://registry.npmmirror.com"
+  fi
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
+
+  migrate_systemd_service
+
+  log_info "Restarting ${SERVICE_NAME}..."
+  systemctl restart "$SERVICE_NAME"
+  sleep 3
+
+  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    log_err "Service failed to start. Log: journalctl -u ${SERVICE_NAME} -n 40"
+    exit 1
+  fi
+
+  verify_http_deployment || true
+
+  log_ok "Update complete — FoodMood v${new_version} is running."
+  echo ""
+  echo -e "${GREEN}${BOLD}  Open in browser (use http, not https):${NC}"
+  echo -e "  ${BOLD}http://${server_ip}/login${NC}"
+  echo ""
+  echo -e "${YELLOW}[!]${NC} If CSS still missing on your PC, open an ${BOLD}Incognito${NC} window"
+  echo -e "    or clear HSTS: chrome://net-internals/#hsts → Delete → ${server_ip}"
+  echo ""
+
+  {
+    echo ""
+    echo "─── Last update ───────────────────────────────────────────────"
+    echo "  Version     : v${new_version}"
+    echo "  Git ref     : ${TAG:-$BRANCH}"
+    echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo "  App URL     : http://${server_ip}"
+  } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
 
 main() {
   require_root
   export DEBIAN_FRONTEND=noninteractive
-  command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq git rsync; }
+  command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq git rsync curl; }
 
   if [[ "$LIST_TAGS" -eq 1 ]]; then
     list_remote_tags
@@ -258,7 +347,7 @@ main() {
   fi
 
   if [[ -n "$TAG" && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    log_err "فرمت تگ نامعتبر است. مثال: v1.1.0"
+    log_err "Invalid tag format. Example: v1.3.8"
     exit 1
   fi
 
