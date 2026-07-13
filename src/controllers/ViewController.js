@@ -105,7 +105,7 @@ class ViewController {
           { email: identifier.toLowerCase() },
           { phone: identifier },
         ],
-      });
+      }).select('+password');
 
       const loginView = async (status, error, extra = {}) => {
         const body = await getLoginViewModel(req, { error, ...extra });

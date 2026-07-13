@@ -135,8 +135,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // ── Session ───────────────────────────────────────────────────────────────────
 const sessionMaxAgeMs = getMaxMs();
+// Dev fallback: random per boot instead of a hardcoded guessable secret
 app.use(session({
-  secret:            SESSION_SECRET || 'development-only-session-secret-change-me',
+  secret:            SESSION_SECRET || require('crypto').randomBytes(32).toString('hex'),
   resave:            false,
   saveUninitialized: false,
   rolling:           true,
@@ -168,9 +169,14 @@ app.use('/api',             apiLimiter);
 app.get('/api/system/health', (req, res) => {
   const { getHealthStatus } = require('./src/helpers/HealthState');
   const health = getHealthStatus();
+  // Lifecycle counters are internal detail — only exposed in test mode.
+  // Superadmins see them via the authenticated /api/admin security endpoint.
+  const data = process.env.ALLOW_SYSTEM_TEST === 'true'
+    ? { ...health, lifecycle: readLifecycleStats() }
+    : health;
   res.status(health.healthy ? 200 : 503).json({
     success: health.healthy,
-    data: { ...health, lifecycle: readLifecycleStats() },
+    data,
   });
 });
 

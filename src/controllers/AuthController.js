@@ -90,7 +90,7 @@ class AuthController {
           { email: identifier.toLowerCase() },
           { phone: identifier },
         ],
-      });
+      }).select('+password');
 
       // Account lock check
       if (user?.isLocked) {
@@ -394,7 +394,7 @@ class AuthController {
         return res.status(400).json({ message: 'رمز عبور باید شامل حداقل یک حرف و یک عدد باشد' });
       }
 
-      const user = await User.findById(req.user.id);
+      const user = await User.findById(req.user.id).select('+password');
       if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
       if (!(await comparePassword(String(oldPassword || ''), user.password))) {

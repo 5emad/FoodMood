@@ -94,6 +94,14 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: 'حساب کاربری غیرفعال یا یافت نشد' });
     }
 
+    // Role in the token must match the current DB role — a demoted admin
+    // must not keep elevated access until the JWT expires.
+    if (dbUser.role !== user.role) {
+      await invalidateSession(req, res, 'expired');
+      if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
+      return res.status(401).json({ message: 'سطح دسترسی شما تغییر کرده است. لطفاً دوباره وارد شوید.' });
+    }
+
     const sessionState = await assertActiveUserSession({
       sessionId: user.sessionId,
       userId: user.id,

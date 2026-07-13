@@ -134,16 +134,10 @@ function decryptLdapBindSecret(stored) {
 
 const encryptLdapPassword = (plaintext) => {
   if (!plaintext) return plaintext;
-  if (LDAP_ENC_KEY_RAW) return encryptLdapBindSecret(plaintext);
-  const key = getLdapKey();
-  if (!key) return plaintext;
-
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGO, key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-
-  return `${ENC_PREFIX}${iv.toString('hex')}:${tag.toString('hex')}:${encrypted.toString('hex')}`;
+  // Never store the LDAP bind password in plaintext: encryptLdapBindSecret
+  // derives its key from LDAP_ENCRYPTION_KEY or BACKUP_SECRET and throws
+  // when neither is configured.
+  return encryptLdapBindSecret(plaintext);
 };
 
 const decryptLdapPassword = (ciphertext) => {

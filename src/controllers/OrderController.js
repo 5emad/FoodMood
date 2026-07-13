@@ -81,7 +81,7 @@ async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
   }
 
   const price = menuItem.customPrice ?? menuItem.foodId.price;
-  const orderQuantity = Math.max(Number(quantity || 1), 1);
+  const orderQuantity = Math.min(Math.max(Number(quantity || 1), 1), 100);
   return {
     userId: actor.userId || null,
     ldapUsername: actor.ldapUsername || null,
@@ -113,6 +113,9 @@ class OrderController {
         if (!items || !Array.isArray(items) || items.length === 0) {
           return res.status(400).json({ message: 'سفارش باید حداقل یک آیتم داشته باشد' });
         }
+        if (items.length > 50) {
+          return res.status(400).json({ message: 'تعداد آیتم‌های سفارش بیش از حد مجاز است' });
+        }
 
         let totalPrice = 0;
         const orderItems = [];
@@ -123,7 +126,7 @@ class OrderController {
             return res.status(404).json({ message: `غذای ${item.foodId} یافت نشد یا فعال نیست` });
           }
 
-          const quantity = Math.max(Number(item.quantity || 1), 1);
+          const quantity = Math.min(Math.max(Number(item.quantity || 1), 1), 100);
           totalPrice += food.price * quantity;
           orderItems.push({ foodId: item.foodId, quantity, price: food.price });
         }
