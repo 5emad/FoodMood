@@ -23,6 +23,7 @@ const backupUpload = multer({
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
 
 router.get('/dashboard', AdminController.dashboard);
+router.get('/reports/access', AdminController.getReportsAccess);
 router.get('/reports/months', AdminController.getReportMonths);
 router.get('/reports', AdminController.getReports);
 router.get('/reports/pdf', AdminController.getReportPdf);

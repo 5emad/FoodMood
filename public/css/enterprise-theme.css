@@ -1371,6 +1371,33 @@ body.admin-body { min-height: 100vh; }
 .report-controls .form-control { padding: 8px 14px; }
 .report-controls .btn { padding: 9px 20px; border-radius: var(--radius-pill); }
 
+.reports-gate-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(245, 158, 11, .35);
+  background: linear-gradient(135deg, rgba(255, 251, 235, .95), rgba(255, 247, 237, .9));
+  box-shadow: var(--shadow-sm);
+}
+.reports-gate-banner[hidden] { display: none !important; }
+.reports-gate-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(245, 158, 11, .15);
+  color: #B45309;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.reports-gate-title { font-weight: 900; color: var(--text-main); margin-bottom: 4px; }
+.reports-gate-text { color: var(--text-muted); font-size: .9rem; line-height: 1.7; }
+
 /* "No order" users table */
 .no-order-card .card-header { background: var(--danger-bg); }
 .no-order-card .card-header::after { background: linear-gradient(90deg, var(--danger), transparent); }

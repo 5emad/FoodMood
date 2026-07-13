@@ -24,20 +24,20 @@
   </div>
   <ul class="sidebar-nav">
     <li><div class="sidebar-section-title">مدیریت</div></li>
-    <li><a class="sidebar-link active" data-tab="reports"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span></a></li>
-    <li><a class="sidebar-link" data-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
-    <li><a class="sidebar-link" data-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
-    <li><a class="sidebar-link" data-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
+    <li><a href="#" class="sidebar-link active" data-tab="reports" id="reportsNavLink"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span> <span id="reportsPendingBadge" class="badge badge-warning" style="display:none;margin-right:auto">0</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
     <li><div class="sidebar-section-title">تنظیمات</div></li>
-    <li><a class="sidebar-link" data-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
-    <li><a class="sidebar-link" data-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
-    <li><a class="sidebar-link" data-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
-    <li><a class="sidebar-link" data-tab="backup"><i class="fas fa-database"></i><span>پشتیبان‌گیری</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
+    <li><a href="#" class="sidebar-link" data-tab="backup"><i class="fas fa-database"></i><span>پشتیبان‌گیری</span></a></li>
     <% if (user && user.role === 'superadmin') { %>
-      <li><a class="sidebar-link" data-tab="system-settings"><i class="fas fa-sliders"></i><span>تنظیمات سامانه</span></a></li>
+      <li><a href="#" class="sidebar-link" data-tab="system-settings"><i class="fas fa-sliders"></i><span>تنظیمات سامانه</span></a></li>
     <% } %>
     <% if (user && user.role === 'superadmin') { %>
-      <li><a class="sidebar-link" data-tab="security"><i class="fas fa-shield-halved"></i><span>امنیت</span> <span id="securityNotifyBadge" class="badge badge-danger" style="display:none;margin-right:auto">0</span></a></li>
+      <li><a href="#" class="sidebar-link" data-tab="security"><i class="fas fa-shield-halved"></i><span>امنیت</span> <span id="securityNotifyBadge" class="badge badge-danger" style="display:none;margin-right:auto">0</span></a></li>
     <% } %>
   </ul>
   <div class="sidebar-footer">
@@ -77,6 +77,17 @@
 
     <!-- ===== REPORTS ===== -->
     <section id="tab-reports" class="tab-pane active">
+      <div id="reportsGateBanner" class="reports-gate-banner" hidden>
+        <div class="reports-gate-icon"><i class="fas fa-lock"></i></div>
+        <div>
+          <div class="reports-gate-title">دسترسی به گزارش‌ها قفل است</div>
+          <div class="reports-gate-text" id="reportsGateText">ابتدا همه سفارش‌های در انتظار تایید را در بخش سفارش‌ها تایید کنید.</div>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="goToOrdersForConfirm()">
+          <i class="fas fa-clipboard-check"></i> رفتن به سفارش‌ها
+        </button>
+      </div>
+      <div id="reportsContent">
       <div class="section-header no-print">
         <div>
           <div class="section-title">گزارش‌ها</div>
@@ -112,6 +123,7 @@
         </div>
         <div id="monthlyReportWrap"></div>
       </div>
+      </div>
     </section>
 
     <!-- ===== WEEKS MANAGEMENT ===== -->
@@ -131,7 +143,7 @@
     <!-- ===== ORDERS ===== -->
     <section id="tab-orders" class="tab-pane">
       <div class="section-header">
-        <div><div class="section-title">سفارش‌ها</div><div class="section-sub">پس از بررسی، سفارش‌های هفته جاری را یکجا تایید کنید.</div></div>
+        <div><div class="section-title">سفارش‌ها</div><div class="section-sub">پس از بررسی، همه سفارش‌های در انتظار را تایید کنید تا گزارش‌ها باز شود.</div></div>
         <div class="order-toolbar">
           <div class="search-group">
             <i class="fas fa-search search-group-icon"></i>
@@ -140,7 +152,7 @@
             <button type="button" class="search-go" onclick="searchOrders()">جستجو</button>
           </div>
           <button class="btn btn-success btn-confirm-week" onclick="confirmAllOrders(this)">
-            <i class="fas fa-check-double"></i> تایید سفارش‌های کل هفته
+            <i class="fas fa-check-double"></i> تایید همه سفارش‌های در انتظار
           </button>
         </div>
       </div>
@@ -927,22 +939,77 @@ async function toggleUserPrices() {
   else notify(data.message || 'خطا', 'error');
 }
 
+let reportsAccess = <%- JSON.stringify(typeof reportsAccess !== 'undefined' ? reportsAccess : { allowed: true, pendingCount: 0, message: null }) %>;
+
+async function refreshReportsAccess() {
+  const data = await api('/api/admin/reports/access');
+  if (data.success && data.data) {
+    reportsAccess = data.data;
+  }
+  applyReportsAccessUi();
+  return reportsAccess;
+}
+
+function applyReportsAccessUi() {
+  const allowed = Boolean(reportsAccess.allowed);
+  const banner = document.getElementById('reportsGateBanner');
+  const content = document.getElementById('reportsContent');
+  const badge = document.getElementById('reportsPendingBadge');
+  const gateText = document.getElementById('reportsGateText');
+
+  if (banner) banner.hidden = allowed;
+  if (content) content.style.display = allowed ? '' : 'none';
+  if (gateText && reportsAccess.message) gateText.textContent = reportsAccess.message;
+  if (badge) {
+    if (!allowed && reportsAccess.pendingCount > 0) {
+      badge.style.display = '';
+      badge.textContent = reportsAccess.pendingCount.toLocaleString('fa-IR');
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function activateSidebarTab(tabName) {
+  const link = document.querySelector(`.sidebar-link[data-tab="${tabName}"]`);
+  if (!link) return;
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  link.classList.add('active');
+  document.getElementById(`tab-${tabName}`).classList.add('active');
+}
+
+function goToOrdersForConfirm() {
+  activateSidebarTab('orders');
+  loadOrders();
+  notify(reportsAccess.message || 'ابتدا همه سفارش‌ها را تایید کنید.', 'warning', 'گزارش‌ها');
+}
+
+async function openAdminTab(tabName) {
+  if (tabName === 'reports') {
+    await refreshReportsAccess();
+    if (!reportsAccess.allowed) {
+      goToOrdersForConfirm();
+      return;
+    }
+  }
+  activateSidebarTab(tabName);
+  if (tabName === 'reports') loadWeeks().then(() => loadWeeklyReport());
+  if (tabName === 'weeks') loadWeeksManager();
+  if (tabName === 'users') loadUsers();
+  if (tabName === 'departments') loadDepts();
+  if (tabName === 'announcements') loadAnnouncementsAdmin();
+  if (tabName === 'orders') loadOrders();
+  if (tabName === 'foods') loadFoods();
+  if (tabName === 'system-settings') loadSettings();
+  if (tabName === 'security') loadSecurityCenter();
+}
+
 /* ===== SIDEBAR ===== */
 document.querySelectorAll('.sidebar-link').forEach(link => {
-  link.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById(`tab-${link.dataset.tab}`).classList.add('active');
-    if (link.dataset.tab === 'reports') loadWeeks().then(() => loadWeeklyReport());
-    if (link.dataset.tab === 'weeks') loadWeeksManager();
-    if (link.dataset.tab === 'users') loadUsers();
-    if (link.dataset.tab === 'departments') loadDepts();
-    if (link.dataset.tab === 'announcements') loadAnnouncementsAdmin();
-    if (link.dataset.tab === 'orders') loadOrders();
-    if (link.dataset.tab === 'foods') loadFoods();
-    if (link.dataset.tab === 'system-settings') loadSettings();
-    if (link.dataset.tab === 'security') loadSecurityCenter();
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    openAdminTab(link.dataset.tab);
   });
 });
 
@@ -1221,6 +1288,7 @@ function onReportWeekChange() {
 }
 
 async function loadWeeklyReport() {
+  if (!reportsAccess.allowed) return;
   const weekId = document.getElementById('reportWeekSelect')?.value;
   const query = weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
   document.getElementById('weeklyReportWrap').innerHTML = '<div style="padding:28px;text-align:center"><div class="spinner"></div></div>';
@@ -1318,6 +1386,7 @@ function renderDailyStats(r) {
 }
 
 async function loadMonthlyBySelect() {
+  if (!reportsAccess.allowed) return;
   const val = document.getElementById('monthSelect')?.value;
   if (!val) return;
   const [from, to] = val.split('|');
@@ -1547,6 +1616,11 @@ async function testLdap(btn) {
 
 /* ===== PDF Download ===== */
 async function downloadPdf() {
+  if (!reportsAccess.allowed) {
+    notify(reportsAccess.message || 'ابتدا همه سفارش‌ها را تایید کنید.', 'warning', 'PDF');
+    goToOrdersForConfirm();
+    return;
+  }
   const btn = document.getElementById('pdfBtn');
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ساخت PDF...';
@@ -1807,19 +1881,23 @@ async function createCurrentWeek() {
 /* ===== ORDERS ===== */
 async function confirmAllOrders(btn) {
   if (!(await confirmAction({
-    title: 'تایید سفارش‌های هفته جاری؟',
-    text: 'بعد از تایید، کاربران دیگر نمی‌توانند رزروهای خود را لغو کنند.',
+    title: 'تایید همه سفارش‌های در انتظار؟',
+    text: 'تمام سفارش‌هایی که هنوز تایید نشده‌اند یکجا تایید می‌شوند. بعد از تایید، دسترسی به گزارش‌ها باز می‌شود.',
     confirmText: 'تایید همه سفارش‌ها',
     icon: 'question',
   }))) return;
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تایید...';
-  const data = await api('/api/orders/admin/confirm-week', { method: 'POST' });
+  const data = await api('/api/orders/admin/confirm-week', { method: 'POST', body: JSON.stringify({ scope: 'all' }) });
   btn.disabled = false;
-  btn.innerHTML = '<i class="fas fa-check-double"></i> تایید سفارش‌های کل هفته';
+  btn.innerHTML = '<i class="fas fa-check-double"></i> تایید همه سفارش‌های در انتظار';
   if (data.success) {
     notify(data.message || `${data.count} سفارش تایید شد.`);
+    await refreshReportsAccess();
     loadOrders();
+    if (reportsAccess.allowed) {
+      notify('اکنون می‌توانید به بخش گزارش‌ها دسترسی داشته باشید.', 'success', 'گزارش‌ها');
+    }
   } else {
     notify(data.message || 'خطا در تایید', 'error');
   }
@@ -2375,7 +2453,14 @@ async function loadAnnouncementsAdmin() {
 
 /* ===== INIT ===== */
 if (currentUserRole === 'superadmin') loadSettings();
-loadWeeks().then(() => loadWeeklyReport());
+applyReportsAccessUi();
+if (!reportsAccess.allowed) {
+  activateSidebarTab('orders');
+  loadOrders();
+} else {
+  loadWeeks().then(() => loadWeeklyReport());
+}
+refreshReportsAccess();
 initBackupTab();
 if (document.getElementById('securityNotifyBadge')) loadSecurityCenter();
 showMonthlyReportPlaceholder();

@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-07-13
+
+### Added
+- Reports section locked until all pending orders are confirmed (admin + superadmin)
+- `GET /api/admin/reports/access` status endpoint
+- `npm run stop` / `npm run restart` scripts for clean server reload on Windows/Linux
+
+### Fixed
+- Reports gate now enforced server-side on page load (not only client API)
+- Superadmin no longer bypasses pending-order gate
+- Confirm button approves all pending orders (`scope: all`)
+
 ## [1.2.1] - 2026-07-13
 
 ### Fixed
@@ -57,7 +69,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 - Initial FoodMood release: food ordering system with security hardening
 - MongoDB session store, LDAP auth, backup encryption, admin panel
 
-[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.2.1...main
+[Unreleased]: https://github.com/5emad/FoodMood/compare/v1.2.2...main
+[1.2.2]: https://github.com/5emad/FoodMood/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/5emad/FoodMood/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/5emad/FoodMood/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/5emad/FoodMood/compare/v1.0.0...v1.1.0

@@ -1,10 +1,12 @@
 {
   "name": "food-ordering-system",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "سیستم رزرو و سفارش غذا",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "stop": "node scripts/stop-server.js",
+    "restart": "npm run stop && npm start",
     "dev": "nodemon server.js",
     "vendor:sync": "node scripts/sync-vendor.js",
     "postinstall": "node scripts/sync-vendor.js",

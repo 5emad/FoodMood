@@ -20,6 +20,7 @@ const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
 const { nextReportNumber } = require('../helpers/ReportNumberHelper');
+const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/ReportsAccessHelper');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
 const { renderReportHtml } = require('../views/ReportPdfView');
 const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
@@ -685,8 +686,18 @@ class AdminController {
     }
   }
 
+  static async getReportsAccess(req, res, next) {
+    try {
+      const data = await getReportsAccessForUser(req.user);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getReportMonths(req, res, next) {
     try {
+      await assertReportsAccess(req.user);
       const months = await getAvailableReportMonths();
       res.json({ success: true, data: months });
     } catch (error) {
@@ -696,6 +707,7 @@ class AdminController {
 
   static async getReports(req, res, next) {
     try {
+      await assertReportsAccess(req.user);
       const { type: reportType, range, title } = await resolveReportRange(req.query);
       const report = await buildReport(range.start, range.end);
 
@@ -714,13 +726,14 @@ class AdminController {
         },
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
+      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
       next(error);
     }
   }
 
   static async getReportPdf(req, res, next) {
     try {
+      await assertReportsAccess(req.user);
       const { type: reportType, range, title } = await resolveReportRange(req.query);
       const [report, settings, reportNumber] = await Promise.all([
         buildReport(range.start, range.end),

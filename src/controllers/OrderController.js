@@ -328,16 +328,16 @@ class OrderController {
   static async confirmWeek(req, res, next) {
     try {
       const Week = require('../models/Week');
-      let weekId = req.body.weekId;
-      if (!weekId) {
+      let filter = { status: 'pending' };
+      const weekId = req.body?.weekId;
+      if (weekId) {
+        filter.weekId = weekId;
+      } else if (req.body?.scope !== 'all') {
         const activeWeek = await Week.findOne({ isActive: true });
         if (!activeWeek) return res.status(404).json({ success: false, message: 'هفته فعالی وجود ندارد' });
-        weekId = activeWeek._id;
+        filter.weekId = activeWeek._id;
       }
-      const result = await Order.updateMany(
-        { weekId, status: 'pending' },
-        { $set: { status: 'confirmed' } }
-      );
+      const result = await Order.updateMany(filter, { $set: { status: 'confirmed' } });
       res.json({ success: true, count: result.modifiedCount, message: `${result.modifiedCount} سفارش تایید شد` });
     } catch (error) {
       next(error);
