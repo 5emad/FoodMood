@@ -190,13 +190,18 @@ require_root() {
 }
 
 detect_server_ip() {
-  hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1"
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  if [[ -z "$ip" ]]; then
+    ip="127.0.0.1"
+  fi
+  echo "$ip"
 }
 
 detect_ssh_port() {
   local port=""
   if command -v sshd >/dev/null 2>&1; then
-    port="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+    port="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}' || true)"
   fi
   if [[ -z "$port" || ! "$port" =~ ^[0-9]+$ ]]; then
     port=22
@@ -205,12 +210,22 @@ detect_ssh_port() {
 }
 
 rand_secret() {
-  { openssl rand -base64 48 2>/dev/null || head -c 48 /dev/urandom | base64; } | tr -d '\n/+=' | cut -c1-64
+  local secret
+  secret="$({ openssl rand -base64 48 2>/dev/null || head -c 48 /dev/urandom | base64; } | tr -d '\n/+=' | cut -c1-64 || true)"
+  if [[ -z "$secret" ]]; then
+    secret="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
+  echo "${secret:0:64}"
 }
 
 rand_password() {
   # Alphanumeric only — safe in URIs, shells, and copy-paste
-  { openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64; } | tr -dc 'A-Za-z0-9' | cut -c1-16
+  local pw
+  pw="$({ openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64; } | tr -dc 'A-Za-z0-9' | cut -c1-16 || true)"
+  if [[ -z "$pw" ]]; then
+    pw="$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
+  echo "${pw:0:16}"
 }
 
 url_encode() {
@@ -348,7 +363,15 @@ cleanup_clone() {
     rm -rf "$CLONE_DIR"
   fi
 }
-trap cleanup_clone EXIT
+
+on_exit() {
+  local code=$?
+  cleanup_clone
+  if [[ "$code" -ne 0 ]]; then
+    log_err "Install exited unexpectedly (code ${code}). Re-run and send this output if it persists."
+  fi
+}
+trap on_exit EXIT
 
 # ─── Step 2: base packages ────────────────────────────────────
 install_base_packages() {
