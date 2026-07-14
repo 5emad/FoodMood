@@ -1,13 +1,23 @@
 const mongoose = require('mongoose');
 
 const announcementSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  body: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   titleEnc: {
     type: String,
-    required: true,
+    default: '',
   },
   bodyEnc: {
     type: String,
-    required: true,
+    default: '',
   },
   audience: {
     type: String,

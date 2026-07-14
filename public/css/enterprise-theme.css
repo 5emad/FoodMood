@@ -971,6 +971,29 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 }
 .auth-card-title { font-size: 1.55rem; font-weight: 900; color: var(--text-main); margin-bottom: 6px; }
 .auth-card-sub   { color: var(--text-muted); font-size: .87rem; margin-bottom: 32px; }
+.auth-card .profile-prompt {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.95;
+  min-height: 4.8em;
+  text-align: right;
+  margin: 0 0 22px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg-soft, rgba(155, 109, 255, .06));
+  border: 1px solid var(--border);
+}
+.auth-card .profile-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-right: 4px;
+  border-radius: 2px;
+  background: var(--primary);
+  vertical-align: -3px;
+  animation: pp-blink .8s steps(2, start) infinite;
+}
 
 @media (max-width: 680px) {
   .auth-wrap { flex-direction: column; }

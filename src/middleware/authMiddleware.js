@@ -1,6 +1,6 @@
 const { verifyToken } = require('../helpers/TokenHelper');
 const { isLdapAuth } = require('../helpers/AuthUserHelper');
-const { resolveDisplayName } = require('../helpers/LdapProfileHelper');
+const { resolveDisplayName, enrichLdapSessionUser, isProfileActive } = require('../helpers/LdapProfileHelper');
 const { resolveSessionUser, readAuthToken } = require('../helpers/SessionUserHelper');
 const {
   assertActiveSession,
@@ -81,10 +81,12 @@ const authMiddleware = async (req, res, next) => {
         if (wantsHtml(req)) return htmlLoginRedirect(req, res, ldapSession.reason || 'expired');
         return res.status(401).json({ message: ldapSession.message || 'نشست شما منقضی شده است' });
       }
-      req.user = {
-        ...user,
-        fullName: await resolveDisplayName(user.username, user.fullName),
-      };
+      if (!(await isProfileActive(user.username))) {
+        await invalidateSession(req, res, 'inactive');
+        if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'inactive');
+        return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
+      }
+      req.user = await enrichLdapSessionUser(user);
       touchSessionActivity(req);
       await touchSession(user.sessionId);
       res.locals.sessionPolicy = getSessionPolicy();

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var text = 'کاربر عزیز، لطفا نام و نام خانوادگی خود را به فارسی بنویسید';
+  var text = 'کاربر عزیز، لطفاً نام و نام خانوادگی خود را به فارسی بنویسید';
   var target = document.getElementById('typed');
   var index = 0;
 
@@ -9,7 +9,7 @@
     if (!target) return;
     target.textContent = text.slice(0, index);
     index += 1;
-    if (index <= text.length) setTimeout(typeNext, 42);
+    if (index <= text.length) setTimeout(typeNext, 38);
   }
   typeNext();
 
@@ -21,13 +21,25 @@
 
   if (!form) return;
 
+  function showError(message) {
+    if (!error) return;
+    error.style.display = 'block';
+    error.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + String(message || '');
+  }
+
+  function clearError() {
+    if (!error) return;
+    error.style.display = 'none';
+    error.textContent = '';
+  }
+
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     var value = input.value.trim();
-    error.textContent = '';
+    clearError();
 
     if (!persianName.test(value) || value.split(/\s+/).filter(Boolean).length < 2) {
-      error.textContent = 'نام و نام خانوادگی را کامل و به فارسی وارد کنید.';
+      showError('نام و نام خانوادگی را کامل و به فارسی وارد کنید.');
       input.focus();
       return;
     }
@@ -49,7 +61,7 @@
         : '/user/dashboard';
       window.location.href = next;
     } catch (err) {
-      error.textContent = err.message || 'خطا در ارتباط با سرور';
+      showError(err.message || 'خطا در ارتباط با سرور');
       button.disabled = false;
       button.innerHTML = '<i class="fas fa-arrow-left"></i> ورود به سامانه';
     }

@@ -8,7 +8,7 @@ const {
   needsProfileSetup,
   saveFullName: saveLdapFullName,
   resolveDisplayName,
-  isValidPersianFullName,
+  isProfileActive,
 } = require('../helpers/LdapProfileHelper');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const {
@@ -169,6 +169,12 @@ class AuthController {
       if (!canUseLocalAuth && LdapHelper.isEnabled(settings || {})) {
         const ldapResult = await LdapHelper.authenticate(identifier, password, settings || {});
         if (ldapResult) {
+          if (!(await isProfileActive(ldapResult.username))) {
+            await writeSecurityLog(req, 'login_failed', null, 'Inactive LDAP profile login blocked', {
+              username: ldapResult.username,
+            });
+            return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
+          }
           const sessionId = await issueSession({
             username: ldapResult.username,
             authSource: 'ldap',

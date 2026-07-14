@@ -1,10 +1,8 @@
 const Announcement = require('../models/Announcement');
 const Department = require('../models/Department');
 const User = require('../models/User');
-const {
-  encryptAnnouncementText,
-  decryptAnnouncementText,
-} = require('../helpers/AnnouncementCrypto');
+const LdapProfile = require('../models/LdapProfile');
+const { decryptAnnouncementText } = require('../helpers/AnnouncementCrypto');
 const { formatJalaliDate, parseJalaliDate } = require('../helpers/DateHelper');
 
 function endOfJalaliDay(value) {
@@ -14,12 +12,25 @@ function endOfJalaliDay(value) {
   return parsed;
 }
 
-function decryptAnnouncement(doc) {
-  if (!doc) return null;
+function readAnnouncementContent(doc) {
+  if (!doc) return { title: '', body: '' };
+  const plainTitle = String(doc.title || '').trim();
+  const plainBody = String(doc.body || '').trim();
+  if (plainTitle || plainBody) {
+    return { title: plainTitle, body: plainBody };
+  }
+  return {
+    title: decryptAnnouncementText(doc.titleEnc || ''),
+    body: decryptAnnouncementText(doc.bodyEnc || ''),
+  };
+}
+
+function toAnnouncementDto(doc, extras = {}) {
+  const content = readAnnouncementContent(doc);
   return {
     _id: String(doc._id),
-    title: decryptAnnouncementText(doc.titleEnc),
-    body: decryptAnnouncementText(doc.bodyEnc),
+    title: content.title,
+    body: content.body,
     audience: doc.audience,
     departmentIds: (doc.departmentIds || []).map((id) => String(id)),
     isActive: doc.isActive,
@@ -28,6 +39,7 @@ function decryptAnnouncement(doc) {
     createdBy: doc.createdBy ? String(doc.createdBy) : null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    ...extras,
   };
 }
 
@@ -35,7 +47,11 @@ async function resolveUserDepartmentIds(user) {
   if (!user) return [];
 
   if (user.authSource === 'ldap') {
-    const deptName = String(user.department || '').trim();
+    const profile = await LdapProfile.findOne({ ldapUsername: String(user.username || '').toLowerCase() })
+      .select('departmentId department')
+      .lean();
+    if (profile?.departmentId) return [profile.departmentId];
+    const deptName = String(profile?.department || user.department || '').trim();
     if (!deptName) return [];
     const dept = await Department.findOne({ name: deptName }).select('_id').lean();
     return dept ? [dept._id] : [];
@@ -76,7 +92,7 @@ async function listForAdmin() {
     .lean();
 
   return rows.map((row) => {
-    const plain = decryptAnnouncement(row);
+    const plain = toAnnouncementDto(row);
     plain.departments = (row.departmentIds || []).map((d) => ({
       _id: String(d._id),
       name: d.name,
@@ -104,7 +120,7 @@ async function listActiveForUser(user) {
     .lean();
 
   return rows
-    .map(decryptAnnouncement)
+    .map((row) => toAnnouncementDto(row))
     .filter(isDisplayableAnnouncement)
     .map(({ isActive, ...item }) => item);
 }
@@ -122,8 +138,10 @@ async function createAnnouncement({ title, body, audience, departmentIds, isActi
   }
 
   const doc = await Announcement.create({
-    titleEnc: encryptAnnouncementText(String(title || '').trim()),
-    bodyEnc: encryptAnnouncementText(String(body || '').trim()),
+    title: String(title || '').trim(),
+    body: String(body || '').trim(),
+    titleEnc: '',
+    bodyEnc: '',
     audience: normalizedAudience,
     departmentIds: deptIds,
     isActive: isActive !== false,
@@ -131,7 +149,7 @@ async function createAnnouncement({ title, body, audience, departmentIds, isActi
     createdBy: createdBy || null,
   });
 
-  return decryptAnnouncement(doc.toObject());
+  return toAnnouncementDto(doc.toObject());
 }
 
 async function updateAnnouncement(id, { title, body, audience, departmentIds, isActive, expiresAt }) {
@@ -143,10 +161,12 @@ async function updateAnnouncement(id, { title, body, audience, departmentIds, is
   }
 
   if (title !== undefined) {
-    doc.titleEnc = encryptAnnouncementText(String(title).trim());
+    doc.title = String(title).trim();
+    doc.titleEnc = '';
   }
   if (body !== undefined) {
-    doc.bodyEnc = encryptAnnouncementText(String(body).trim());
+    doc.body = String(body).trim();
+    doc.bodyEnc = '';
   }
   if (audience !== undefined) {
     doc.audience = audience === 'department' ? 'department' : 'all';
@@ -165,7 +185,7 @@ async function updateAnnouncement(id, { title, body, audience, departmentIds, is
   if (expiresAt !== undefined) doc.expiresAt = expiresAt || null;
 
   await doc.save();
-  return decryptAnnouncement(doc.toObject());
+  return toAnnouncementDto(doc.toObject());
 }
 
 async function deleteAnnouncement(id) {

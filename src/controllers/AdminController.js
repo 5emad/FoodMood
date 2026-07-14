@@ -1,6 +1,12 @@
 const crypto = require('crypto');
 const User = require('../models/User');
 const LdapProfile = require('../models/LdapProfile');
+const {
+  parseLdapUserId,
+  updateProfileAdmin,
+  deleteProfile,
+  isValidPersianFullName,
+} = require('../helpers/LdapProfileHelper');
 const Week = require('../models/Week');
 const Food = require('../models/Food');
 const Order = require('../models/Order');
@@ -235,7 +241,9 @@ class AdminController {
           .populate('departmentId')
           .sort({ fullName: 1 })
           .lean(),
-        includeLdapUsers ? LdapProfile.find({}).sort({ fullName: 1 }).lean() : Promise.resolve([]),
+        includeLdapUsers
+          ? LdapProfile.find({}).populate('departmentId', 'name').sort({ fullName: 1 }).lean()
+          : Promise.resolve([]),
         department && department !== 'none'
           ? Department.findById(department).select('name').lean()
           : Promise.resolve(null),
@@ -246,9 +254,11 @@ class AdminController {
         _id: `ldap:${profile.ldapUsername}`,
         username: profile.ldapUsername,
         fullName: profile.fullName,
-        departmentId: profile.department ? { name: profile.department } : null,
+        email: profile.email || null,
+        phone: profile.phone || null,
+        departmentId: profile.departmentId || null,
         role: 'user',
-        status: 'active',
+        status: profile.status || 'active',
         authSource: 'ldap',
         ldapUser: true,
         createdAt: profile.updatedAt,
@@ -258,12 +268,14 @@ class AdminController {
         ldapUsers = ldapUsers.filter((user) => (
           String(user.username || '').toLowerCase().includes(searchValue)
           || String(user.fullName || '').toLowerCase().includes(searchValue)
+          || String(user.email || '').toLowerCase().includes(searchValue)
+          || String(user.phone || '').toLowerCase().includes(searchValue)
         ));
       }
       if (department === 'none') {
         ldapUsers = ldapUsers.filter((user) => !user.departmentId);
-      } else if (departmentDoc?.name) {
-        ldapUsers = ldapUsers.filter((user) => user.departmentId?.name === departmentDoc.name);
+      } else if (departmentDoc?._id) {
+        ldapUsers = ldapUsers.filter((user) => String(user.departmentId?._id || user.departmentId || '') === String(departmentDoc._id));
       }
 
       const merged = [
@@ -483,6 +495,25 @@ class AdminController {
   static async updateUser(req, res, next) {
     try {
       const { id } = req.params;
+      const ldapUsername = parseLdapUserId(id);
+      if (ldapUsername) {
+        const { fullName, email, phone, status, departmentId } = req.body;
+        const hasEmail = Object.prototype.hasOwnProperty.call(req.body, 'email');
+        const hasPhone = Object.prototype.hasOwnProperty.call(req.body, 'phone');
+        const hasDepartmentId = Object.prototype.hasOwnProperty.call(req.body, 'departmentId');
+        const update = {};
+        if (fullName !== undefined) update.fullName = String(fullName || '').trim();
+        if (hasEmail) update.email = email ? String(email).trim() : null;
+        if (hasPhone) update.phone = phone ? String(phone).trim() : null;
+        if (status !== undefined) update.status = status === 'inactive' ? 'inactive' : 'active';
+        if (hasDepartmentId) update.departmentId = departmentId || null;
+        if (update.fullName !== undefined && !isValidPersianFullName(update.fullName)) {
+          return res.status(400).json({ message: 'نام کامل باید فارسی و شامل نام و نام خانوادگی باشد' });
+        }
+        await updateProfileAdmin(ldapUsername, update);
+        return res.json({ success: true, message: 'کاربر Active Directory بروزرسانی شد' });
+      }
+
       const { username, fullName, email, phone, role, status, departmentId, password, mustChangePassword } = req.body;
       const hasEmail = Object.prototype.hasOwnProperty.call(req.body, 'email');
       const hasPhone = Object.prototype.hasOwnProperty.call(req.body, 'phone');
@@ -568,6 +599,11 @@ class AdminController {
   static async deleteUser(req, res, next) {
     try {
       const { id } = req.params;
+      const ldapUsername = parseLdapUserId(id);
+      if (ldapUsername) {
+        await deleteProfile(ldapUsername);
+        return res.json({ success: true, message: 'پروفایل کاربر Active Directory حذف شد' });
+      }
 
       if (String(req.user.id) === String(id)) {
         return res.status(400).json({ message: 'امکان حذف حساب خودتان وجود ندارد' });
@@ -599,12 +635,23 @@ class AdminController {
 
   static async getDepartments(req, res, next) {
     try {
-      const departments = await Department.aggregate([
-        { $lookup: { from: 'users', localField: '_id', foreignField: 'departmentId', as: 'users' } },
-        { $project: { name: 1, createdAt: 1, userCount: { $size: '$users' } } },
-        { $sort: { name: 1 } },
+      const [departments, ldapCounts] = await Promise.all([
+        Department.aggregate([
+          { $lookup: { from: 'users', localField: '_id', foreignField: 'departmentId', as: 'users' } },
+          { $project: { name: 1, createdAt: 1, userCount: { $size: '$users' } } },
+          { $sort: { name: 1 } },
+        ]),
+        LdapProfile.aggregate([
+          { $match: { departmentId: { $ne: null }, status: 'active' } },
+          { $group: { _id: '$departmentId', count: { $sum: 1 } } },
+        ]),
       ]);
-      res.json({ success: true, data: departments });
+      const ldapMap = new Map(ldapCounts.map((row) => [String(row._id), row.count]));
+      const data = departments.map((dept) => ({
+        ...dept,
+        userCount: Number(dept.userCount || 0) + (ldapMap.get(String(dept._id)) || 0),
+      }));
+      res.json({ success: true, data });
     } catch (error) {
       next(error);
     }

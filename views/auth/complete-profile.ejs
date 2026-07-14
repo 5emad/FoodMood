@@ -8,39 +8,50 @@
   <title>تکمیل نام و نام خانوادگی</title>
   <%- include('../partials/head-assets') %>
   <link rel="stylesheet" href="/css/enterprise-theme.css">
+  <link rel="stylesheet" href="/css/theme-vars.css">
   <script src="<%= jsAsset('app-base') %>" defer></script>
   <script src="<%= jsAsset('security') %>" defer></script>
 </head>
-<body class="profile-page">
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark"><i class="fas fa-utensils"></i></span>
-      <span>سامانه تغذیه</span>
+<body class="auth-body">
+  <div class="auth-wrap">
+    <div class="auth-side auth-side--wine">
+      <div class="auth-side-title"><%= locals.organizationName || 'سامانه تغذیه' %></div>
+      <div class="auth-side-sub" style="opacity:.92;line-height:1.9">یک‌بار نام فارسی خود را ثبت کنید تا در پنل و گزارش‌ها نمایش داده شود.</div>
+      <div class="auth-side-version" title="نسخه <%= appVersion %>">نسخه <%= appVersionFa %></div>
     </div>
-    <a class="logout" href="/logout"><i class="fas fa-arrow-right-from-bracket"></i> خروج</a>
-  </header>
 
-  <main class="shell">
-    <div class="eyebrow"><i class="fas fa-user-check"></i> تکمیل هویت کاربری</div>
-    <h1><span id="typed"></span><span class="caret"></span></h1>
+    <div class="auth-card">
+      <div class="auth-card-title">تکمیل هویت کاربری</div>
+      <div class="auth-card-sub">نام و نام خانوادگی خود را به فارسی وارد کنید</div>
 
-    <form id="profileForm" class="entry" autocomplete="off">
-      <div class="input-row">
-        <div class="field">
-          <i class="fas fa-signature"></i>
-          <input id="fullName" name="fullName" type="text" inputmode="text" dir="rtl"
-                 placeholder="مثلا: علی رضایی" required autofocus>
+      <div class="profile-prompt" aria-live="polite">
+        <span id="typed"></span><span class="profile-caret"></span>
+      </div>
+
+      <form id="profileForm" autocomplete="off">
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-signature" style="color:var(--primary);margin-left:6px"></i>
+            نام و نام خانوادگی (فارسی)
+          </label>
+          <input type="text" class="form-control" id="fullName" name="fullName"
+                 placeholder="مثلاً: علی رضایی" required autofocus dir="rtl">
         </div>
-        <button id="submitBtn" type="submit">
+        <div id="error" class="alert alert-danger" style="display:none;margin-bottom:12px"></div>
+        <button type="submit" class="btn btn-primary btn-w100" id="submitBtn" style="padding:13px;font-size:.95rem;">
           <i class="fas fa-arrow-left"></i>
           ورود به سامانه
         </button>
-      </div>
-      <div id="error" class="error"></div>
-    </form>
+      </form>
 
-    <p class="hint">این نام در پنل و گزارش‌های سامانه نمایش داده می‌شود.</p>
-  </main>
+      <p class="form-hint" style="margin-top:16px;text-align:center;color:var(--text-muted);font-size:.82rem">
+        این نام در پنل کاربری و گزارش‌های سازمان استفاده می‌شود.
+      </p>
+      <p style="margin-top:12px;text-align:center">
+        <a href="/logout" class="btn btn-outline btn-sm"><i class="fas fa-arrow-right-from-bracket"></i> خروج</a>
+      </p>
+    </div>
+  </div>
 
   <script src="<%= jsAsset('auth-complete-profile') %>" defer></script>
   <%- include('../partials/app-version') %>

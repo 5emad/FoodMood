@@ -4,6 +4,7 @@ const User           = require('../models/User');
 const authMiddleware      = require('../middleware/authMiddleware');
 const ldapProfileMiddleware = require('../middleware/ldapProfileMiddleware');
 const { needsProfileSetup } = require('../helpers/LdapProfileHelper');
+const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
 const { loginLimiter }    = require('../middleware/rateLimiter');
 
 const router = express.Router();
@@ -30,7 +31,10 @@ router.get('/complete-profile', authMiddleware, async (req, res, next) => {
         return res.redirect(target);
       }
     }
-    return res.render('auth/complete-profile', { user: req.user });
+    return res.render('auth/complete-profile', {
+      user: req.user,
+      organizationName: (await getSettingsLean().catch(() => defaultSettings))?.organizationName || 'سامانه تغذیه',
+    });
   } catch (error) {
     return next(error);
   }

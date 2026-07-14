@@ -848,13 +848,11 @@ async function loadUsers(page = userPagination.page || 1) {
           <td>${esc(u.departmentId?.name || '-')}</td>
           <td>${u.authSource === 'ldap' || u.ldapUser ? 'کاربر (AD)' : esc(roleLabel[u.role] || u.role)}</td>
           <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
-          ${(u.authSource === 'ldap' || u.ldapUser)
-            ? tableActionsHtml('<span class="badge badge-info" title="ورود از Active Directory">Active Directory</span>')
-            : tableActionsHtml(`
-            <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')" title="ویرایش"><i class="fas fa-edit"></i></button>
+          ${tableActionsHtml(`
+            <button class="btn btn-outline btn-sm" onclick="openEditUser('${esc(String(u._id))}')" title="ویرایش"><i class="fas fa-edit"></i></button>
             ${String(u._id) === String(currentUserId)
               ? '<span class="badge badge-gray" title="حساب خودتان قابل حذف نیست">شما</span>'
-              : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')" title="حذف"><i class="fas fa-trash"></i></button>`}
+              : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(String(u._id))}')" title="حذف"><i class="fas fa-trash"></i></button>`}
           `)}
         </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">کاربری ثبت نشده</td></tr>'}
       </tbody>
@@ -876,6 +874,12 @@ function populateDeptSelect(selectedId) {
 function resetUserFormGuards() {
   const statusEl = document.getElementById('uf_status');
   const roleEl = document.getElementById('uf_role');
+  const pwdGroup = document.getElementById('uf_password')?.closest('.form-group');
+  const roleGroup = document.getElementById('uf_role')?.closest('.form-group');
+  const usernameInput = document.getElementById('uf_username');
+  if (pwdGroup) pwdGroup.style.display = '';
+  if (roleGroup) roleGroup.style.display = '';
+  if (usernameInput) usernameInput.readOnly = false;
   if (statusEl) {
     statusEl.disabled = false;
     statusEl.title = '';
@@ -884,6 +888,17 @@ function resetUserFormGuards() {
     Array.from(roleEl.options).forEach((opt) => { opt.disabled = false; });
     roleEl.title = '';
   }
+}
+
+function applyLdapUserFormGuards(user) {
+  resetUserFormGuards();
+  if (!(user?.authSource === 'ldap' || user?.ldapUser)) return;
+  const pwdGroup = document.getElementById('uf_password')?.closest('.form-group');
+  const roleGroup = document.getElementById('uf_role')?.closest('.form-group');
+  const usernameInput = document.getElementById('uf_username');
+  if (pwdGroup) pwdGroup.style.display = 'none';
+  if (roleGroup) roleGroup.style.display = 'none';
+  if (usernameInput) usernameInput.readOnly = true;
 }
 
 function applySelfUserFormGuards(userId, userRole) {
@@ -933,7 +948,11 @@ function openEditUser(id) {
   document.getElementById('uf_role').value = u.role || 'user';
   document.getElementById('uf_status').value = u.status || 'active';
   populateDeptSelect(u.departmentId?._id || u.departmentId || '');
-  applySelfUserFormGuards(id, u.role || 'user');
+  if (u.authSource === 'ldap' || u.ldapUser) {
+    applyLdapUserFormGuards(u);
+  } else {
+    applySelfUserFormGuards(id, u.role || 'user');
+  }
   document.getElementById('userFormWrap').style.display = 'block';
   document.getElementById('userFormWrap').scrollIntoView({ behavior: 'smooth' });
 }
@@ -947,20 +966,24 @@ function closeUserForm() {
 async function saveUser(event) {
   event.preventDefault();
   const id = document.getElementById('editUserId').value;
+  const editing = usersMap.get(String(id));
+  const isLdap = editing?.authSource === 'ldap' || editing?.ldapUser;
   const body = {
-    username: document.getElementById('uf_username').value.trim(),
     fullName: document.getElementById('uf_fullName').value.trim(),
     email: document.getElementById('uf_email').value.trim() || undefined,
     phone: document.getElementById('uf_phone').value.trim() || undefined,
-    role: document.getElementById('uf_role').value,
     status: document.getElementById('uf_status').value,
     departmentId: document.getElementById('uf_dept').value || null,
   };
+  if (!isLdap) {
+    body.username = document.getElementById('uf_username').value.trim();
+    body.role = document.getElementById('uf_role').value;
+  }
   if (id && String(id) === String(currentUserId)) {
     body.status = 'active';
   }
   const pwd = document.getElementById('uf_password').value;
-  if (pwd) body.password = pwd;
+  if (!isLdap && pwd) body.password = pwd;
   const data = id
     ? await api(`/api/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(body) })
     : await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
