@@ -13,6 +13,9 @@ function isPublicUnavailableAsset(req) {
   if (PUBLIC_UNAVAILABLE_PATHS.has(p)) return true;
   if (p.startsWith('/vendor/')) return true;
   if (p.startsWith('/fonts/')) return true;
+  if (p.startsWith('/css/')) return true;
+  if (p.startsWith('/js/')) return true;
+  if (/\.(woff2?|ttf|eot|ico|css|js|map|png|jpe?g|gif|svg|webp)$/i.test(p)) return true;
   if (p.startsWith('/js/unavailable-ambient.js')) return true;
   return false;
 }

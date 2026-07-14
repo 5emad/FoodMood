@@ -20,6 +20,11 @@ const backupUpload = multer({
   },
 });
 
+const sslUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
+
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
 
 router.get('/dashboard', AdminController.dashboard);
@@ -32,6 +37,18 @@ router.get('/settings', roleMiddleware(['superadmin']), AdminController.getSetti
 router.put('/settings', roleMiddleware(['superadmin']), AdminController.updateSettings);
 router.post('/settings', roleMiddleware(['superadmin']), AdminController.updateSettings);
 router.post('/settings/test-ldap', roleMiddleware(['superadmin']), AdminController.testLdapConnection);
+router.get('/settings/ssl-status', roleMiddleware(['superadmin']), AdminController.getSslStatus);
+router.post('/settings/ssl-certificate', roleMiddleware(['superadmin']), (req, res, next) => {
+  sslUpload.fields([
+    { name: 'certificate', maxCount: 1 },
+    { name: 'privateKey', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ success: false, message: err.message || 'خطا در آپلود فایل گواهی' });
+    }
+    next();
+  });
+}, AdminController.uploadSslCertificate);
 router.get('/system/logs', roleMiddleware(['superadmin']), AdminController.getSystemLogs);
 router.get('/security/summary', roleMiddleware(['superadmin']), AdminController.getSecuritySummary);
 router.post('/security/users/:id/unlock', roleMiddleware(['superadmin']), AdminController.unlockUser);

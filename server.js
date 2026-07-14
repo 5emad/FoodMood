@@ -71,6 +71,27 @@ app.disable('x-powered-by');
 // ── Trust proxy (needed for accurate IP rate limiting) ───────────────────────
 app.set('trust proxy', 1);
 
+const publicDir = path.join(__dirname, 'public');
+const staticCache = isProduction ? '7d' : 0;
+const staticHeaders = (res) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+};
+
+// Static assets first — never blocked by session/health middleware
+app.use('/vendor', express.static(path.join(publicDir, 'vendor'), {
+  maxAge: staticCache,
+  setHeaders: staticHeaders,
+}));
+app.use('/css', express.static(path.join(publicDir, 'css'), {
+  maxAge: staticCache,
+  setHeaders: staticHeaders,
+}));
+app.use('/js', express.static(path.join(publicDir, 'js'), {
+  maxAge: staticCache,
+  setHeaders: staticHeaders,
+}));
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
+
 // ── Security headers via Helmet ──────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {

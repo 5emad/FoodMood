@@ -25,6 +25,7 @@ const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../serv
 const { renderReportHtml } = require('../views/ReportPdfView');
 const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
 const { refreshOriginPublicUrlCache } = require('../middleware/originGuard');
+const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
 
 function firstString(value) {
   if (Array.isArray(value)) return value.find((item) => typeof item === 'string') || '';
@@ -831,6 +832,37 @@ class AdminController {
         success: true,
         message: 'بازیابی با موفقیت انجام شد. داده‌های سامانه از فایل پشتیبان بازگردانده شدند.',
         data: result,
+      });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      next(error);
+    }
+  }
+
+  static async getSslStatus(req, res, next) {
+    try {
+      res.json({ success: true, data: getSslStatus() });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async uploadSslCertificate(req, res, next) {
+    try {
+      const certFile = req.files?.certificate?.[0];
+      const keyFile = req.files?.privateKey?.[0];
+      if (!certFile?.buffer?.length || !keyFile?.buffer?.length) {
+        return res.status(400).json({ success: false, message: 'فایل گواهی (.crt/.pem) و کلید خصوصی (.key) الزامی است.' });
+      }
+
+      await saveCustomCertificate(certFile.buffer, keyFile.buffer);
+      const applied = await applyCustomCertificate();
+      await refreshOriginPublicUrlCache();
+
+      res.json({
+        success: true,
+        message: 'گواهی SSL نصب شد. Nginx و سرویس بروزرسانی شدند.',
+        data: { ...getSslStatus(), apply: applied },
       });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ success: false, message: error.message });

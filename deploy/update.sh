@@ -2,7 +2,7 @@
 # ═══════════════════════════════════════════════════════════════
 #  FoodMood — update installed server (/opt/food)
 #
-#  One-line update (latest main + HTTP/CSS fix):
+#  One-line update (latest main + HTTPS/CSS fix):
 #    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
 #
 #  From local clone:
@@ -105,7 +105,7 @@ show_status() {
   echo -e "${BOLD}Installed version:${NC}  v${current}"
   echo -e "${BOLD}Install path:${NC}       ${INSTALL_DIR}"
   echo -e "${BOLD}Service:${NC}            $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
-  echo -e "${BOLD}App URL:${NC}            http://${server_ip}/login"
+  echo -e "${BOLD}App URL:${NC}            https://${server_ip}/login"
   echo ""
   echo -e "${BOLD}Latest GitHub tags:${NC}"
   list_remote_tags
@@ -134,49 +134,36 @@ read_git_commit() {
   git -C "$dir" rev-parse --short HEAD 2>/dev/null || echo "?"
 }
 
-set_env_kv() {
-  local env_file="$1" key="$2" value="$3"
-  if grep -q "^${key}=" "$env_file" 2>/dev/null; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
-  else
-    echo "${key}=${value}" >> "$env_file"
+source_nginx_tls_lib() {
+  local lib="${INSTALL_DIR}/deploy/nginx-tls.sh"
+  if [[ ! -f "$lib" ]]; then
+    log_err "Missing ${lib} — sync from GitHub first."
+    return 1
   fi
+  # shellcheck source=/dev/null
+  source "$lib"
 }
 
-uses_https_app_url() {
-  local env_file="$1"
-  grep -q '^APP_URL=https://' "$env_file" 2>/dev/null \
-    && grep -q '^TRUST_TLS=true' "$env_file" 2>/dev/null
-}
-
-repair_http_deployment() {
-  local env_file="${INSTALL_DIR}/.env"
-  [[ -f "$env_file" ]] || return 0
-
-  if uses_https_app_url "$env_file"; then
-    log_info "HTTPS mode detected — skipping HTTP repair."
-    return 0
-  fi
-
-  local server_ip http_url
+configure_tls_deployment() {
+  local server_ip
   server_ip="$(detect_server_ip)"
-  http_url="http://${server_ip}"
+  source_nginx_tls_lib || return 1
+  log_info "Configuring HTTPS-only for https://${server_ip} ..."
+  configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER"
 
-  log_info "Repairing HTTP deployment (CSS/login) for ${http_url} ..."
-  set_env_kv "$env_file" "TRUST_TLS" "false"
-  set_env_kv "$env_file" "APP_URL" "$http_url"
-  set_env_kv "$env_file" "ALLOWED_ORIGINS" "$http_url"
-  chown "$APP_USER:$APP_USER" "$env_file"
-  chmod 600 "$env_file"
-
-  local mongo_uri
-  mongo_uri="$(grep '^MONGODB_URI=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
-  if [[ -n "$mongo_uri" ]] && command -v mongosh >/dev/null 2>&1; then
-    mongosh "$mongo_uri" --quiet --eval \
-      "db.appsettings.updateOne({key:'default'}, {\$set:{publicUrl:'${http_url}'}}, {upsert:true})" \
-      >/dev/null 2>&1 || log_warn "Could not update MongoDB publicUrl (non-fatal)."
-    log_ok "MongoDB publicUrl set to ${http_url}"
+  if [[ ! -f /etc/sudoers.d/foodmood-ssl ]]; then
+    cat > /etc/sudoers.d/foodmood-ssl <<EOF
+${APP_USER} ALL=(root) NOPASSWD: ${INSTALL_DIR}/deploy/apply-custom-ssl.sh
+EOF
+    chmod 440 /etc/sudoers.d/foodmood-ssl
+    visudo -cf /etc/sudoers.d/foodmood-ssl >/dev/null 2>&1 || rm -f /etc/sudoers.d/foodmood-ssl
   fi
+
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'Status: active'; then
+    ufw allow 443/tcp comment 'HTTPS / Nginx' >/dev/null 2>&1 || true
+  fi
+
+  log_ok "HTTPS enabled on port 443 — all URLs use https://${server_ip}"
 }
 
 migrate_env_keys() {
@@ -205,38 +192,6 @@ migrate_env_keys() {
     chmod 600 "$env_file"
     log_warn "Added LOG_DIR=/var/log/foodmood to .env"
   fi
-
-  repair_http_deployment
-}
-
-verify_http_deployment() {
-  local server_ip http_url hsts css_code
-  server_ip="$(detect_server_ip)"
-  http_url="http://${server_ip}"
-
-  if uses_https_app_url "${INSTALL_DIR}/.env"; then
-    return 0
-  fi
-
-  log_info "Verifying HTTP assets and headers..."
-  hsts="$(curl -sI --max-time 10 "${http_url}/login" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="strict-transport-security"{print $2; exit}')"
-  css_code="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 "${http_url}/css/enterprise-theme.css" 2>/dev/null || echo '000')"
-
-  if [[ "$css_code" == "200" ]]; then
-    log_ok "CSS served: ${http_url}/css/enterprise-theme.css"
-  else
-    log_err "CSS check failed (HTTP ${css_code})"
-    return 1
-  fi
-
-  if echo "$hsts" | grep -qi 'max-age=0'; then
-    log_ok "HSTS cleared for browser (max-age=0)"
-  elif [[ -z "$hsts" ]]; then
-    log_ok "No HSTS header on HTTP (good)"
-  else
-    log_warn "Unexpected HSTS: ${hsts}"
-  fi
-  return 0
 }
 
 migrate_systemd_service() {
@@ -312,14 +267,26 @@ apply_update() {
 
   migrate_systemd_service
 
+  configure_tls_deployment
+
   log_info "Restarting ${SERVICE_NAME}..."
   systemctl restart "$SERVICE_NAME"
-  sleep 3
 
-  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+  local wait_i node_ok=0
+  for wait_i in $(seq 1 30); do
+    if curl -sf --max-time 5 http://127.0.0.1:3000/api/system/health >/dev/null 2>&1; then
+      node_ok=1
+      break
+    fi
+    sleep 2
+  done
+
+  if [[ "$node_ok" -ne 1 ]] || ! systemctl is-active --quiet "$SERVICE_NAME"; then
     log_err "Service failed to start. Log: journalctl -u ${SERVICE_NAME} -n 40"
     exit 1
   fi
+
+  chmod -R a+rX "${INSTALL_DIR}/public" 2>/dev/null || true
 
   installed_after="$(read_installed_version)"
   if [[ "$installed_after" != "$new_version" ]]; then
@@ -328,15 +295,19 @@ apply_update() {
   fi
   log_ok "Installed version confirmed: v${installed_after}"
 
-  verify_http_deployment || true
+  log_info "Verifying HTTPS deployment..."
+  if verify_https_only_deployment "$server_ip"; then
+    log_ok "HTTPS, port 443, CSS and redirect checks passed"
+  else
+    log_warn "HTTPS verification had issues — check: sudo nginx -t && sudo ss -tlnp | grep 443"
+  fi
 
   log_ok "Update complete — FoodMood v${new_version} (${source_commit}) is running."
   echo ""
-  echo -e "${GREEN}${BOLD}  Open in browser (use http, not https):${NC}"
-  echo -e "  ${BOLD}http://${server_ip}/login${NC}"
+  echo -e "${GREEN}${BOLD}  Open in browser:${NC}"
+  echo -e "  ${BOLD}https://${server_ip}/login${NC}"
   echo ""
-  echo -e "${YELLOW}[!]${NC} If CSS still missing on your PC, open an ${BOLD}Incognito${NC} window"
-  echo -e "    or clear HSTS: chrome://net-internals/#hsts → Delete → ${server_ip}"
+  echo -e "${YELLOW}[!]${NC} Self-signed: browser shows ${BOLD}Not Secure${NC} — accept once or upload certificate in Superadmin panel."
   echo ""
 
   {
@@ -346,7 +317,7 @@ apply_update() {
     echo "  Git commit  : ${source_commit}"
     echo "  Git ref     : ${TAG:-$BRANCH}"
     echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
-    echo "  App URL     : http://${server_ip}"
+    echo "  App URL     : https://${server_ip}"
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
 
@@ -368,7 +339,7 @@ main() {
   fi
 
   if [[ -n "$TAG" && ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    log_err "Invalid tag format. Example: v1.3.9"
+    log_err "Invalid tag format. Example: v1.5.0"
     exit 1
   fi
 

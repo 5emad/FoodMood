@@ -209,7 +209,70 @@ async function testLdap(btn) {
   btn.innerHTML = '<i class="fas fa-plug"></i> تست اتصال';
 }
 
+async function loadSslStatus() {
+  const badge = document.getElementById('sslStatusBadge');
+  const hint = document.getElementById('sslStatusHint');
+  if (!badge) return;
+  try {
+    const data = await api('/api/admin/settings/ssl-status');
+    if (!data.success) return;
+    const s = data.data || {};
+    if (s.customCertificate) {
+      badge.className = 'badge badge-success';
+      badge.innerHTML = '<i class="fas fa-lock"></i> گواهی نصب شده';
+    } else if (s.trustTls) {
+      badge.className = 'badge badge-warning';
+      badge.innerHTML = '<i class="fas fa-lock-open"></i> HTTPS (Not Secure)';
+    } else {
+      badge.className = 'badge badge-gray';
+      badge.innerHTML = '<i class="fas fa-globe"></i> HTTP فعال';
+    }
+    if (hint && s.hint) hint.textContent = s.hint;
+  } catch {
+    badge.className = 'badge badge-gray';
+    badge.innerHTML = '<i class="fas fa-question-circle"></i> نامشخص';
+  }
+}
+
+async function uploadSslCertificate(event) {
+  event.preventDefault();
+  const certInput = document.getElementById('ssl_certificate');
+  const keyInput = document.getElementById('ssl_privateKey');
+  const btn = document.getElementById('sslUploadBtn');
+  if (!certInput?.files?.[0] || !keyInput?.files?.[0]) {
+    notify('فایل گواهی و کلید خصوصی را انتخاب کنید', 'error');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('certificate', certInput.files[0]);
+  formData.append('privateKey', keyInput.files[0]);
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال نصب...';
+  try {
+    const res = await fetch('/api/admin/settings/ssl-certificate', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      notify(data.message || 'گواهی نصب شد', 'success');
+      certInput.value = '';
+      keyInput.value = '';
+      loadSslStatus();
+    } else {
+      notify(data.message || 'خطا در نصب گواهی', 'error');
+    }
+  } catch {
+    notify('خطا در ارتباط با سرور', 'error');
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-certificate"></i> نصب گواهی SSL';
+}
+
 loadSettings();
+loadSslStatus();
 </script>
 </body>
 </html>
