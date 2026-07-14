@@ -130,25 +130,69 @@ fix_mongod_socket() {
   local sock="/tmp/mongodb-27017.sock"
   [[ -S "$sock" ]] || return 0
   local owner
-  owner="$(stat -c '%U:%G' "$sock" 2>/dev/null || echo ':')"
-  if [[ "$owner" != "mongodb:mongodb" ]]; then
-    log_warn "Removing MongoDB socket with wrong owner (${owner})..."
-    rm -f "$sock"
+  owner="$(stat -c '%U:%G' "$sock" 2>/dev/null || echo '?:?')"
+  log_warn "Removing MongoDB socket (${owner})..."
+  rm -f "$sock" 2>/dev/null || true
+  if [[ -S "$sock" ]]; then
+    chown mongodb:mongodb "$sock" 2>/dev/null || true
+    rm -f "$sock" 2>/dev/null || true
   fi
 }
 
 fix_mongod_conf() {
-  local conf="/etc/mongod.conf"
+  local conf="/etc/mongod.conf" result
   [[ -f "$conf" ]] || return 0
-  if ! grep -qE 'bindIp:[[:space:]]*127\.0\.0\.1' "$conf" 2>/dev/null; then
-    log_info "Setting MongoDB bindIp to 127.0.0.1 in ${conf}..."
-    if grep -qE '^[[:space:]]*bindIp:' "$conf" 2>/dev/null; then
-      sed -i 's/^[[:space:]]*bindIp:.*/  bindIp: 127.0.0.1/' "$conf"
-    elif grep -qE '^net:' "$conf" 2>/dev/null; then
-      sed -i '/^net:/a\  bindIp: 127.0.0.1' "$conf"
-    else
-      printf '\nnet:\n  bindIp: 127.0.0.1\n  port: 27017\n' >> "$conf"
-    fi
+  result="$(python3 - "$conf" <<'PY'
+import sys, re
+path = sys.argv[1]
+with open(path, encoding='utf-8') as f:
+    text = f.read()
+changed = False
+if not re.search(r'^\s*bindIp:\s*127\.0\.0\.1\s*$', text, re.M):
+    if re.search(r'^\s*bindIp:', text, re.M):
+        text, n = re.subn(r'^\s*bindIp:.*$', '  bindIp: 127.0.0.1', text, count=1, flags=re.M)
+        changed = changed or n > 0
+    elif re.search(r'^net:\s*$', text, re.M):
+        text = re.sub(r'^net:\s*$', 'net:\n  bindIp: 127.0.0.1', text, count=1, flags=re.M)
+        changed = True
+    else:
+        text += '\nnet:\n  bindIp: 127.0.0.1\n  port: 27017\n'
+        changed = True
+if not re.search(r'unixDomainSocket', text):
+    if re.search(r'^net:\s*$', text, re.M):
+        text = re.sub(
+            r'^net:\s*$',
+            'net:\n  unixDomainSocket:\n    enabled: false',
+            text,
+            count=1,
+            flags=re.M,
+        )
+        changed = True
+    else:
+        text = re.sub(
+            r'(^net:\s*\n)',
+            r'\1  unixDomainSocket:\n    enabled: false\n',
+            text,
+            count=1,
+            flags=re.M,
+        )
+        changed = True
+elif re.search(r'unixDomainSocket[\s\S]*?enabled:\s*true', text):
+    text, n = re.subn(
+        r'(unixDomainSocket:\s*\n\s*enabled:\s*)true',
+        r'\1false',
+        text,
+        count=1,
+    )
+    changed = changed or n > 0
+if changed:
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+    print('updated')
+PY
+)"
+  if [[ "$result" == "updated" ]]; then
+    log_ok "MongoDB config updated (bindIp 127.0.0.1, unix socket disabled)"
   fi
 }
 
