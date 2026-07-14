@@ -7,10 +7,11 @@
 #  One-line install (fresh server):
 #    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash
 #
-#  MongoDB errors on reinstall — wipe DB first:
-#    curl -fsSL .../deploy/reset-mongodb.sh | sudo bash
-#  Full wipe (app + MongoDB):
-#    curl -fsSL .../deploy/purge-all.sh | sudo bash
+#  After install — ONLY use update (code, HTTPS, fonts, MongoDB, health):
+#    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
+#
+#  Reset superadmin during update:
+#    curl -fsSL .../deploy/update.sh | sudo bash -s -- --superadmin-pass 'YourPass@123!'
 #
 #  From a local clone:
 #    sudo bash deploy/install.sh
@@ -41,7 +42,7 @@ DB_NAME="food_ordering"
 SERVICE_NAME="foodmood"
 NODE_MAJOR="20"
 INSTALL_INFO_FILE="${INSTALL_DIR}/INSTALL_INFO.txt"
-INSTALLER_VERSION="1.5.8"
+INSTALLER_VERSION="1.5.9"
 STEP_TOTAL=17
 STEP_CURRENT=0
 SSH_PORT=22
@@ -1312,11 +1313,13 @@ print_summary() {
   echo -e "${RED}${BOLD}  ⚠  Store these in your organization's password vault.${NC}"
   echo -e "${RED}${BOLD}     They are NOT saved anywhere on this server except .env.${NC}"
   echo ""
+  echo -e "  ${BOLD}After install — only this command:${NC}"
+  echo "    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash"
+  echo ""
   echo -e "  ${BOLD}Useful commands:${NC}"
   echo "    sudo systemctl status foodmood"
   echo "    sudo journalctl -u foodmood -f"
-  echo "    sudo tail -f /var/log/foodmood/system.log"
-  echo "    sudo systemctl restart foodmood"
+  echo "    sudo bash ${INSTALL_DIR}/deploy/update.sh --diagnose"
   echo ""
   echo -e "  ${BOLD}Non-secret info file:${NC} ${INSTALL_INFO_FILE}"
   echo -e "  ${BOLD}Documentation:${NC}"
