@@ -48,10 +48,8 @@ const errorHandler = (err, req, res, next) => {
 
   const isApiRequest = req.originalUrl.startsWith('/api/');
 
-  if (isServerError && isAdminRequest(req)) {
-    if (!isApiRequest || isDatabaseError(err)) {
-      return renderAdminDbError(req, res);
-    }
+  if (isServerError && isAdminRequest(req) && isDatabaseError(err)) {
+    return renderAdminDbError(req, res);
   }
 
   if (isServerError && !isSuperadminSession(req)) {
