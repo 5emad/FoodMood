@@ -15,6 +15,7 @@
 #    sudo bash /opt/food/deploy/update.sh --status
 #    sudo bash /opt/food/deploy/update.sh --diagnose
 #    sudo bash /opt/food/deploy/update.sh --repair-db
+#    curl -fsSL .../deploy/fix-mongodb.sh | sudo bash
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 

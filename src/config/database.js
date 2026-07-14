@@ -97,7 +97,11 @@ const connectDB = async () => {
   mongoose.set('strictQuery', true);
   attachConnectionListeners();
 
-  if (mongoose.connection.readyState === 1) return;
+  const state = mongoose.connection.readyState;
+  if (state === 1) return;
+  if (state !== 0) {
+    await mongoose.disconnect().catch(() => {});
+  }
 
   await mongoose.connect(mongoUri, options);
   markHealthy('database');

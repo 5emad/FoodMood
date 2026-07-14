@@ -250,10 +250,39 @@ mongodb_enable_auth() {
   [[ -f "$conf" ]] || return 1
   if ! grep -qE '^security:' "$conf" 2>/dev/null; then
     printf '\nsecurity:\n  authorization: enabled\n' >> "$conf"
+  elif grep -qE 'authorization:[[:space:]]*disabled' "$conf" 2>/dev/null; then
+    sed -i 's/authorization:[[:space:]]*disabled/authorization: enabled/' "$conf"
   elif ! grep -qE 'authorization:[[:space:]]*enabled' "$conf" 2>/dev/null; then
-    sed -i 's/authorization:.*/  authorization: enabled/' "$conf" 2>/dev/null || true
+    sed -i '/^security:/a\  authorization: enabled' "$conf" 2>/dev/null \
+      || printf '\nsecurity:\n  authorization: enabled\n' >> "$conf"
   fi
   systemctl restart mongod
+  sleep 2
+  wait_for_mongodb "MongoDB (authenticated)" "" 30
+}
+
+fix_mongod_filesystem() {
+  mkdir -p /var/lib/mongodb /var/log/mongodb
+  if id mongodb &>/dev/null; then
+    chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
+  fi
+  if [[ -f /var/lib/mongodb/mongod.lock ]]; then
+    log_warn "Removing stale mongod.lock..."
+    rm -f /var/lib/mongodb/mongod.lock
+    systemctl restart mongod 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+mongo_recreate_user_from_env() {
+  local mongo_user="$1" mongo_pass="$2" tmp_js
+  log_warn "Recreating MongoDB user '${mongo_user}' in ${DB_NAME}..."
+  mongodb_strip_auth_and_restart || return 1
+  mongosh --quiet "$DB_NAME" --eval "try { db.dropUser('${mongo_user}'); } catch (e) {}" >/dev/null 2>&1 || true
+  tmp_js="$(mongo_create_user_js "$mongo_user" "$mongo_pass" "$DB_NAME")"
+  mongosh --quiet "$DB_NAME" --file "$tmp_js"
+  rm -f "$tmp_js"
+  mongodb_enable_auth || return 1
 }
 
 test_mongodb_uri_from_env() {
@@ -262,9 +291,15 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const uri = process.env.MONGODB_URI || '';
 if (!uri) { console.log('MISSING_URI'); process.exit(2); }
-mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 })
+const opts = {
+  serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 8000),
+  connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 10000),
+  bufferCommands: false,
+};
+mongoose.connect(uri, opts)
   .then(() => mongoose.connection.db.admin().command({ ping: 1 }))
-  .then(() => { console.log('OK'); return mongoose.disconnect(); })
+  .then(() => mongoose.disconnect())
+  .then(() => { console.log('OK'); process.exit(0); })
   .catch((e) => { console.log('FAIL:' + (e.message || e)); process.exit(1); });
 \"" 2>&1 || true
 }
@@ -301,6 +336,7 @@ repair_mongodb_from_env() {
   fi
 
   log_warn "MongoDB connection failed (${test_result#FAIL:}) — attempting repair..."
+  fix_mongod_filesystem
   if ! ensure_mongod_running ""; then
     log_err "mongod is not running — try: systemctl restart mongod"
     return 1
@@ -336,8 +372,7 @@ repair_mongodb_from_env() {
   mongo_pass="${_creds[1]}"
 
   if mongo_ping "$uri"; then
-    log_ok "MongoDB shell auth OK — restarting app should fix connection"
-    return 0
+    log_warn "mongosh accepts URI but Node app failed — re-syncing MongoDB password..."
   fi
 
   if backup_env="$(find_mongo_backup_env 2>/dev/null || true)"; then
@@ -391,7 +426,24 @@ repair_mongodb_from_env() {
     return 0
   fi
 
+  log_warn "App still cannot connect (${test_result#FAIL:}) — recreating MongoDB user..."
+  if ! mongo_recreate_user_from_env "$mongo_user" "$mongo_pass"; then
+    log_err "MongoDB user recreate failed"
+    return 1
+  fi
+
+  new_uri="$(mongo_auth_uri_for "$mongo_user" "$mongo_pass")"
+  wait_for_mongodb "MongoDB (authenticated)" "$new_uri" 30 || return 1
+  update_env_var "MONGODB_URI" "$new_uri"
+
+  test_result="$(test_mongodb_uri_from_env)"
+  if [[ "$test_result" == "OK" ]]; then
+    log_ok "MongoDB repaired after user recreate"
+    return 0
+  fi
+
   log_err "MongoDB repair finished but app still cannot connect: ${test_result#FAIL:}"
+  log_err "Last resort: curl -fsSL .../deploy/fix-mongodb.sh | sudo bash"
   return 1
 }
 

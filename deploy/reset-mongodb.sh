@@ -87,6 +87,24 @@ fi
 
 log_ok "MongoDB reset complete — empty database, no users, no auth."
 echo ""
+
+if [[ -f /opt/food/.env && -f /opt/food/deploy/lib.sh ]]; then
+  log_info "Recreating MongoDB user from /opt/food/.env (no full reinstall)..."
+  # shellcheck source=/dev/null
+  source /opt/food/deploy/lib.sh
+  if repair_mongodb_from_env; then
+    log_ok "MongoDB user restored from .env"
+    systemctl restart foodmood 2>/dev/null || true
+    echo ""
+    echo -e "${GREEN}Open:${NC} https://$(detect_server_ip 2>/dev/null || echo 'SERVER_IP')/login"
+    echo -e "${YELLOW}Superadmin may need reset:${NC}"
+    echo "  curl -fsSL .../deploy/fix-mongodb.sh | sudo bash -s -- --superadmin-pass 'YourPass@123!'"
+    echo ""
+    exit 0
+  fi
+  log_warn "Could not auto-restore user — run install.sh or fix-mongodb.sh"
+fi
+
 echo -e "${GREEN}Next step — fresh FoodMood install:${NC}"
 echo "  curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash"
 echo ""
