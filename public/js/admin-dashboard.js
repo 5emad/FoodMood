@@ -15,12 +15,21 @@ let currentWeeklyData = null;
 let currentMonthlyData = null;
 let orderPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
 let currentSubTab = 'weekly';
+const VALID_ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'announcements'];
 
 function applyWorkspaceSettings() {
   const sidebarOrgEl = document.getElementById('sidebarOrgName');
   if (sidebarOrgEl) sidebarOrgEl.textContent = appSettings.organizationName || 'سامانه تغذیه';
 }
 
+function weekDateLabel(w) {
+  return `${w.jalaliStart} تا ${w.jalaliEnd}`;
+}
+
+function weekSelectLabel(w) {
+  const prefix = w.isActive ? 'فعال - ' : '';
+  return `${prefix}${weekDateLabel(w)}`;
+}
 function money(v) { return Number(v || 0).toLocaleString('fa-IR') + ' تومان'; }
 function jdate(v) { return new Date(v).toLocaleDateString('fa-IR-u-ca-persian'); }
 function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${text}</span>`; }
@@ -67,6 +76,14 @@ function applyReportsAccessUi() {
   }
 }
 
+function updateAdminTabUrl(tabName) {
+  if (!VALID_ADMIN_TABS.includes(tabName)) return;
+  const url = new URL(window.location.href);
+  if (tabName === 'reports') url.searchParams.delete('tab');
+  else url.searchParams.set('tab', tabName);
+  window.history.replaceState({ adminTab: tabName }, '', url.pathname + url.search);
+}
+
 function activateSidebarTab(tabName) {
   const link = document.querySelector(`.sidebar-link[data-tab="${tabName}"]`);
   const pane = document.getElementById(`tab-${tabName}`);
@@ -75,6 +92,7 @@ function activateSidebarTab(tabName) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   link.classList.add('active');
   pane.classList.add('active');
+  updateAdminTabUrl(tabName);
 }
 
 function goToOrdersForConfirm() {
@@ -112,9 +130,9 @@ document.querySelectorAll('.sidebar-link[data-tab]').forEach(link => {
 
 /* ===== WEEKS selector ===== */
 async function loadWeeks() {
-  const data = await api('/api/admin/weeks?future=5');
+  const data = await api('/api/admin/weeks?noSync=true');
   weeks = data.success ? data.data : [];
-  const options = weeks.map(w => `<option value="${w._id}">${w.isActive ? 'فعال - ' : ''}${esc(w.name || 'هفته')} (${esc(w.jalaliStart)} تا ${esc(w.jalaliEnd)})</option>`).join('');
+  const options = weeks.map(w => `<option value="${w._id}">${esc(weekSelectLabel(w))}</option>`).join('');
   ['reportWeekSelect'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -157,7 +175,7 @@ async function loadWeeklyReport() {
   const data = await api(`/api/admin/reports?${query}`);
   if (!data.success) { document.getElementById('weeklyReportWrap').innerHTML = '<div class="empty-state"><p>خطا در دریافت گزارش</p></div>'; return; }
   currentWeeklyData = data.data;
-  document.getElementById('printTitleWeekly').textContent = `گزارش هفتگی — ${data.data.title} (${data.data.range.jalaliStart} تا ${data.data.range.jalaliEnd})`;
+  document.getElementById('printTitleWeekly').textContent = `گزارش هفتگی — ${data.data.range.jalaliStart} تا ${data.data.range.jalaliEnd}`;
   renderWeeklyTable(data.data);
   renderDailyStats(data.data);
 }
@@ -448,8 +466,7 @@ function renderWeekCard(w) {
     <div class="week-card ${w.isActive ? 'is-active' : ''}" id="wcard-${w._id}">
       <div class="week-card-head">
         <div class="week-card-meta">
-          <span class="week-card-name">${esc(w.name || 'هفته')}</span>
-          <span class="week-card-date">(${esc(w.jalaliStart)} تا ${esc(w.jalaliEnd)})</span>
+          <span class="week-card-name">${esc(weekDateLabel(w))}</span>
           ${w.isActive ? '<span class="badge badge-success"><i class="fas fa-circle" style="font-size:.5rem"></i> فعال</span>' : ''}
         </div>
         <div class="week-card-actions">
@@ -1237,14 +1254,11 @@ async function loadAnnouncementsAdmin() {
 /* ===== INIT ===== */
 applyWorkspaceSettings();
 applyReportsAccessUi();
-const initialTab = new URLSearchParams(window.location.search).get('tab');
-if (!reportsAccess.allowed) {
-  openAdminTab('orders');
-} else if (initialTab) {
-  openAdminTab(initialTab);
-} else {
-  loadWeeks().then(() => loadWeeklyReport());
-}
+const urlTab = new URLSearchParams(window.location.search).get('tab');
+const bootTab = boot.activePage;
+let initialTab = VALID_ADMIN_TABS.includes(urlTab) ? urlTab : (VALID_ADMIN_TABS.includes(bootTab) ? bootTab : 'reports');
+if (!reportsAccess.allowed && initialTab === 'reports') initialTab = 'orders';
+openAdminTab(initialTab);
 refreshReportsAccess();
 showMonthlyReportPlaceholder();
 buildMonthOptions();

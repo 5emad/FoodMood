@@ -144,7 +144,7 @@ function getPersianMonthRange(date = new Date()) {
 }
 
 function getJalaliWeekTitle(start, end) {
-  return `هفته ${formatJalaliDate(start)} تا ${formatJalaliDate(end)}`;
+  return `${formatJalaliDate(start)} تا ${formatJalaliDate(end)}`;
 }
 
 module.exports = {

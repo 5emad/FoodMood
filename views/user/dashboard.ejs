@@ -356,7 +356,7 @@ async function loadMenu() {
   menuCache = data.data;
   showPricesToUsers = data.data.settings?.showPricesToUsers !== false;
   defaultMenuItemCapacity = Number(data.data.settings?.defaultMenuItemCapacity ?? 20);
-  document.getElementById('weekTitle').textContent = `${data.data.week.name || 'هفته فعال'}، ${jdate(data.data.week.startDate)} تا ${jdate(data.data.week.endDate)}`;
+  document.getElementById('weekTitle').textContent = data.data.week.name || `${jdate(data.data.week.startDate)} تا ${jdate(data.data.week.endDate)}`;
   renderMenu();
 }
 

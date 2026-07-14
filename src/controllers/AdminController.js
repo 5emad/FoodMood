@@ -24,7 +24,7 @@ const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
 const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
 const { writeSecurityLog } = require('../services/SecurityLogService');
-const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks } = require('../services/WeekService');
+const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
 const { nextReportNumber } = require('../helpers/ReportNumberHelper');
 const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/ReportsAccessHelper');
@@ -698,6 +698,8 @@ class AdminController {
     try {
       if (!req.query.noSync) {
         await ensureFutureWeeks(Number(req.query.future || 5));
+      } else {
+        await dedupeWeeks();
       }
       const weeks = await Week.find().sort({ startDate: 1 });
       res.json({

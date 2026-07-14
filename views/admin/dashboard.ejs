@@ -39,7 +39,7 @@
     </div>
 
     <!-- ===== REPORTS ===== -->
-    <section id="tab-reports" class="tab-pane active">
+    <section id="tab-reports" class="tab-pane<%= activePage === 'reports' ? ' active' : '' %>">
       <div id="reportsGateBanner" class="reports-gate-banner" hidden>
         <div class="reports-gate-icon"><i class="fas fa-lock"></i></div>
         <div>
@@ -90,7 +90,7 @@
     </section>
 
     <!-- ===== WEEKS MANAGEMENT ===== -->
-    <section id="tab-weeks" class="tab-pane">
+    <section id="tab-weeks" class="tab-pane<%= activePage === 'weeks' ? ' active' : '' %>">
       <div class="section-header">
         <div>
           <div class="section-title">مدیریت هفته‌ها</div>
@@ -104,7 +104,7 @@
     </section>
 
     <!-- ===== ORDERS ===== -->
-    <section id="tab-orders" class="tab-pane">
+    <section id="tab-orders" class="tab-pane<%= activePage === 'orders' ? ' active' : '' %>">
       <div class="section-header">
         <div><div class="section-title">سفارش‌ها</div><div class="section-sub">پس از بررسی، همه سفارش‌های در انتظار را تایید کنید تا گزارش‌ها باز شود.</div></div>
         <div class="order-toolbar">
@@ -123,7 +123,7 @@
     </section>
 
     <!-- ===== USERS MANAGEMENT ===== -->
-    <section id="tab-users" class="tab-pane">
+    <section id="tab-users" class="tab-pane<%= activePage === 'users' ? ' active' : '' %>">
       <div class="section-header">
         <div><div class="section-title">مدیریت کاربران</div><div class="section-sub">افزودن، ویرایش و غیرفعال‌سازی کاربران سامانه</div></div>
         <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> کاربر جدید</button>
@@ -188,7 +188,7 @@
     </section>
 
     <!-- ===== DEPARTMENTS ===== -->
-    <section id="tab-departments" class="tab-pane">
+    <section id="tab-departments" class="tab-pane<%= activePage === 'departments' ? ' active' : '' %>">
       <div class="section-header">
         <div><div class="section-title">مدیریت واحدهای سازمانی</div><div class="section-sub">افزودن، ویرایش و حذف واحدهای سازمان</div></div>
         <button class="btn btn-primary btn-sm" onclick="openAddDept()"><i class="fas fa-plus"></i> واحد جدید</button>
@@ -218,7 +218,7 @@
     </section>
 
     <!-- ===== ANNOUNCEMENTS ===== -->
-    <section id="tab-announcements" class="tab-pane">
+    <section id="tab-announcements" class="tab-pane<%= activePage === 'announcements' ? ' active' : '' %>">
       <div class="section-header">
         <div>
           <div class="section-title">مدیریت اطلاعیه‌ها</div>
@@ -278,7 +278,7 @@
     </section>
 
     <!-- ===== FOODS ===== -->
-    <section id="tab-foods" class="tab-pane">
+    <section id="tab-foods" class="tab-pane<%= activePage === 'foods' ? ' active' : '' %>">
       <div class="section-header">
         <div><div class="section-title">غذاها</div><div class="section-sub">تعریف غذاهای قابل استفاده در منوی هفته</div></div>
       </div>
@@ -333,7 +333,8 @@
   isSuperadmin: !!isSuperadmin,
   currentUserId: user && user.id ? user.id : '',
   appSettings: workspaceSettings || { organizationName: 'سامانه تغذیه', defaultMenuItemCapacity: 20, showPricesToUsers: true },
-  reportsAccess: typeof reportsAccess !== 'undefined' ? reportsAccess : { allowed: true, pendingCount: 0, message: null }
+  reportsAccess: typeof reportsAccess !== 'undefined' ? reportsAccess : { allowed: true, pendingCount: 0, message: null },
+  activePage: typeof activePage !== 'undefined' ? activePage : 'reports'
 }) %></script>
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
 <script src="/vendor/jalalidatepicker/jalalidatepicker.min.js"></script>

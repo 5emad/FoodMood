@@ -9,6 +9,7 @@ const {
   saveFullName: saveLdapFullName,
   resolveDisplayName,
   isProfileActive,
+  isValidPersianFullName,
 } = require('../helpers/LdapProfileHelper');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const {
