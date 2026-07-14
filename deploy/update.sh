@@ -284,8 +284,21 @@ apply_update() {
 
   log_info "Ensuring MongoDB is running..."
   ensure_services_running
+  repair_mongodb_from_env || log_warn "MongoDB repair pass 1 had issues — continuing to restart app"
+
+  log_info "Ensuring PDF browser and runtime cache..."
+  ensure_chrome_for_pdf || true
+  ensure_pdf_runtime_dirs
+  configure_chrome_env
+
+  configure_tls_deployment
+
+  log_info "Restarting ${SERVICE_NAME} (load new code even if MongoDB was down)..."
+  systemctl restart "$SERVICE_NAME"
+  sleep 2
+
   if ! repair_mongodb_from_env; then
-    log_err "MongoDB repair failed — superadmin and login will not work"
+    log_err "MongoDB repair failed after restart — superadmin and login will not work"
     run_diagnose "$server_ip"
     exit 1
   fi
@@ -298,16 +311,6 @@ apply_update() {
     exit 1
   fi
   log_ok "MongoDB ready (${mongo_query#OK:})"
-
-  log_info "Ensuring PDF browser and runtime cache..."
-  ensure_chrome_for_pdf || true
-  ensure_pdf_runtime_dirs
-  configure_chrome_env
-
-  configure_tls_deployment
-
-  log_info "Restarting ${SERVICE_NAME}..."
-  systemctl restart "$SERVICE_NAME"
 
   if ! wait_for_api_health 30; then
     log_warn "API not healthy yet — retrying MongoDB repair and restart..."

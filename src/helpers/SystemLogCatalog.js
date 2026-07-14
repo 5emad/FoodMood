@@ -148,6 +148,8 @@ function isDatabaseError(err) {
   return name === 'MongoServerError'
     || name === 'MongoNetworkError'
     || name === 'MongooseError'
+    || name === 'MongooseServerSelectionError'
+    || name.startsWith('Mongo')
     || message.includes('mongodb')
     || message.includes('buffering timed out')
     || message.includes('connection')

@@ -4,8 +4,13 @@ const { renderUnavailable, isSuperadminSession } = require('../helpers/Unavailab
 const { buildErrorLogEntry } = require('../helpers/SystemLogCatalog');
 
 function isAdminRequest(req) {
-  const url = req.originalUrl || req.path || '';
+  const url = requestPath(req);
   return url.startsWith('/admin') || url.startsWith('/api/admin');
+}
+
+function requestPath(req) {
+  const raw = req.originalUrl || req.url || req.path || '';
+  return String(raw).split('?')[0];
 }
 
 function wantsHtml(req) {
@@ -43,8 +48,10 @@ const errorHandler = (err, req, res, next) => {
 
   const isApiRequest = req.originalUrl.startsWith('/api/');
 
-  if (isServerError && isAdminRequest(req) && isDatabaseError(err)) {
-    return renderAdminDbError(req, res);
+  if (isServerError && isAdminRequest(req)) {
+    if (!isApiRequest || isDatabaseError(err)) {
+      return renderAdminDbError(req, res);
+    }
   }
 
   if (isServerError && !isSuperadminSession(req)) {
