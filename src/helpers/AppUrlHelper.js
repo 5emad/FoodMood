@@ -68,8 +68,16 @@ function buildAppPath(path) {
 }
 
 async function buildAbsoluteUrl(req, path) {
-  const base = await resolvePublicUrl(req);
-  if (!base) return buildAppPath(path);
+  const current = requestOrigin(req);
+  if (process.env.FORCE_APP_URL !== 'true' && current) {
+    return `${current.replace(/\/$/, '')}${buildAppPath(path)}`;
+  }
+  const base = await getConfiguredPublicUrl();
+  if (!base) {
+    return current
+      ? `${current.replace(/\/$/, '')}${buildAppPath(path)}`
+      : buildAppPath(path);
+  }
   return `${base.replace(/\/$/, '')}${buildAppPath(path)}`;
 }
 

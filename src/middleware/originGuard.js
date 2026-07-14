@@ -1,33 +1,13 @@
-const { getConfiguredPublicUrl, normalizePublicUrl, requestOrigin } = require('../helpers/AppUrlHelper');
-
-function allowedOrigins(req) {
-  const configured = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',').map((item) => normalizePublicUrl(item.trim())).filter(Boolean)
-    : [];
-  const appUrl = normalizePublicUrl(process.env.APP_URL);
-  const cached = normalizePublicUrl(getConfiguredPublicUrlSync());
-  const requestOriginValue = requestOrigin(req);
-  return new Set([requestOriginValue, appUrl, cached, ...configured].filter(Boolean));
-}
-
-let syncCachedPublicUrl = '';
-
-function getConfiguredPublicUrlSync() {
-  return syncCachedPublicUrl;
-}
-
-async function refreshOriginPublicUrlCache() {
-  try {
-    syncCachedPublicUrl = await getConfiguredPublicUrl();
-  } catch {
-    syncCachedPublicUrl = normalizePublicUrl(process.env.APP_URL);
-  }
-}
-
-refreshOriginPublicUrlCache();
+const { normalizePublicUrl, requestOrigin } = require('../helpers/AppUrlHelper');
+const {
+  refreshOriginPublicUrlCache,
+  isOriginAllowed,
+  isAuthApiPath,
+} = require('../helpers/OriginPolicyHelper');
 
 async function originGuard(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (isAuthApiPath(req)) return next();
 
   const origin = req.get('origin');
   const referer = req.get('referer');
@@ -38,7 +18,7 @@ async function originGuard(req, res, next) {
     return res.status(403).json({ success: false, message: 'درخواست بدون مبدا معتبر رد شد' });
   }
 
-  if (!allowedOrigins(req).has(presented)) {
+  if (!isOriginAllowed(presented, req)) {
     return res.status(403).json({ success: false, message: 'مبدا درخواست مجاز نیست' });
   }
 

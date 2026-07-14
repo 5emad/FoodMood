@@ -22,7 +22,7 @@ function isAdminPath(req) {
 
 function isAuthPath(req) {
   const p = requestPath(req);
-  return p.startsWith('/api/auth') || p === '/login' || p.startsWith('/login/');
+  return p.startsWith('/api/auth') || p === '/login' || p.startsWith('/login/') || p === '/';
 }
 
 function healthGateMiddleware(req, res, next) {

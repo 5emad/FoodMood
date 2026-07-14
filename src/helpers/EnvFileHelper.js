@@ -35,6 +35,11 @@ function mergeAllowedOrigins(existing, urls) {
   return items.join(',');
 }
 
+function applyRuntimeEnv({ publicUrl, allowedOrigins } = {}) {
+  const { applyRuntimeEnv: apply } = require('./OriginPolicyHelper');
+  apply({ publicUrl, allowedOrigins });
+}
+
 function syncPublicUrlToEnv(publicUrl, { extraOrigins = [] } = {}) {
   const normalized = normalizePublicUrl(publicUrl);
   if (!normalized) return { updated: false, reason: 'empty' };
@@ -54,6 +59,7 @@ function syncPublicUrlToEnv(publicUrl, { extraOrigins = [] } = {}) {
 
     if (origins) content = upsertEnvKey(content, 'ALLOWED_ORIGINS', origins);
     fs.writeFileSync(ENV_PATH, content, { encoding: 'utf8', mode: 0o600 });
+    applyRuntimeEnv({ publicUrl: normalized, allowedOrigins: origins });
     return { updated: true, publicUrl: normalized, allowedOrigins: origins };
   } catch (error) {
     return { updated: false, reason: error.message };
@@ -65,4 +71,5 @@ module.exports = {
   readEnvKey,
   syncPublicUrlToEnv,
   mergeAllowedOrigins,
+  applyRuntimeEnv,
 };

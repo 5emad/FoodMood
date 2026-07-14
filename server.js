@@ -131,25 +131,13 @@ if (!trustTls) {
   });
 }
 
-// ── CORS: only allow same origin in production ───────────────────────────────
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
-  : [];
-if (process.env.APP_URL) allowedOrigins.push(process.env.APP_URL);
-if (process.env.NODE_ENV !== 'production') {
-  allowedOrigins.push(
-    `http://localhost:${PORT}`,
-    `http://127.0.0.1:${PORT}`,
-    `http://[::1]:${PORT}`,
-  );
-}
+// ── CORS: allow configured origins and current request hosts ─────────────────
+const { isOriginAllowed } = require('./src/helpers/OriginPolicyHelper');
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // same-origin / server-side
-    if (allowedOrigins.includes(origin)) {
-      return cb(null, true);
-    }
+    if (!origin) return cb(null, true);
+    if (isOriginAllowed(origin)) return cb(null, true);
     cb(new Error('CORS policy violation'));
   },
   credentials: true,
@@ -310,7 +298,7 @@ async function runPostConnectTasks() {
   const { finalizeExpiredOrders, ensureOrderNumbers } = require('./src/helpers/OrderStatusHelper');
   const AppSetting = require('./src/models/AppSetting');
   const { normalizePublicUrl, refreshPublicUrlCache, prefersHttps } = require('./src/helpers/AppUrlHelper');
-  const { refreshOriginPublicUrlCache } = require('./src/middleware/originGuard');
+  const { refreshOriginPublicUrlCache } = require('./src/helpers/OriginPolicyHelper');
 
   if (process.env.APP_URL) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean();

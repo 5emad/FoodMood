@@ -13,6 +13,7 @@ async function appUrlMiddleware(req, res, next) {
     const configured = await getConfiguredPublicUrl();
     const current = requestOrigin(req);
     res.locals.publicUrl = configured || current;
+    res.locals.clientBaseUrl = current || configured || '';
     res.locals.appUrl = (path) => {
       const base = res.locals.publicUrl || '';
       const normalized = buildAppPath(path);
@@ -21,6 +22,7 @@ async function appUrlMiddleware(req, res, next) {
     next();
   } catch {
     res.locals.publicUrl = requestOrigin(req);
+    res.locals.clientBaseUrl = requestOrigin(req) || '';
     res.locals.appUrl = (path) => buildAppPath(path);
     next();
   }

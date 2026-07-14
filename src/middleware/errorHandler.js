@@ -35,6 +35,11 @@ function renderAdminDbError(req, res) {
   });
 }
 
+function isAuthApiRequest(req) {
+  const url = requestPath(req);
+  return url.startsWith('/api/auth');
+}
+
 const errorHandler = (err, req, res, next) => {
   const status = err.status || 500;
   const isServerError = status >= 500;
@@ -52,7 +57,7 @@ const errorHandler = (err, req, res, next) => {
     return renderAdminDbError(req, res);
   }
 
-  if (isServerError && !isSuperadminSession(req)) {
+  if (isServerError && !isSuperadminSession(req) && !isAuthApiRequest(req)) {
     if (!isApiRequest) {
       return renderUnavailable(req, res, 503);
     }

@@ -24,7 +24,7 @@ const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/Rep
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
 const { renderReportHtml } = require('../views/ReportPdfView');
 const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
-const { refreshOriginPublicUrlCache } = require('../middleware/originGuard');
+const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper');
 const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
 
 function firstString(value) {

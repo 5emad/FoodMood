@@ -7,7 +7,7 @@ const {
   invalidateSession,
 } = require('../helpers/SessionSecurityHelper');
 const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
-const { buildAbsoluteUrl } = require('../helpers/AppUrlHelper');
+const { requestOrigin, buildAbsoluteUrl } = require('../helpers/AppUrlHelper');
 const { issueSession } = require('../services/SessionTokenService');
 
 async function getLoginViewModel(req, overrides = {}) {
@@ -20,20 +20,14 @@ async function getLoginViewModel(req, overrides = {}) {
 
   return {
     organizationName: settings?.organizationName || 'سامانه تغذیه',
-    publicUrl: resPublicUrl(req, settings),
+    publicUrl: String(settings?.publicUrl || '').trim().replace(/\/$/, ''),
+    clientBaseUrl: requestOrigin(req) || '',
     expired: false,
     idle: false,
     inactive: false,
     error: null,
     ...overrides,
   };
-}
-
-function resPublicUrl(req, settings) {
-  const configured = String(settings?.publicUrl || process.env.APP_URL || '').trim();
-  if (configured) return configured.replace(/\/$/, '');
-  const host = req?.get?.('host');
-  return host ? `${req.protocol}://${host}` : '';
 }
 
 async function getActiveSessionRedirect(session) {
@@ -50,8 +44,12 @@ async function getActiveSessionRedirect(session) {
 }
 
 async function redirectTo(req, res, path) {
-  const target = await buildAbsoluteUrl(req, path);
-  return res.redirect(target);
+  const normalized = String(path || '/').startsWith('/') ? path : `/${path}`;
+  if (process.env.FORCE_APP_URL === 'true') {
+    const target = await buildAbsoluteUrl(req, normalized);
+    return res.redirect(target);
+  }
+  return res.redirect(normalized);
 }
 
 class ViewController {
@@ -164,8 +162,7 @@ class ViewController {
     await invalidateSession(req, res, 'logout');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
-    const target = await buildAbsoluteUrl(req, '/login');
-    res.redirect(target);
+    return redirectTo(req, res, '/login');
   }
 }
 

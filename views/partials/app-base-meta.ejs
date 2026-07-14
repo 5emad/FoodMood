@@ -1,3 +1,4 @@
-<% if (typeof publicUrl !== 'undefined' && publicUrl) { %>
-<meta name="app-base" content="<%- publicUrl %>">
+<% const base = (typeof clientBaseUrl !== 'undefined' && clientBaseUrl) ? clientBaseUrl : ((typeof publicUrl !== 'undefined' && publicUrl) ? publicUrl : ''); %>
+<% if (base) { %>
+<meta name="app-base" content="<%- base %>">
 <% } %>
