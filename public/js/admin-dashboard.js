@@ -30,7 +30,10 @@ function weekSelectLabel(w) {
   const prefix = w.isActive ? 'فعال - ' : '';
   return `${prefix}${weekDateLabel(w)}`;
 }
-function money(v) { return Number(v || 0).toLocaleString('fa-IR') + ' تومان'; }
+function compactMoney(v) {
+  return Number(v || 0).toLocaleString('fa-IR');
+}
+function money(v) { return compactMoney(v) + ' تومان'; }
 function jdate(v) { return new Date(v).toLocaleDateString('fa-IR-u-ca-persian'); }
 function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${text}</span>`; }
 function tableActionsHtml(buttonsHtml) {
@@ -211,8 +214,8 @@ function renderWeeklyTable(r) {
         const day = (u.days || []).find(d => d.jalaliDate === reportDay.jalaliDate);
         return `<td>${day?.foods?.length ? day.foods.map(esc).join('<br>') : '-'}</td>`;
       }).join('')}
-      <td><strong>${Number(u.total || 0).toLocaleString('fa-IR')}</strong></td>
-      <td>${money(u.totalPrice || 0)}</td>
+      <td class="col-total"><strong>${Number(u.total || 0).toLocaleString('fa-IR')}</strong></td>
+      <td class="col-price" title="${money(u.totalPrice || 0)}">${compactMoney(u.totalPrice || 0)}</td>
     </tr>`).join('');
     return header + userRows;
   }).join('');
@@ -221,9 +224,9 @@ function renderWeeklyTable(r) {
     wrap.innerHTML = '<div class="empty-state"><p>برای این هفته سفارشی ثبت نشده است.</p></div>';
     return;
   }
-  const mainTable = rows ? `<div class="table-wrap" style="overflow-x:auto">
-    <table class="report-table">
-      <thead><tr><th style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
+  const mainTable = rows ? `<div class="table-wrap report-table-scroll">
+    <table class="report-table report-table-wide">
+      <thead><tr><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : '<div class="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>';
   wrap.innerHTML = mainTable + missingTable;
@@ -288,9 +291,20 @@ function renderDailyStats(r) {
 
 async function loadMonthlyBySelect() {
   if (!reportsAccess.allowed) return;
-  const val = document.getElementById('monthSelect')?.value;
-  if (!val) return;
+  const sel = document.getElementById('monthSelect');
+  if (!sel?.value) {
+    await buildMonthOptions();
+    if (!sel?.value) {
+      showMonthlyReportPlaceholder();
+      return;
+    }
+  }
+  const val = sel.value;
   const [from, to] = val.split('|');
+  if (!from || !to) {
+    showMonthlyReportPlaceholder();
+    return;
+  }
   document.getElementById('monthlyReportWrap').innerHTML = '<div style="padding:28px;text-align:center"><div class="spinner"></div></div>';
   const data = await api(`/api/admin/reports?jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`);
   if (!data.success) {
@@ -309,14 +323,6 @@ function renderMonthlyTable(r) {
     || String(u?.username || '').toLowerCase() === 'superadmin'
     || String(u?.fullName || '').toLowerCase() === 'superadmin';
   const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
-  if (!byUser.length) {
-    wrap.innerHTML = renderEmptyState({
-      icon: 'fa-calendar-xmark',
-      title: 'سفارش تاییدشده‌ای در این ماه ثبت نشده',
-      desc: 'فقط سفارش‌های تایید شده در گزارش مالی نمایش داده می‌شوند.',
-    });
-    return;
-  }
   const rows = byUser
     .map((u) => ({
       name: u.fullName || u.username || '-',
@@ -324,18 +330,27 @@ function renderMonthlyTable(r) {
       count: Number(u.total || 0),
       price: Number(u.totalPrice || 0),
     }))
+    .filter((u) => u.count > 0 || u.price > 0)
     .sort((a, b) => b.count - a.count || b.price - a.price);
+  if (!rows.length) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-calendar-xmark',
+      title: 'سفارش تاییدشده‌ای در این ماه ثبت نشده',
+      desc: 'فقط سفارش‌های تایید شده در گزارش مالی نمایش داده می‌شوند.',
+    });
+    return;
+  }
   const totalCount = rows.reduce((s, u) => s + u.count, 0);
   const totalPrice = rows.reduce((s, u) => s + u.price, 0);
-  wrap.innerHTML = `<div class="table-wrap">
+  wrap.innerHTML = `<div class="table-wrap report-table-scroll">
     <table class="report-table">
-      <thead><tr><th>#</th><th style="text-align:right">نام فرد</th><th>واحد</th><th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
+      <thead><tr><th>#</th><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
       <tbody>
-        ${rows.map((u, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${esc(u.department)}</td><td>${u.count.toLocaleString('fa-IR')}</td><td>${money(u.price)}</td></tr>`).join('')}
-        <tr style="background:var(--primary-dark);color:#fff;font-weight:bold">
+        ${rows.map((u, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td class="col-name" style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${esc(u.department)}</td><td class="col-total">${u.count.toLocaleString('fa-IR')}</td><td class="col-price" title="${money(u.price)}">${compactMoney(u.price)}</td></tr>`).join('')}
+        <tr class="report-total-row">
           <td colspan="3" style="text-align:right">جمع کل</td>
-          <td>${totalCount.toLocaleString('fa-IR')}</td>
-          <td>${money(totalPrice)}</td>
+          <td class="col-total">${totalCount.toLocaleString('fa-IR')}</td>
+          <td class="col-price" title="${money(totalPrice)}">${compactMoney(totalPrice)}</td>
         </tr>
       </tbody>
     </table></div>`;
@@ -358,7 +373,7 @@ async function buildMonthOptions() {
   const data = await api('/api/admin/reports/months');
   const months = data.success ? data.data : [];
   if (!months.length) {
-    sel.innerHTML = '<option value="">ماهی با سفارش ثبت‌شده وجود ندارد</option>';
+    sel.innerHTML = '<option value="">ماهی با سفارش تاییدشده وجود ندارد</option>';
     document.getElementById('monthlyReportWrap').innerHTML = renderEmptyState({
       icon: 'fa-chart-column',
       title: 'گزارش ماهیانه در دسترس نیست',
@@ -367,7 +382,7 @@ async function buildMonthOptions() {
     return;
   }
   sel.innerHTML = months
-    .map(m => `<option value="${esc(m.from)}|${esc(m.to)}">${esc(m.label)} (${Number(m.count || 0).toLocaleString('fa-IR')} سفارش)</option>`)
+    .map(m => `<option value="${m.from}|${m.to}">${esc(m.label)} (${Number(m.count || 0).toLocaleString('fa-IR')} سفارش تاییدشده)</option>`)
     .join('');
   if (months.length) sel.selectedIndex = 0;
   if (currentSubTab === 'monthly') loadMonthlyBySelect();

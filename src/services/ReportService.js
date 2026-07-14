@@ -335,7 +335,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
 
 async function getAvailableReportMonths() {
   const orders = await Order.find({})
-    .select('orderDate menuItemId userId')
+    .select('orderDate menuItemId userId ldapUsername status')
     .populate('userId', 'role username')
     .populate({
       path: 'menuItemId',

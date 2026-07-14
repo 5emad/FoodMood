@@ -1457,7 +1457,13 @@ body.admin-body { min-height: 100vh; }
 
 /* Weekly report table */
 .report-table { width: 100%; border-collapse: collapse; font-size: .87rem; background: transparent; }
-.report-table th, .report-table td { border: 1px solid var(--border); padding: 8px 10px; text-align: center; color: var(--text-main); }
+.report-table-scroll { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+.report-table-wide { min-width: 720px; }
+.report-table th, .report-table td { border: 1px solid var(--border); padding: 8px 10px; text-align: center; color: var(--text-main); vertical-align: top; }
+.report-table th.col-name, .report-table td.col-name { text-align: right; min-width: 120px; }
+.report-table th.col-total, .report-table td.col-total { white-space: nowrap; min-width: 64px; }
+.report-table th.col-price, .report-table td.col-price { white-space: nowrap; min-width: 88px; font-size: .82rem; direction: ltr; }
+.report-table tr.report-total-row td { background: var(--primary-dark); color: #fff; font-weight: 700; }
 .report-table th { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); color: #fff; font-weight: 700; }
 .report-table tr:nth-child(even) td { background: var(--primary-bg-soft); }
 .dept-title-row { background: var(--primary-bg-strong) !important; }
