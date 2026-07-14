@@ -1,7 +1,44 @@
 let Client;
 try { ({ Client } = require('ldapts')); } catch { Client = null; }
 const fs = require('fs');
+const net = require('net');
 const { resolveLdapBindPassword } = require('./SecurityHelper');
+
+const DEFAULT_TIMEOUT_MS = 20000;
+
+function resolveTimeoutMs(settings = {}) {
+  const fromSettings = Number(settings.ldapTimeoutMs);
+  if (Number.isFinite(fromSettings) && fromSettings >= 3000) return Math.min(fromSettings, 120000);
+  const fromEnv = Number(process.env.LDAP_TIMEOUT_MS);
+  if (Number.isFinite(fromEnv) && fromEnv >= 3000) return Math.min(fromEnv, 120000);
+  return DEFAULT_TIMEOUT_MS;
+}
+
+function parseLdapEndpoint(url) {
+  const parsed = new URL(url);
+  const port = parsed.port
+    ? Number(parsed.port)
+    : (parsed.protocol === 'ldaps:' ? 636 : 389);
+  return { host: parsed.hostname, port };
+}
+
+function probeTcp(host, port, timeoutMs) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+    socket.connect(port, host);
+  });
+}
 
 function allowedHosts() {
   return process.env.LDAP_ALLOWED_HOSTS
@@ -55,6 +92,17 @@ function validateConfig(cfg) {
     return { valid: false, message: 'برای LDAP ساده آدرس باید با ldap:// شروع شود', status: 'bad_protocol' };
   }
 
+  const port = parsed.port ? Number(parsed.port) : (parsed.protocol === 'ldaps:' ? 636 : 389);
+  if (security === 'ldaps' && port === 389) {
+    return { valid: false, message: 'برای LDAPS از پورت 636 استفاده کنید یا آدرس را ldaps://host:636 بنویسید', status: 'bad_port' };
+  }
+  if (security === 'ldap' && port === 636) {
+    return { valid: false, message: 'برای LDAP ساده پورت 389 و آدرس ldap:// استفاده کنید، نه 636', status: 'bad_port' };
+  }
+  if (security === 'starttls' && port === 636) {
+    return { valid: false, message: 'StartTLS معمولاً روی پورت 389 است (ldap://host:389)', status: 'bad_port' };
+  }
+
   const hosts = allowedHosts();
   if (hosts.length && !hosts.includes(parsed.hostname.toLowerCase())) {
     return { valid: false, message: 'LDAP host در فهرست مجاز نیست', status: 'host_not_allowed' };
@@ -96,19 +144,35 @@ function classifyConnectionError(err, cfg) {
     return { success: false, message: `${hint} (${cfg.url})`, status: 'connection_reset' };
   }
   if (msg.includes('ECONNREFUSED')) return { success: false, message: `سرور LDAP پاسخ نمی‌دهد (${cfg.url})`, status: 'refused' };
-  if (msg.includes('ETIMEDOUT') || lower.includes('timeout')) return { success: false, message: 'اتصال timeout شد', status: 'timeout' };
+  if (msg.includes('ETIMEDOUT') || lower.includes('timeout')) {
+    const { host, port } = parseLdapEndpoint(cfg.url);
+    let hint = 'اتصال LDAP از سرور سامانه timeout شد.';
+    if (cfg.security === 'ldaps') {
+      hint += ' اگر فقط پورت 389 باز است، نوع اتصال را LDAP یا StartTLS انتخاب کنید.';
+    } else if (cfg.security === 'ldap') {
+      hint += ' اگر DC فقط LDAPS دارد، نوع اتصال LDAPS و پورت 636 را امتحان کنید.';
+    } else {
+      hint += ' StartTLS را با ldap:// و پورت 389 تست کنید یا در صورت نیاز LDAPS.';
+    }
+    return {
+      success: false,
+      message: `${hint} (${host}:${port})`,
+      status: 'timeout',
+    };
+  }
   if (lower.includes('invalid credentials')) return { success: false, message: 'نام کاربری یا رمز Bind اشتباه است', status: 'auth_error' };
   if (lower.includes('certificate') || msg.includes('SSL') || msg.includes('TLS')) return { success: false, message: `خطای SSL/TLS: ${msg}`, status: 'tls_error' };
   return { success: false, message: msg, status: 'error' };
 }
 
-function createClient(cfg) {
+function createClient(cfg, settings = {}) {
   const validation = validateConfig(cfg);
   if (!validation.valid) throw new Error(validation.message);
+  const timeoutMs = resolveTimeoutMs(settings);
   const opts = {
     url:            cfg.url,
-    timeout:        5000,
-    connectTimeout: 5000,
+    timeout:        timeoutMs,
+    connectTimeout: timeoutMs,
   };
   if (String(cfg.security || '').toLowerCase() !== 'ldap') {
     opts.tlsOptions = tlsOptions(cfg, validation.hostname);
@@ -153,7 +217,7 @@ async function authenticate(username, password, settings = {}) {
   // Reject empty passwords (some LDAP servers allow unauthenticated bind with empty password)
   if (!password) return null;
 
-  const svcClient = createClient(cfg);
+  const svcClient = createClient(cfg, settings);
   try {
     await upgradeToTls(svcClient, cfg);
 
@@ -175,7 +239,7 @@ async function authenticate(username, password, settings = {}) {
     const userDn = entry.dn;
 
     // Bind as the user to verify password
-    const userClient = createClient(cfg);
+    const userClient = createClient(cfg, settings);
     try {
       await upgradeToTls(userClient, cfg);
       await userClient.bind(userDn, password);
@@ -226,7 +290,18 @@ async function testConnection(settings = {}) {
     return { success: false, message: validation.message, status: validation.status };
   }
 
-  const client = createClient(cfg);
+  const timeoutMs = resolveTimeoutMs(settings);
+  const { host, port } = parseLdapEndpoint(cfg.url);
+  const tcpOk = await probeTcp(host, port, timeoutMs);
+  if (!tcpOk) {
+    return {
+      success: false,
+      message: `از سرور سامانه به ${host}:${port} در ${Math.round(timeoutMs / 1000)} ثانیه پاسخی نرسید. ممکن است از کامپیوتر شما پورت باز باشد ولی سرور FoodMood به DC دسترسی شبکه‌ای نداشته باشد.`,
+      status: 'tcp_timeout',
+    };
+  }
+
+  const client = createClient(cfg, settings);
   try {
     await upgradeToTls(client, cfg);
     await client.bind(cfg.bindDn, cfg.bindPassword);
@@ -235,7 +310,7 @@ async function testConnection(settings = {}) {
       filter: '(objectClass=*)',
       attributes: ['dn'],
       sizeLimit: 1,
-      timeLimit: 5,
+      timeLimit: Math.max(5, Math.ceil(timeoutMs / 1000)),
     });
     return { success: true, message: 'اتصال و احراز هویت LDAP با موفقیت انجام شد', status: 'connected' };
   } catch (err) {
