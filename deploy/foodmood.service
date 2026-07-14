@@ -2,7 +2,8 @@
 Description=FoodMood — سامانه تغذیه سازمانی
 Documentation=https://github.com/5emad/FoodMood
 After=network-online.target mongod.service
-Wants=network-online.target mongod.service
+Wants=network-online.target
+Requires=mongod.service
 
 [Service]
 Type=simple
@@ -11,6 +12,7 @@ Group=foodapp
 WorkingDirectory=/opt/food
 Environment=NODE_ENV=production
 EnvironmentFile=/opt/food/.env
+ExecStartPre=/opt/food/deploy/wait-for-mongo.sh
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=5

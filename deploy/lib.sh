@@ -600,6 +600,38 @@ read_installed_version() {
   fi
 }
 
+install_foodmood_systemd_unit() {
+  mkdir -p /var/log/foodmood
+  chown "$APP_USER:$APP_USER" /var/log/foodmood 2>/dev/null || true
+  chmod 750 /var/log/foodmood 2>/dev/null || true
+  chmod +x "${INSTALL_DIR}/deploy/wait-for-mongo.sh" 2>/dev/null || true
+  chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
+  if [[ -f "${INSTALL_DIR}/deploy/foodmood.service" ]]; then
+    cp "${INSTALL_DIR}/deploy/foodmood.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl daemon-reload
+    systemctl enable "$SERVICE_NAME" 2>/dev/null || true
+  fi
+}
+
+test_admin_route_no_db_error() {
+  local server_ip="$1"
+  local path="${2:-/admin/super/security}"
+  local code body
+  code="$(curl -sk -o /tmp/food-admin-probe.html -w '%{http_code}' --max-time 15 \
+    "https://${server_ip}${path}" -H 'Accept: text/html' 2>/dev/null || echo '000')"
+  body="$(cat /tmp/food-admin-probe.html 2>/dev/null || true)"
+  if echo "$body" | grep -q 'اتصال به پایگاه داده'; then
+    echo "FAIL:db-error-page|HTTP ${code}"
+    return 1
+  fi
+  if echo "$body" | grep -q 'در دسترس نمی'; then
+    echo "FAIL:unavailable-page|HTTP ${code}"
+    return 1
+  fi
+  echo "OK|HTTP ${code}"
+  return 0
+}
+
 test_login_api() {
   local server_ip="$1"
   local login_code login_msg
