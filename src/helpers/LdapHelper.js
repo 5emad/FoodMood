@@ -3,10 +3,6 @@ try { ({ Client } = require('ldapts')); } catch { Client = null; }
 const fs = require('fs');
 const { resolveLdapBindPassword } = require('./SecurityHelper');
 
-function insecureLdapAllowed() {
-  return process.env.LDAP_ALLOW_INSECURE === 'true';
-}
-
 function allowedHosts() {
   return process.env.LDAP_ALLOWED_HOSTS
     ? process.env.LDAP_ALLOWED_HOSTS.split(',').map((host) => host.trim().toLowerCase()).filter(Boolean)
@@ -54,14 +50,8 @@ function validateConfig(cfg) {
   if (security === 'starttls' && parsed.protocol !== 'ldap:') {
     return { valid: false, message: 'برای StartTLS آدرس باید با ldap:// شروع شود', status: 'bad_protocol' };
   }
-  if (security === 'ldap' && (!insecureLdapAllowed() || parsed.protocol !== 'ldap:')) {
-    return {
-      valid: false,
-      message: insecureLdapAllowed()
-        ? 'برای LDAP ساده آدرس باید با ldap:// شروع شود'
-        : 'LDAP ساده غیرفعال است. LDAP_ALLOW_INSECURE=true را در .env سرور تنظیم کنید یا از LDAPS/StartTLS استفاده کنید.',
-      status: 'insecure_disabled',
-    };
+  if (security === 'ldap' && parsed.protocol !== 'ldap:') {
+    return { valid: false, message: 'برای LDAP ساده آدرس باید با ldap:// شروع شود', status: 'bad_protocol' };
   }
 
   const hosts = allowedHosts();

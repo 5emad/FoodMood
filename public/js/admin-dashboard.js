@@ -24,6 +24,12 @@ function applyWorkspaceSettings() {
 function money(v) { return Number(v || 0).toLocaleString('fa-IR') + ' تومان'; }
 function jdate(v) { return new Date(v).toLocaleDateString('fa-IR-u-ca-persian'); }
 function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${text}</span>`; }
+function tableActionsHtml(buttonsHtml) {
+  return `<td class="table-actions-cell"><div class="table-actions">${buttonsHtml}</div></td>`;
+}
+function saveDoneMessage(isEdit, entity) {
+  return isEdit ? `${entity} با موفقیت ویرایش شد.` : `${entity} با موفقیت ثبت شد.`;
+}
 function renderEmptyState({ icon = 'fa-inbox', title, desc = '' }) {
   return `<div class="empty-state">
     <div class="empty-state-icon"><i class="fas ${esc(icon)}"></i></div>
@@ -749,10 +755,10 @@ async function loadFoods(page = foodPagination.page || 1) {
       <td style="font-weight:700">${esc(f.name)}</td>
       <td><span class="badge badge-primary">${esc(catLabel[f.category] || f.category)}</span></td>
       <td>${money(f.price)}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-outline btn-sm" onclick="editFood('${f._id}')"><i class="fas fa-edit"></i></button>
-        <button class="btn btn-danger btn-sm" onclick="deleteFood('${f._id}')"><i class="fas fa-trash"></i></button>
-      </td>
+      ${tableActionsHtml(`
+        <button class="btn btn-outline btn-sm" onclick="editFood('${f._id}')" title="ویرایش"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="deleteFood('${f._id}')" title="حذف"><i class="fas fa-trash"></i></button>
+      `)}
     </tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">غذایی ثبت نشده</td></tr>';
   const pagerWrap = document.getElementById('foodsPagination');
   if (pagerWrap) pagerWrap.innerHTML = renderPaginationBar(foodPagination, 'goToFoodsPage');
@@ -783,7 +789,11 @@ async function saveFoodEdit(event) {
     category: document.getElementById('ef_category').value,
   };
   const data = await api(`/api/foods/${id}`, { method: 'PUT', body: JSON.stringify(body) });
-  if (data.success) { document.getElementById('foodEditWrap').style.display = 'none'; loadFoods(); }
+  if (data.success) {
+    document.getElementById('foodEditWrap').style.display = 'none';
+    loadFoods();
+    notify(data.message || saveDoneMessage(true, 'غذا'), 'success');
+  }
   else notify(data.message || 'خطا در ویرایش', 'error');
 }
 
@@ -838,12 +848,12 @@ async function loadUsers(page = userPagination.page || 1) {
           <td>${esc(u.departmentId?.name || '-')}</td>
           <td>${esc(roleLabel[u.role] || u.role)}</td>
           <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')"><i class="fas fa-edit"></i></button>
+          ${tableActionsHtml(`
+            <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')" title="ویرایش"><i class="fas fa-edit"></i></button>
             ${String(u._id) === String(currentUserId)
               ? '<span class="badge badge-gray" title="حساب خودتان قابل حذف نیست">شما</span>'
-              : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')"><i class="fas fa-trash"></i></button>`}
-          </td>
+              : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u._id}')" title="حذف"><i class="fas fa-trash"></i></button>`}
+          `)}
         </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">کاربری ثبت نشده</td></tr>'}
       </tbody>
     </table>
@@ -956,7 +966,7 @@ async function saveUser(event) {
     closeUserForm();
     loadUsers();
     if (data.superToken && isSuperadmin) await showSuperToken(data.superToken);
-    else notify(data.message || 'کاربر ذخیره شد.');
+    else notify(data.message || saveDoneMessage(!!id, 'کاربر'), 'success');
   }
   else notify(data.message || 'خطا در ذخیره', 'error');
 }
@@ -989,10 +999,10 @@ async function loadDepts() {
         <tr>
           <td style="font-weight:700">${esc(d.name)}</td>
           <td>${d.userCount || 0} نفر</td>
-          <td style="white-space:nowrap">
-            <button class="btn btn-outline btn-sm" onclick="openEditDept('${d._id}')"><i class="fas fa-edit"></i></button>
-            <button class="btn btn-danger btn-sm" onclick="deleteDept('${d._id}')"><i class="fas fa-trash"></i></button>
-          </td>
+          ${tableActionsHtml(`
+            <button class="btn btn-outline btn-sm" onclick="openEditDept('${d._id}')" title="ویرایش"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="deleteDept('${d._id}')" title="حذف"><i class="fas fa-trash"></i></button>
+          `)}
         </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">واحدی ثبت نشده</td></tr>'}
       </tbody>
     </table>`;
@@ -1025,7 +1035,11 @@ async function saveDept(event) {
   const data = id
     ? await api(`/api/admin/departments/${id}`, { method: 'PUT', body: JSON.stringify({ name }) })
     : await api('/api/admin/departments', { method: 'POST', body: JSON.stringify({ name }) });
-  if (data.success) { closeDeptForm(); loadDepts(); notify(data.message || 'واحد ذخیره شد.'); }
+  if (data.success) {
+    closeDeptForm();
+    loadDepts();
+    notify(data.message || saveDoneMessage(!!id, 'واحد'), 'success');
+  }
   else notify(data.message || 'خطا در ذخیره', 'error');
 }
 
@@ -1129,7 +1143,7 @@ async function saveAnnouncement(e) {
   if (data.success) {
     closeAnnouncementForm();
     loadAnnouncementsAdmin();
-    notify(data.message || 'اطلاعیه ذخیره شد.');
+    notify(data.message || saveDoneMessage(!!id, 'اطلاعیه'), 'success');
   } else {
     notify(data.message || 'خطا در ذخیره', 'error');
   }
@@ -1186,10 +1200,10 @@ async function loadAnnouncementsAdmin() {
             : '<span class="badge badge-gray">غیرفعال</span>'}</td>
           <td>${item.jalaliExpiresAt ? esc(item.jalaliExpiresAt) : '—'}</td>
           <td>${new Date(item.createdAt).toLocaleString('fa-IR')}</td>
-          <td style="display:flex;gap:6px">
-            <button class="btn btn-outline btn-sm" onclick="editAnnouncement('${item._id}')"><i class="fas fa-pen"></i></button>
-            <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement('${item._id}')"><i class="fas fa-trash"></i></button>
-          </td>
+          ${tableActionsHtml(`
+            <button class="btn btn-outline btn-sm" onclick="editAnnouncement('${item._id}')" title="ویرایش"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAnnouncement('${item._id}')" title="حذف"><i class="fas fa-trash"></i></button>
+          `)}
         </tr>
       `).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">اطلاعیه‌ای ثبت نشده است</td></tr>'}</tbody>
     </table>`;

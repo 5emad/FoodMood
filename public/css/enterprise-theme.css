@@ -768,6 +768,19 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .table tbody tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: var(--primary-bg); box-shadow: inset 3px 0 0 var(--primary); }
 
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.table td.table-actions-cell {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .table-wrap .table-footer-meta,
 .table-wrap > .pagination-bar {
   display: flex;
