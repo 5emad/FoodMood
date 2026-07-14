@@ -199,7 +199,7 @@ function renderWeeklyTable(r) {
   const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
   const reportDays = r.days || byUser[0]?.days || [];
   const dayHeaders = reportDays.map(d => `<th>${d.jalaliDate}</th>`).join('');
-  const colSpan = reportDays.length + 3;
+  const colSpan = reportDays.length + 4;
   const rows = groupReportUsersByDepartment(byUser).flatMap(([dept, users]) => {
     const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
     const header = `<tr class="dept-group-row"><td colspan="${colSpan}" style="background:var(--primary-bg);font-weight:800;text-align:right;padding:10px 12px">${esc(dept)} <span style="font-weight:600;color:var(--text-muted);font-size:.82rem">(${sorted.length.toLocaleString('fa-IR')} نفر)</span></td></tr>`;
@@ -211,7 +211,8 @@ function renderWeeklyTable(r) {
         const day = (u.days || []).find(d => d.jalaliDate === reportDay.jalaliDate);
         return `<td>${day?.foods?.length ? day.foods.map(esc).join('<br>') : '-'}</td>`;
       }).join('')}
-      <td><strong>${u.total}</strong></td>
+      <td><strong>${Number(u.total || 0).toLocaleString('fa-IR')}</strong></td>
+      <td>${money(u.totalPrice || 0)}</td>
     </tr>`).join('');
     return header + userRows;
   }).join('');
@@ -222,7 +223,7 @@ function renderWeeklyTable(r) {
   }
   const mainTable = rows ? `<div class="table-wrap" style="overflow-x:auto">
     <table class="report-table">
-      <thead><tr><th style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th>جمع</th></tr></thead>
+      <thead><tr><th style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : '<div class="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>';
   wrap.innerHTML = mainTable + missingTable;
@@ -303,47 +304,37 @@ async function loadMonthlyBySelect() {
 
 function renderMonthlyTable(r) {
   const wrap = document.getElementById('monthlyReportWrap');
-  const orders = (r.orders || []).filter((o) =>
-    String(o?.userId?.role || '').toLowerCase() !== 'superadmin'
-    && String(o?.userId?.username || '').toLowerCase() !== 'superadmin'
-    && String(o?.userId?.fullName || '').toLowerCase() !== 'superadmin'
-  );
-  if (!orders.length) {
+  const isSuperadminReportUser = (u) =>
+    String(u?.role || '').toLowerCase() === 'superadmin'
+    || String(u?.username || '').toLowerCase() === 'superadmin'
+    || String(u?.fullName || '').toLowerCase() === 'superadmin';
+  const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
+  if (!byUser.length) {
     wrap.innerHTML = renderEmptyState({
       icon: 'fa-calendar-xmark',
-      title: 'سفارشی در این ماه ثبت نشده',
-      desc: 'برای بازه انتخاب‌شده هیچ سفارشی در سامانه ثبت نشده است.',
+      title: 'سفارش تاییدشده‌ای در این ماه ثبت نشده',
+      desc: 'فقط سفارش‌های تایید شده در گزارش مالی نمایش داده می‌شوند.',
     });
     return;
   }
-  const userMap = {};
-  orders.forEach(o => {
-    if (o.status === 'cancelled') return;
-    const uid = String(o.userId?._id || o.userId);
-    const name = o.userId?.fullName || o.userId?.username || '-';
-    if (!userMap[uid]) userMap[uid] = { name, count: 0, price: 0 };
-    userMap[uid].count += o.quantity || o.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
-    userMap[uid].price += o.totalPrice || 0;
-  });
-  const rows = Object.values(userMap).sort((a, b) => b.count - a.count);
+  const rows = byUser
+    .map((u) => ({
+      name: u.fullName || u.username || '-',
+      department: u.department || 'بدون واحد',
+      count: Number(u.total || 0),
+      price: Number(u.totalPrice || 0),
+    }))
+    .sort((a, b) => b.count - a.count || b.price - a.price);
   const totalCount = rows.reduce((s, u) => s + u.count, 0);
   const totalPrice = rows.reduce((s, u) => s + u.price, 0);
-  if (!rows.length) {
-    wrap.innerHTML = renderEmptyState({
-      icon: 'fa-clipboard-list',
-      title: 'سفارش فعالی یافت نشد',
-      desc: 'در این ماه سفارش لغوشده یا فعالی برای نمایش در گزارش وجود ندارد.',
-    });
-    return;
-  }
   wrap.innerHTML = `<div class="table-wrap">
     <table class="report-table">
-      <thead><tr><th>#</th><th style="text-align:right">نام فرد</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
+      <thead><tr><th>#</th><th style="text-align:right">نام فرد</th><th>واحد</th><th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
       <tbody>
-        ${rows.map((u, i) => `<tr><td>${i + 1}</td><td style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${u.count}</td><td>${money(u.price)}</td></tr>`).join('')}
+        ${rows.map((u, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${esc(u.department)}</td><td>${u.count.toLocaleString('fa-IR')}</td><td>${money(u.price)}</td></tr>`).join('')}
         <tr style="background:var(--primary-dark);color:#fff;font-weight:bold">
-          <td colspan="2" style="text-align:right">جمع کل</td>
-          <td>${totalCount}</td>
+          <td colspan="3" style="text-align:right">جمع کل</td>
+          <td>${totalCount.toLocaleString('fa-IR')}</td>
           <td>${money(totalPrice)}</td>
         </tr>
       </tbody>

@@ -48,7 +48,7 @@ function renderReportHtml(report) {
   let rowIndex = 0;
   const userRows = groupUsersByDepartment(report.byUser).flatMap(([department, users]) => {
     const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
-    const colSpan = (report.byUser[0]?.days?.length || 0) + 3;
+    const colSpan = (report.byUser[0]?.days?.length || 0) + 4;
     const header = `
     <tr class="dept-group-row">
       <td colspan="${colSpan}" style="background:#f0f4ff;font-weight:700;padding:6px 8px">${escapeHtml(department)} (${sorted.length.toLocaleString('fa-IR')} نفر)</td>
@@ -62,6 +62,7 @@ function renderReportHtml(report) {
       <td>${escapeHtml(user.department)}</td>
       ${user.days.map((day) => `<td>${day.foods.length ? day.foods.map(escapeHtml).join('<br>') : '-'}</td>`).join('')}
       <td>${user.total.toLocaleString('fa-IR')}</td>
+      <td>${formatMoney(user.totalPrice)}</td>
     </tr>`;
     }).join('');
     return header + body;
@@ -73,44 +74,33 @@ function renderReportHtml(report) {
     <tr><td>${escapeHtml(department)}</td><td>${escapeHtml(names.slice().sort((a, b) => String(a).localeCompare(String(b), 'fa')).join('، '))}</td><td>${names.length.toLocaleString('fa-IR')}</td></tr>
   `).join('');
 
-  const monthlyUserMap = new Map();
-  for (const order of report.orders || []) {
-    if (order.status === 'cancelled') continue;
-    const userKey = order.ldapUsername
-      ? `ldap:${order.ldapUsername}`
-      : String(order.userId?._id || order.userId || '');
-    const name = order.ldapUsername
-      ? (order.orderUserName || order.ldapUsername)
-      : (order.userId?.fullName || order.userId?.username || '-');
-    const row = monthlyUserMap.get(userKey) || { name, count: 0, price: 0 };
-    row.count += order.quantity || order.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
-    row.price += order.totalPrice || 0;
-    monthlyUserMap.set(userKey, row);
-  }
-  const monthlyUserRows = [...monthlyUserMap.values()]
-    .sort((a, b) => b.count - a.count)
+  const monthlyUsers = (report.byUser || []).slice().sort((a, b) => b.total - a.total);
+  const monthlyTotalCount = monthlyUsers.reduce((sum, user) => sum + Number(user.total || 0), 0);
+  const monthlyTotalPrice = monthlyUsers.reduce((sum, user) => sum + Number(user.totalPrice || 0), 0);
+  const monthlyUserRows = monthlyUsers
     .map((user, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td>${escapeHtml(user.name)}</td>
-        <td>${user.count.toLocaleString('fa-IR')}</td>
-        <td>${formatMoney(user.price)}</td>
+        <td>${escapeHtml(user.fullName)}</td>
+        <td>${escapeHtml(user.department || 'بدون واحد')}</td>
+        <td>${Number(user.total || 0).toLocaleString('fa-IR')}</td>
+        <td>${formatMoney(user.totalPrice)}</td>
       </tr>
     `).join('');
 
+  const weeklyColSpan = (report.byUser[0]?.days?.length || 0) + 5;
   const weeklyBody = `
   <div class="stats">
-    <div class="stat"><span class="stat-val">${report.totals.totalOrders.toLocaleString('fa-IR')}</span> <span class="stat-label">کل سفارش‌ها</span></div>
+    <div class="stat"><span class="stat-val">${report.totals.totalOrders.toLocaleString('fa-IR')}</span> <span class="stat-label">سفارش تاییدشده</span></div>
+    <div class="stat"><span class="stat-val">${(report.totals.totalMeals || report.totals.totalOrders || 0).toLocaleString('fa-IR')}</span> <span class="stat-label">جمع وعده</span></div>
     <div class="stat"><span class="stat-val">${formatMoney(report.totals.totalPrice)}</span> <span class="stat-label">مبلغ کل</span></div>
-    <div class="stat"><span class="stat-val">${(report.totals.statuses.confirmed || 0).toLocaleString('fa-IR')}</span> <span class="stat-label">تایید شده</span></div>
-    <div class="stat"><span class="stat-val">${(report.totals.statuses.cancelled || 0).toLocaleString('fa-IR')}</span> <span class="stat-label">لغو شده</span></div>
   </div>
 
   <div class="sec-title">گزارش پرسنلی — تفکیک روزانه سفارشات هفته</div>
   <div class="tbl-wrap wide">
     <table>
-      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>واحد سازمانی</th>${userDayHeaders}<th>جمع وعده</th></tr></thead>
-      <tbody>${userRows || '<tr><td colspan="5" class="empty-cell">سفارشی ثبت نشده است</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>واحد سازمانی</th>${userDayHeaders}<th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
+      <tbody>${userRows || `<tr><td colspan="${weeklyColSpan}" class="empty-cell">سفارش تاییدشده‌ای ثبت نشده است</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -123,11 +113,14 @@ function renderReportHtml(report) {
   </div>`;
 
   const monthlyBody = `
-  <div class="sec-title">گزارش ماهیانه پرسنل — خلاصه وعده‌ها</div>
+  <div class="sec-title">گزارش ماهیانه پرسنل — خلاصه وعده‌ها و هزینه</div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
-      <tbody>${monthlyUserRows || '<tr><td colspan="4" class="empty-cell">سفارشی ثبت نشده است</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>واحد سازمانی</th><th>جمع وعده</th><th>جمع هزینه</th></tr></thead>
+      <tbody>
+        ${monthlyUserRows || '<tr><td colspan="5" class="empty-cell">سفارش تاییدشده‌ای ثبت نشده است</td></tr>'}
+        ${monthlyUserRows ? `<tr class="total-row"><td colspan="3">جمع کل</td><td>${monthlyTotalCount.toLocaleString('fa-IR')}</td><td>${formatMoney(monthlyTotalPrice)}</td></tr>` : ''}
+      </tbody>
     </table>
   </div>`;
 

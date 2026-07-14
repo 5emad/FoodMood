@@ -25,6 +25,21 @@ const persianMonthNames = [
   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
 ];
 
+const CONFIRMED_REPORT_STATUSES = ['confirmed', 'ready', 'completed'];
+
+function isConfirmedReportOrder(order) {
+  return CONFIRMED_REPORT_STATUSES.includes(order.status);
+}
+
+function orderMealCount(order) {
+  return order.quantity || order.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
+}
+
+function orderOwnerKey(order) {
+  if (order.ldapUsername) return `ldap:${order.ldapUsername}`;
+  return String(order.userId?._id || order.userId || '');
+}
+
 function isSuperadminReportUser(user) {
   return String(user?.role || '').toLowerCase() === 'superadmin'
     || String(user?.username || '').toLowerCase() === 'superadmin';
@@ -188,19 +203,21 @@ async function buildReport(rangeStartInput, rangeEndInput) {
   ]);
 
   const reportDateOfOrder = (order) => startOfDay(order.menuItemId?.dailyMenuId?.date || order.orderDate);
-  const orders = candidateOrders.filter((order) => {
+  const ordersInRange = candidateOrders.filter((order) => {
     const actor = orderUserDisplay(order);
     if (isSuperadminReportUser(actor)) return false;
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
   });
+  const orders = ordersInRange.filter(isConfirmedReportOrder);
 
   const totals = orders.reduce((acc, order) => {
     acc.totalOrders += 1;
+    acc.totalMeals += orderMealCount(order);
     acc.totalPrice += Number(order.totalPrice || 0);
     acc.statuses[order.status] = (acc.statuses[order.status] || 0) + 1;
     return acc;
-  }, { totalOrders: 0, totalPrice: 0, statuses: {} });
+  }, { totalOrders: 0, totalMeals: 0, totalPrice: 0, statuses: {} });
 
   const byDayMap = new Map();
   const byFoodMap = new Map();
@@ -240,6 +257,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     role: user.role,
     department: user.departmentId?.name || 'بدون واحد',
     total: 0,
+    totalPrice: 0,
     days: reportDates.map((date) => ({ ...date, foods: [] })),
   }]));
 
@@ -250,16 +268,15 @@ async function buildReport(rangeStartInput, rangeEndInput) {
       userId: ownerKey,
       fullName: profile.fullName || profile.ldapUsername,
       username: profile.ldapUsername,
-      role: 'user',
+      role: profile.role === 'admin' ? 'admin' : 'user',
       department: profile.department || 'بدون واحد',
       total: 0,
+      totalPrice: 0,
       days: reportDates.map((date) => ({ ...date, foods: [] })),
     });
   }
 
   for (const order of orders) {
-    if (order.status === 'cancelled') continue;
-
     let row;
     let ownerKey;
     if (order.ldapUsername) {
@@ -272,6 +289,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
           role: 'user',
           department: order.orderUserDepartment || 'بدون واحد',
           total: 0,
+          totalPrice: 0,
           days: reportDates.map((date) => ({ ...date, foods: [] })),
         });
       }
@@ -289,7 +307,8 @@ async function buildReport(rangeStartInput, rangeEndInput) {
       const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
       const day = row.days.find((item) => item.jalaliDate === jalaliDate);
       if (day) day.foods.push(orderFoodName(order));
-      row.total += order.quantity || order.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
+      row.total += orderMealCount(order);
+      row.totalPrice += Number(order.totalPrice || 0);
     }
   }
 
@@ -331,6 +350,7 @@ async function getAvailableReportMonths() {
       ? { role: 'user', username: order.ldapUsername }
       : order.userId;
     if (isSuperadminReportUser(actor)) continue;
+    if (!isConfirmedReportOrder(order)) continue;
     const reportDate = order.menuItemId?.dailyMenuId?.date || order.orderDate;
     const { year, month } = getJalaliYearMonth(reportDate);
     if (!year || !month) continue;
@@ -350,4 +370,6 @@ module.exports = {
   buildReport,
   getAvailableReportMonths,
   isSuperadminReportUser,
+  isConfirmedReportOrder,
+  CONFIRMED_REPORT_STATUSES,
 };
