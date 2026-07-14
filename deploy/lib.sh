@@ -430,41 +430,122 @@ run_diagnose() {
 }
 
 ensure_chrome_for_pdf() {
-  mkdir -p "${INSTALL_DIR}/.cache/puppeteer"
-  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache" 2>/dev/null || true
-
-  if sudo -u "$APP_USER" bash -c "cd '${INSTALL_DIR}' && node -e \"require('puppeteer')\" 2>/dev/null"; then
-    log_ok "Puppeteer PDF browser ready (bundled Chromium)"
+  local chrome_bin=""
+  chrome_bin="$(pdf_browser_path || true)"
+  if [[ -n "$chrome_bin" ]]; then
+    configure_chrome_bin "$chrome_bin"
+    log_ok "PDF browser ready: ${chrome_bin}"
     return 0
   fi
 
-  log_warn "Puppeteer Chromium will download on npm install (npmmirror mirror)"
-  if [[ -x /usr/bin/google-chrome-stable ]]; then
-    log_ok "Fallback system Chrome available"
+  log_info "Downloading Chrome for PDF from npmmirror (no Puppeteer)..."
+  chrome_bin="$(install_chrome_from_mirror || true)"
+  if [[ -n "$chrome_bin" && -x "$chrome_bin" ]]; then
+    configure_chrome_bin "$chrome_bin"
+    log_ok "PDF browser installed from mirror: ${chrome_bin}"
     return 0
   fi
 
-  log_warn "Trying Google Chrome .deb fallback..."
-  export DEBIAN_FRONTEND=noninteractive
-  local chrome_deb="/tmp/google-chrome-stable.deb"
-  if curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then
-    apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }
-    rm -f "$chrome_deb"
+  log_warn "Mirror failed — trying Google Chrome .deb..."
+  if install_google_chrome_deb && [[ -x /usr/bin/google-chrome-stable ]]; then
+    configure_chrome_bin "/usr/bin/google-chrome-stable"
+    log_ok "PDF browser: /usr/bin/google-chrome-stable"
+    return 0
   fi
-  [[ -x /usr/bin/google-chrome-stable ]] && log_ok "Google Chrome .deb installed" && return 0
-  return 0
+
+  log_err "Could not install PDF browser"
+  return 1
 }
 
-pdf_browser_deb_path() {
+pdf_browser_path() {
+  local env_file="${INSTALL_DIR}/.env" chrome_bin
+  if [[ -f "$env_file" ]]; then
+    chrome_bin="$(grep '^CHROME_BIN=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    if [[ -n "$chrome_bin" && -x "$chrome_bin" && "$chrome_bin" != *"/snap/"* ]]; then
+      echo "$chrome_bin"
+      return 0
+    fi
+  fi
+  if [[ -x "${INSTALL_DIR}/.cache/chrome-linux64/chrome" ]]; then
+    echo "${INSTALL_DIR}/.cache/chrome-linux64/chrome"
+    return 0
+  fi
   if [[ -x /usr/bin/google-chrome-stable ]]; then
     echo "/usr/bin/google-chrome-stable"
     return 0
   fi
-  if [[ -x /usr/bin/google-chrome ]]; then
-    echo "/usr/bin/google-chrome"
+  return 1
+}
+
+install_chrome_from_mirror() {
+  local version="${CHROME_CFT_VERSION:-131.0.6778.85}"
+  local cache_dir="${INSTALL_DIR}/.cache"
+  local chrome_bin="${cache_dir}/chrome-linux64/chrome"
+  local zip="/tmp/chrome-linux64-${version}.zip"
+  local url
+
+  if [[ -x "$chrome_bin" ]]; then
+    echo "$chrome_bin"
     return 0
   fi
+
+  apt-get install -y -qq unzip curl ca-certificates 2>/dev/null || true
+  mkdir -p "$cache_dir"
+
+  for url in \
+    "https://cdn.npmmirror.com/binaries/chrome-for-testing/${version}/linux64/chrome-linux64.zip" \
+    "https://registry.npmmirror.com/-/binary/chrome-for-testing/${version}/linux64/chrome-linux64.zip"; do
+    log_info "Trying ${url} ..."
+    if curl -fsSL --connect-timeout 30 --max-time 600 -o "$zip" "$url" && [[ -s "$zip" ]]; then
+      rm -rf "${cache_dir}/chrome-linux64"
+      if unzip -q -o "$zip" -d "$cache_dir" && [[ -x "$chrome_bin" ]]; then
+        chmod +x "$chrome_bin"
+        chown -R "${APP_USER}:${APP_USER}" "$cache_dir"
+        rm -f "$zip"
+        echo "$chrome_bin"
+        return 0
+      fi
+    fi
+    rm -f "$zip"
+  done
   return 1
+}
+
+install_google_chrome_deb() {
+  export DEBIAN_FRONTEND=noninteractive
+  local chrome_deb="/tmp/google-chrome-stable.deb"
+  if curl -fsSL --connect-timeout 30 --max-time 300 -o "$chrome_deb" \
+    https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && [[ -s "$chrome_deb" ]]; then
+    apt-get install -y -qq "$chrome_deb" 2>/dev/null \
+      || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }
+    rm -f "$chrome_deb"
+    [[ -x /usr/bin/google-chrome-stable ]]
+    return $?
+  fi
+  rm -f "$chrome_deb"
+  return 1
+}
+
+configure_chrome_bin() {
+  local chrome_bin="$1"
+  local env_file="${INSTALL_DIR}/.env"
+  [[ -f "$env_file" && -n "$chrome_bin" ]] || return 0
+  if grep -q '^CHROME_BIN=' "$env_file" 2>/dev/null; then
+    sed -i "s|^CHROME_BIN=.*|CHROME_BIN=${chrome_bin}|" "$env_file"
+  else
+    echo "CHROME_BIN=${chrome_bin}" >> "$env_file"
+  fi
+  chown "$APP_USER:$APP_USER" "$env_file"
+  chmod 600 "$env_file"
+}
+
+configure_chrome_env() {
+  local chrome_bin
+  chrome_bin="$(pdf_browser_path || true)"
+  [[ -n "$chrome_bin" ]] || return 0
+  configure_chrome_bin "$chrome_bin"
+  log_ok "CHROME_BIN=${chrome_bin}"
 }
 
 ensure_pdf_runtime_dirs() {
@@ -485,24 +566,14 @@ EOF
   systemd-tmpfiles --create /etc/tmpfiles.d/foodmood-runtime.conf 2>/dev/null || true
 }
 
-configure_chrome_env() {
-  local env_file="${INSTALL_DIR}/.env"
-  [[ -f "$env_file" ]] || return 0
-
-  if ! grep -q '^PUPPETEER_CACHE_DIR=' "$env_file" 2>/dev/null; then
-    echo "PUPPETEER_CACHE_DIR=${INSTALL_DIR}/.cache/puppeteer" >> "$env_file"
-  fi
-  chown "$APP_USER:$APP_USER" "$env_file"
-  chmod 600 "$env_file"
-  log_ok "PUPPETEER_CACHE_DIR configured in .env"
-}
-
 test_pdf_browser() {
-  sudo -u "$APP_USER" bash -c "cd '${INSTALL_DIR}' && node -e \"
-const puppeteer = require('puppeteer');
-puppeteer.launch({ headless: true, args: ['--no-sandbox'] })
-  .then((b) => b.close())
-  .then(() => process.exit(0))
-  .catch((e) => { console.error(e.message); process.exit(1); });
-\"" 2>/dev/null
+  local chrome_bin
+  chrome_bin="$(pdf_browser_path || true)"
+  [[ -n "$chrome_bin" && -x "$chrome_bin" ]] || return 1
+  sudo -u "$APP_USER" bash -c "
+    export CHROME_BIN='${chrome_bin}'
+    export FOOD_INSTALL_DIR='${INSTALL_DIR}'
+    \"\${CHROME_BIN}\" --headless=new --disable-gpu --no-sandbox --disable-dev-shm-usage \
+      --dump-dom 'data:text/html,<html><body>ok</body></html>' >/dev/null 2>&1
+  "
 }

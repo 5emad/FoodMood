@@ -31,7 +31,6 @@ ProtectSystem=strict
 ProtectHome=true
 Environment=HOME=/opt/food
 Environment=FOOD_INSTALL_DIR=/opt/food
-Environment=PUPPETEER_CACHE_DIR=/opt/food/.cache/puppeteer
 Environment=XDG_RUNTIME_DIR=/opt/food/.cache/pdf-runtime/run
 ReadWritePaths=/opt/food /var/log/foodmood /tmp /run
 

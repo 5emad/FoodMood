@@ -757,21 +757,60 @@ install_mongodb() {
 # ─── Step 6: browser for PDF export ───────────────────────────
 install_chrome_for_pdf() {
   step_begin "Install PDF browser"
-  if apt-get install -y -qq chromium-browser 2>/dev/null \
-    || apt-get install -y -qq chromium 2>/dev/null; then
-    log_ok "Chromium installed."
+  local chrome_bin version="${CHROME_CFT_VERSION:-131.0.6778.85}"
+  local cache_dir="${INSTALL_DIR}/.cache"
+  local zip="/tmp/chrome-linux64-${version}.zip"
+  local url
+
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    log_ok "Google Chrome already installed."
     step_complete
     return
   fi
-  log_warn "Chromium not in repo; trying Google Chrome..."
+
+  if [[ -x "${cache_dir}/chrome-linux64/chrome" ]]; then
+    log_ok "Cached Chrome for PDF already present."
+    step_complete
+    return
+  fi
+
+  log_info "Downloading Chrome for PDF from npmmirror..."
+  apt-get install -y -qq unzip curl ca-certificates 2>/dev/null || true
+  mkdir -p "$cache_dir"
+
+  for url in \
+    "https://cdn.npmmirror.com/binaries/chrome-for-testing/${version}/linux64/chrome-linux64.zip" \
+    "https://registry.npmmirror.com/-/binary/chrome-for-testing/${version}/linux64/chrome-linux64.zip"; do
+    if curl -fsSL --connect-timeout 30 --max-time 600 -o "$zip" "$url" && [[ -s "$zip" ]]; then
+      rm -rf "${cache_dir}/chrome-linux64"
+      if unzip -q -o "$zip" -d "$cache_dir" && [[ -x "${cache_dir}/chrome-linux64/chrome" ]]; then
+        chmod +x "${cache_dir}/chrome-linux64/chrome"
+        chown -R "${APP_USER}:${APP_GROUP}" "$cache_dir"
+        rm -f "$zip"
+        log_ok "Chrome for PDF installed from mirror."
+        step_complete
+        return
+      fi
+    fi
+    rm -f "$zip"
+  done
+
+  log_warn "Mirror failed — trying Google Chrome .deb..."
   local chrome_deb="/tmp/google-chrome-stable.deb"
-  curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-  if ! apt-get install -y -qq "$chrome_deb"; then
-    dpkg -i "$chrome_deb" || true
-    apt-get install -f -y -qq
+  if curl -fsSL --connect-timeout 30 --max-time 300 -o "$chrome_deb" \
+    https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && [[ -s "$chrome_deb" ]]; then
+    if ! apt-get install -y -qq "$chrome_deb"; then
+      dpkg -i "$chrome_deb" || true
+      apt-get install -f -y -qq
+    fi
+    rm -f "$chrome_deb"
+    log_ok "Google Chrome installed."
+    step_complete
+    return
   fi
   rm -f "$chrome_deb"
-  log_ok "Google Chrome installed."
+  log_warn "Could not install PDF browser — run update.sh after deploy."
   step_complete
 }
 
@@ -801,6 +840,8 @@ deploy_application() {
     --exclude node_modules \
     --exclude .git \
     --exclude .env \
+    --exclude .npm \
+    --exclude .cache \
     --exclude INSTALL_INFO.txt \
     --exclude '*.log' \
     "$PROJECT_DIR/" "$INSTALL_DIR/"
@@ -907,6 +948,13 @@ write_env_file() {
   ANNOUNCEMENT_ENCRYPTION_KEY="$(rand_secret)"
   LDAP_ENCRYPTION_KEY="$(rand_secret)"
 
+  local chrome_bin=""
+  if [[ -x "${INSTALL_DIR}/.cache/chrome-linux64/chrome" ]]; then
+    chrome_bin="${INSTALL_DIR}/.cache/chrome-linux64/chrome"
+  elif [[ -x /usr/bin/google-chrome-stable ]]; then
+    chrome_bin="/usr/bin/google-chrome-stable"
+  fi
+
   cat > "${INSTALL_DIR}/.env" <<EOF
 NODE_ENV=production
 PORT=3000
@@ -931,6 +979,7 @@ ANNOUNCEMENT_ENCRYPTION_KEY=${ANNOUNCEMENT_ENCRYPTION_KEY}
 LDAP_ENCRYPTION_KEY=${LDAP_ENCRYPTION_KEY}
 
 LOG_DIR=/var/log/foodmood
+${chrome_bin:+CHROME_BIN=${chrome_bin}}
 
 # ── LDAP (optional — see docs/LDAP-PRODUCTION.md) ─────────
 # LDAP_URL=ldaps://dc.company.local:636
