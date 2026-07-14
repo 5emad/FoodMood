@@ -55,7 +55,13 @@ function validateConfig(cfg) {
     return { valid: false, message: 'برای StartTLS آدرس باید با ldap:// شروع شود', status: 'bad_protocol' };
   }
   if (security === 'ldap' && (!insecureLdapAllowed() || parsed.protocol !== 'ldap:')) {
-    return { valid: false, message: 'LDAP ساده غیرفعال است. از LDAPS یا StartTLS استفاده کنید.', status: 'insecure_disabled' };
+    return {
+      valid: false,
+      message: insecureLdapAllowed()
+        ? 'برای LDAP ساده آدرس باید با ldap:// شروع شود'
+        : 'LDAP ساده غیرفعال است. LDAP_ALLOW_INSECURE=true را در .env سرور تنظیم کنید یا از LDAPS/StartTLS استفاده کنید.',
+      status: 'insecure_disabled',
+    };
   }
 
   const hosts = allowedHosts();
@@ -105,12 +111,15 @@ function classifyConnectionError(err, cfg) {
 function createClient(cfg) {
   const validation = validateConfig(cfg);
   if (!validation.valid) throw new Error(validation.message);
-  return new Client({
+  const opts = {
     url:            cfg.url,
     timeout:        5000,
     connectTimeout: 5000,
-    tlsOptions:     tlsOptions(cfg.caCertPath, validation.hostname),
-  });
+  };
+  if (String(cfg.security || '').toLowerCase() !== 'ldap') {
+    opts.tlsOptions = tlsOptions(cfg.caCertPath, validation.hostname);
+  }
+  return new Client(opts);
 }
 
 async function upgradeToTls(client, cfg) {

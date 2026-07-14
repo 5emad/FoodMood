@@ -21,9 +21,18 @@ function jsAsset(name) {
   const version = getAssetVersion();
   const base = String(name || '').replace(/\.js$/i, '');
   const isProd = process.env.NODE_ENV === 'production';
-  const minName = `${base}.min.js`;
-  const useMin = isProd && fs.existsSync(path.join(PUBLIC_JS_DIR, minName));
-  return `/js/${useMin ? minName : `${base}.js`}?v=${version}`;
+  const srcPath = path.join(PUBLIC_JS_DIR, `${base}.js`);
+  const minPath = path.join(PUBLIC_JS_DIR, `${base}.min.js`);
+  let useMin = false;
+  if (isProd && fs.existsSync(minPath)) {
+    if (fs.existsSync(srcPath)) {
+      // Prefer source when min bundle is stale (prevents broken onclick handlers after deploy)
+      useMin = fs.statSync(minPath).mtimeMs >= fs.statSync(srcPath).mtimeMs;
+    } else {
+      useMin = true;
+    }
+  }
+  return `/js/${useMin ? `${base}.min.js` : `${base}.js`}?v=${version}`;
 }
 
 module.exports = {

@@ -1022,6 +1022,8 @@ install_npm_deps() {
     log_err "Vendor asset sync failed — CSS/JS will not load. Check node_modules and re-run."
     exit 1
   fi
+  log_busy "Building minified client JS bundles..."
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build:client" || log_warn "build:client failed — non-minified JS will be served if newer"
   if [[ ! -f "${INSTALL_DIR}/public/css/enterprise-theme.css" \
      || ! -f "${INSTALL_DIR}/public/vendor/fontawesome/css/all.min.css" \
      || ! -f "${INSTALL_DIR}/public/vendor/vazirmatn/vazirmatn.css" \

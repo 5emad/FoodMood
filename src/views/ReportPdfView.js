@@ -29,26 +29,48 @@ function renderSignatureSection() {
   </div>`;
 }
 
+function groupUsersByDepartment(users) {
+  const map = new Map();
+  for (const user of users || []) {
+    const dept = user.department || 'بدون واحد';
+    if (!map.has(dept)) map.set(dept, []);
+    map.get(dept).push(user);
+  }
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'fa'));
+}
+
 function renderReportHtml(report) {
   const isMonthlyReport = report.type === 'month';
   const generatedAt = escapeHtml(formatJalaliDate(new Date()));
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
 
   const userDayHeaders = report.byUser[0]?.days?.map((day) => `<th>${escapeHtml(day.jalaliDate)}</th>`).join('') || '';
-  const userRows = report.byUser.map((user, index) => {
-    const nameLabel = user.fullName;
-    return `
+  let rowIndex = 0;
+  const userRows = groupUsersByDepartment(report.byUser).flatMap(([department, users]) => {
+    const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
+    const colSpan = (report.byUser[0]?.days?.length || 0) + 3;
+    const header = `
+    <tr class="dept-group-row">
+      <td colspan="${colSpan}" style="background:#f0f4ff;font-weight:700;padding:6px 8px">${escapeHtml(department)} (${sorted.length.toLocaleString('fa-IR')} نفر)</td>
+    </tr>`;
+    const body = sorted.map((user) => {
+      rowIndex += 1;
+      return `
     <tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(nameLabel)}</td>
+      <td>${rowIndex}</td>
+      <td>${escapeHtml(user.fullName)}</td>
       <td>${escapeHtml(user.department)}</td>
       ${user.days.map((day) => `<td>${day.foods.length ? day.foods.map(escapeHtml).join('<br>') : '-'}</td>`).join('')}
       <td>${user.total.toLocaleString('fa-IR')}</td>
     </tr>`;
+    }).join('');
+    return header + body;
   }).join('');
 
-  const missingRows = Object.entries(report.missingUsers || {}).map(([department, names]) => `
-    <tr><td>${escapeHtml(department)}</td><td>${escapeHtml(names.join('، '))}</td><td>${names.length.toLocaleString('fa-IR')}</td></tr>
+  const missingRows = Object.entries(report.missingUsers || {})
+    .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
+    .map(([department, names]) => `
+    <tr><td>${escapeHtml(department)}</td><td>${escapeHtml(names.slice().sort((a, b) => String(a).localeCompare(String(b), 'fa')).join('، '))}</td><td>${names.length.toLocaleString('fa-IR')}</td></tr>
   `).join('');
 
   const monthlyUserMap = new Map();
@@ -60,10 +82,7 @@ function renderReportHtml(report) {
     const name = order.ldapUsername
       ? (order.orderUserName || order.ldapUsername)
       : (order.userId?.fullName || order.userId?.username || '-');
-    const department = order.ldapUsername
-      ? (order.orderUserDepartment || 'بدون واحد')
-      : (order.userId?.departmentId?.name || 'بدون واحد');
-    const row = monthlyUserMap.get(userKey) || { name, department, count: 0, price: 0 };
+    const row = monthlyUserMap.get(userKey) || { name, count: 0, price: 0 };
     row.count += order.quantity || order.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
     row.price += order.totalPrice || 0;
     monthlyUserMap.set(userKey, row);
@@ -74,7 +93,6 @@ function renderReportHtml(report) {
       <tr>
         <td>${index + 1}</td>
         <td>${escapeHtml(user.name)}</td>
-        <td>${escapeHtml(user.department)}</td>
         <td>${user.count.toLocaleString('fa-IR')}</td>
         <td>${formatMoney(user.price)}</td>
       </tr>
@@ -108,8 +126,8 @@ function renderReportHtml(report) {
   <div class="sec-title">گزارش ماهیانه پرسنل — خلاصه وعده‌ها</div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>واحد سازمانی</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
-      <tbody>${monthlyUserRows || '<tr><td colspan="5" class="empty-cell">سفارشی ثبت نشده است</td></tr>'}</tbody>
+      <thead><tr><th>#</th><th>نام و نام خانوادگی</th><th>تعداد وعده</th><th>هزینه کل</th></tr></thead>
+      <tbody>${monthlyUserRows || '<tr><td colspan="4" class="empty-cell">سفارشی ثبت نشده است</td></tr>'}</tbody>
     </table>
   </div>`;
 

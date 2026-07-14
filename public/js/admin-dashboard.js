@@ -126,10 +126,11 @@ function switchSubTab(tab) {
   currentSubTab = tab;
   document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.sub === tab));
   document.querySelectorAll('.sub-pane').forEach(p => p.classList.remove('active'));
-  document.getElementById(`sub-${tab}`).classList.add('active');
+  const pane = document.getElementById(`sub-${tab}`);
+  if (pane) pane.classList.add('active');
   updateReportControls();
   if (tab === 'weekly') loadWeeklyReport();
-  if (tab === 'monthly' && !currentMonthlyData) loadMonthlyBySelect();
+  if (tab === 'monthly') loadMonthlyBySelect();
 }
 
 function updateReportControls() {
@@ -155,6 +156,16 @@ async function loadWeeklyReport() {
   renderDailyStats(data.data);
 }
 
+function groupReportUsersByDepartment(users) {
+  const map = new Map();
+  users.forEach((u) => {
+    const dept = u.department || 'بدون واحد';
+    if (!map.has(dept)) map.set(dept, []);
+    map.get(dept).push(u);
+  });
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'fa'));
+}
+
 function renderWeeklyTable(r) {
   const wrap = document.getElementById('weeklyReportWrap');
   const isSuperadminReportUser = (u) =>
@@ -164,7 +175,11 @@ function renderWeeklyTable(r) {
   const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
   const reportDays = r.days || byUser[0]?.days || [];
   const dayHeaders = reportDays.map(d => `<th>${d.jalaliDate}</th>`).join('');
-  const rows = byUser.map(u => `
+  const colSpan = reportDays.length + 3;
+  const rows = groupReportUsersByDepartment(byUser).flatMap(([dept, users]) => {
+    const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
+    const header = `<tr class="dept-group-row"><td colspan="${colSpan}" style="background:var(--primary-bg);font-weight:800;text-align:right;padding:10px 12px">${esc(dept)} <span style="font-weight:600;color:var(--text-muted);font-size:.82rem">(${sorted.length.toLocaleString('fa-IR')} نفر)</span></td></tr>`;
+    const userRows = sorted.map(u => `
     <tr>
       <td style="text-align:right;font-weight:700">${esc(u.fullName)}</td>
       <td>${esc(u.department)}</td>
@@ -174,6 +189,8 @@ function renderWeeklyTable(r) {
       }).join('')}
       <td><strong>${u.total}</strong></td>
     </tr>`).join('');
+    return header + userRows;
+  }).join('');
   const missingTable = renderMissingUsersTable(r);
   if (!rows && !missingTable) {
     wrap.innerHTML = '<div class="empty-state"><p>برای این هفته سفارشی ثبت نشده است.</p></div>';
@@ -195,11 +212,16 @@ function renderMissingUsersTable(r) {
     .filter(([, names]) => names.length);
   if (!entries.length) return '';
   const totalMissing = entries.reduce((sum, [, names]) => sum + names.length, 0);
-  const rows = entries.flatMap(([dept, names]) => names.map((name) => `
+  const rows = entries.sort((a, b) => a[0].localeCompare(b[0], 'fa')).flatMap(([dept, names]) => {
+    const sortedNames = names.slice().sort((a, b) => String(a).localeCompare(String(b), 'fa'));
+    const header = `<tr class="dept-group-row"><td colspan="2" style="background:var(--primary-bg);font-weight:800;text-align:right;padding:10px 12px">${esc(dept)} <span style="font-weight:600;color:var(--text-muted);font-size:.82rem">(${sortedNames.length.toLocaleString('fa-IR')} نفر)</span></td></tr>`;
+    const nameRows = sortedNames.map((name) => `
     <tr>
       <td style="text-align:right;font-weight:700">${esc(name)}</td>
       <td>${esc(dept)}</td>
-    </tr>`)).join('');
+    </tr>`).join('');
+    return header + nameRows;
+  }).join('');
   return `
   <div class="card no-order-card mt-3">
     <div class="card-header">
@@ -301,7 +323,7 @@ function renderMonthlyTable(r) {
           <td>${money(totalPrice)}</td>
         </tr>
       </tbody>
-    </table></div>` + renderMissingUsersTable(r);
+    </table></div>`;
 }
 
 function showMonthlyReportPlaceholder() {
@@ -332,6 +354,7 @@ async function buildMonthOptions() {
   sel.innerHTML = months
     .map(m => `<option value="${esc(m.from)}|${esc(m.to)}">${esc(m.label)} (${Number(m.count || 0).toLocaleString('fa-IR')} سفارش)</option>`)
     .join('');
+  if (months.length) sel.selectedIndex = 0;
   if (currentSubTab === 'monthly') loadMonthlyBySelect();
 }
 
@@ -1186,5 +1209,45 @@ if (!reportsAccess.allowed) {
 refreshReportsAccess();
 showMonthlyReportPlaceholder();
 buildMonthOptions();
+
+Object.assign(window, {
+  goToOrdersForConfirm,
+  switchSubTab,
+  onReportWeekChange,
+  downloadPdf,
+  loadMonthlyBySelect,
+  createCurrentWeek,
+  clearOrderSearch,
+  searchOrders,
+  confirmAllOrders,
+  openAddUser,
+  closeUserForm,
+  saveUser,
+  openAddDept,
+  closeDeptForm,
+  saveDept,
+  openAddAnnouncement,
+  closeAnnouncementForm,
+  toggleAnnouncementDepts,
+  saveAnnouncement,
+  saveFoodEdit,
+  toggleWeekEditor,
+  activateWeek,
+  deleteWeek,
+  saveWeekMenu,
+  toggleWeekNode,
+  cancelAdminOrder,
+  editFood,
+  deleteFood,
+  openEditUser,
+  deleteUser,
+  openEditDept,
+  deleteDept,
+  editAnnouncement,
+  deleteAnnouncement,
+  goToOrdersPage,
+  goToFoodsPage,
+  goToUsersPage,
+});
 })();
 

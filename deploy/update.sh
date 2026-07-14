@@ -280,6 +280,10 @@ apply_update() {
 
   log_info "Syncing vendor fonts and assets..."
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
+
+  log_info "Building minified client JS bundles..."
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build:client" || log_warn "build:client failed — non-minified JS will be served if newer"
+
   chmod -R a+rX "${INSTALL_DIR}/public" 2>/dev/null || true
 
   migrate_systemd_service

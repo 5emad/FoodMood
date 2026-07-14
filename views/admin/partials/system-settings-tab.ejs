@@ -77,7 +77,9 @@
                     <select class="form-control" id="set_ldapSecurity">
                       <option value="ldaps">LDAPS — پورت ۶۳۶ (پیشنهادی)</option>
                       <option value="starttls">StartTLS — پورت ۳۸۹ + ارتقاء TLS</option>
+                      <option value="ldap">LDAP — پورت ۳۸۹ (بدون TLS)</option>
                     </select>
+                    <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">برای LDAP بدون TLS، روی سرور متغیر <code dir="ltr">LDAP_ALLOW_INSECURE=true</code> را در فایل <code dir="ltr">.env</code> تنظیم کنید.</div>
                   </div>
                   <div class="form-group">
                     <label class="form-label">مسیر CA Certificate</label>
