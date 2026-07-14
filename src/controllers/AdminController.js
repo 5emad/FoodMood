@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const User = require('../models/User');
+const LdapProfile = require('../models/LdapProfile');
 const Week = require('../models/Week');
 const Food = require('../models/Food');
 const Order = require('../models/Order');
@@ -226,19 +227,56 @@ class AdminController {
       else if (department) filter.departmentId = department;
 
       const pageInfo = paginationFromQuery(req.query, { limit: 20, maxLimit: 200 });
-      const [users, total] = await Promise.all([
+      const includeLdapUsers = !role || role === 'user';
+
+      const [localUsers, ldapProfiles, departmentDoc] = await Promise.all([
         User.find(filter)
           .select('-password')
           .populate('departmentId')
-          .sort({ createdAt: -1 })
-          .skip(pageInfo.skip)
-          .limit(pageInfo.limit),
-        User.countDocuments(filter),
+          .sort({ fullName: 1 })
+          .lean(),
+        includeLdapUsers ? LdapProfile.find({}).sort({ fullName: 1 }).lean() : Promise.resolve([]),
+        department && department !== 'none'
+          ? Department.findById(department).select('name').lean()
+          : Promise.resolve(null),
       ]);
+
+      const searchValue = String(search || '').trim().toLowerCase();
+      let ldapUsers = ldapProfiles.map((profile) => ({
+        _id: `ldap:${profile.ldapUsername}`,
+        username: profile.ldapUsername,
+        fullName: profile.fullName,
+        departmentId: profile.department ? { name: profile.department } : null,
+        role: 'user',
+        status: 'active',
+        authSource: 'ldap',
+        ldapUser: true,
+        createdAt: profile.updatedAt,
+      }));
+
+      if (searchValue) {
+        ldapUsers = ldapUsers.filter((user) => (
+          String(user.username || '').toLowerCase().includes(searchValue)
+          || String(user.fullName || '').toLowerCase().includes(searchValue)
+        ));
+      }
+      if (department === 'none') {
+        ldapUsers = ldapUsers.filter((user) => !user.departmentId);
+      } else if (departmentDoc?.name) {
+        ldapUsers = ldapUsers.filter((user) => user.departmentId?.name === departmentDoc.name);
+      }
+
+      const merged = [
+        ...localUsers.map((user) => ({ ...user, authSource: user.authSource || 'local' })),
+        ...ldapUsers,
+      ].sort((a, b) => String(a.fullName || a.username || '').localeCompare(String(b.fullName || b.username || ''), 'fa'));
+
+      const total = merged.length;
+      const data = merged.slice(pageInfo.skip, pageInfo.skip + pageInfo.limit);
 
       res.json({
         success: true,
-        data: users,
+        data,
         pagination: paginationMeta({ ...pageInfo, total }),
       });
     } catch (error) {

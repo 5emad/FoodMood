@@ -846,9 +846,11 @@ async function loadUsers(page = userPagination.page || 1) {
           <td style="font-weight:700">${esc(u.fullName || '-')}</td>
           <td style="direction:ltr;text-align:center">${esc(u.username)}</td>
           <td>${esc(u.departmentId?.name || '-')}</td>
-          <td>${esc(roleLabel[u.role] || u.role)}</td>
+          <td>${u.authSource === 'ldap' || u.ldapUser ? 'کاربر (AD)' : esc(roleLabel[u.role] || u.role)}</td>
           <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
-          ${tableActionsHtml(`
+          ${(u.authSource === 'ldap' || u.ldapUser)
+            ? tableActionsHtml('<span class="badge badge-info" title="ورود از Active Directory">Active Directory</span>')
+            : tableActionsHtml(`
             <button class="btn btn-outline btn-sm" onclick="openEditUser('${u._id}')" title="ویرایش"><i class="fas fa-edit"></i></button>
             ${String(u._id) === String(currentUserId)
               ? '<span class="badge badge-gray" title="حساب خودتان قابل حذف نیست">شما</span>'

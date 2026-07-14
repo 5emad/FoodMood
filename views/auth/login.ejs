@@ -30,7 +30,7 @@
 
     <div class="auth-card">
       <div class="auth-card-title">خوش آمدید</div>
-      <div class="auth-card-sub">نام کاربری Active Directory و رمز عبور ویندوز را وارد کنید</div>
+      <div class="auth-card-sub">نام کاربری و رمز عبور خود را وارد کنید</div>
 
       <% if (locals.expired) { %>
         <div class="alert alert-danger">
@@ -67,7 +67,7 @@
             نام کاربری
           </label>
           <input type="text" class="form-control" id="username" name="username"
-                 placeholder="مثلاً emad" required autocomplete="off" autocapitalize="none" spellcheck="false">
+                 placeholder="نام کاربری" required autocomplete="off" autocapitalize="none" spellcheck="false">
         </div>
 
         <div class="form-group">
