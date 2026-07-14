@@ -126,9 +126,60 @@ function tlsOptions(cfg, hostname) {
   return opts;
 }
 
+function classifyAdBindError(msg) {
+  const match = String(msg).match(/data\s+([0-9a-fA-F]+)/i);
+  if (!match) return null;
+
+  const hints = {
+    '525': {
+      message: 'اکانت Bind در Active Directory پیدا نشد (Bind DN اشتباه است).',
+      status: 'user_not_found',
+    },
+    '52e': {
+      message: 'Bind DN یا رمز Bind اشتباه است.',
+      status: 'auth_error',
+    },
+    '530': {
+      message: 'اکانت Bind در این زمان اجازه ورود ندارد (محدودیت ساعت ورود در AD).',
+      status: 'logon_hours',
+    },
+    '531': {
+      message: 'اکانت Bind اجازه ورود از این سرور/ایستگاه کاری را ندارد.',
+      status: 'workstation',
+    },
+    '532': {
+      message: 'رمز اکانت Bind منقضی شده است. در AD رمز را تغییر دهید.',
+      status: 'password_expired',
+    },
+    '533': {
+      message: 'اکانت Bind در Active Directory غیرفعال است.',
+      status: 'account_disabled',
+    },
+    '701': {
+      message: 'اکانت Bind منقضی شده است.',
+      status: 'account_expired',
+    },
+    '773': {
+      message: 'اکانت Bind باید در اولین ورود رمز را عوض کند. از AD رمز را تنظیم کنید.',
+      status: 'password_must_change',
+    },
+    '775': {
+      message: 'اکانت Bind در Active Directory قفل شده است. در AD آن را Unlock کنید یا چند دقیقه صبر کنید، سپس Bind DN و رمز را دوباره بررسی کنید.',
+      status: 'account_locked',
+    },
+  };
+
+  return hints[match[1].toLowerCase()] || null;
+}
+
 function classifyConnectionError(err, cfg) {
   const msg = String(err.message || 'خطا در اتصال');
   const lower = msg.toLowerCase();
+
+  const adBind = classifyAdBindError(msg);
+  if (adBind) {
+    return { success: false, message: adBind.message, status: adBind.status };
+  }
 
   if (msg.includes('00002028') || lower.includes('requires binds to turn on integrity checking')) {
     return {
