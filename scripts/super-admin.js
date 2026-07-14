@@ -2,6 +2,7 @@
  * Superadmin maintenance.
  * Usage:
  *   node scripts/super-admin.js create <username> <password>
+ *   node scripts/super-admin.js reset-credentials <username> <password>
  *   node scripts/super-admin.js reset-token <username>
  *   node scripts/super-admin.js unlock <username>
  */
@@ -31,8 +32,9 @@ function validatePassword(pw) {
 
 async function main() {
   const [cmd, username, password] = process.argv.slice(2);
-  if (!['create', 'reset-token', 'unlock'].includes(cmd) || !username) {
+  if (!['create', 'reset-credentials', 'reset-token', 'unlock'].includes(cmd) || !username) {
     console.log('Usage: node scripts/super-admin.js create <username> <password>');
+    console.log('       node scripts/super-admin.js reset-credentials <username> <password>');
     console.log('       node scripts/super-admin.js reset-token <username>');
     console.log('       node scripts/super-admin.js unlock <username>');
     process.exit(1);
@@ -59,6 +61,29 @@ async function main() {
       lockUntil: null,
     });
     console.log('Superadmin created.');
+    console.log('Username:', username);
+    console.log('Password:', password);
+    console.log('Second-factor token:', token);
+    console.log('Store this token now. It is not recoverable from the database.');
+  }
+
+  if (cmd === 'reset-credentials') {
+    if (!validatePassword(password)) {
+      throw new Error('Password must be at least 12 chars and include letter, number, and symbol.');
+    }
+    const user = await User.findOne({ username }).select('+superTokenHash +password');
+    if (!user || user.role !== 'superadmin') throw new Error('Superadmin not found.');
+    const token = strongToken();
+    user.password = await hashPassword(password);
+    user.superTokenHash = hashSensitiveToken(token);
+    user.superTokenCreatedAt = new Date();
+    user.superTokenLastUsedAt = null;
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    user.status = 'active';
+    user.activeSessionId = null;
+    await user.save();
+    console.log('Superadmin credentials reset.');
     console.log('Username:', username);
     console.log('Password:', password);
     console.log('Second-factor token:', token);
