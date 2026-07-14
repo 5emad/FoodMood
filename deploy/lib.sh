@@ -221,6 +221,7 @@ stop_stray_mongod_processes() {
 }
 
 start_mongod_via_systemd() {
+  fix_mongod_filesystem
   fix_mongod_socket
   stop_stray_mongod_processes
   fix_mongod_conf
@@ -364,9 +365,13 @@ mongodb_enable_auth() {
 
 fix_mongod_filesystem() {
   mkdir -p /var/lib/mongodb /var/log/mongodb
+  touch /var/log/mongodb/mongod.log 2>/dev/null || true
   if id mongodb &>/dev/null; then
     chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
+    chown mongodb:mongodb /var/log/mongodb/mongod.log 2>/dev/null || true
   fi
+  chmod 755 /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
+  chmod 640 /var/log/mongodb/mongod.log 2>/dev/null || true
   fix_mongod_socket
   if [[ -f /var/lib/mongodb/mongod.lock ]]; then
     if ! mongo_port_listening; then
