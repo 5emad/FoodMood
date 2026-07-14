@@ -139,60 +139,71 @@ fix_mongod_socket() {
   fi
 }
 
-fix_mongod_conf() {
-  local conf="/etc/mongod.conf" result
-  [[ -f "$conf" ]] || return 0
-  result="$(python3 - "$conf" <<'PY'
-import sys, re
+repair_mongod_conf() {
+  local conf="/etc/mongod.conf"
+  [[ -f "$conf" ]] || return 1
+  cp -a "$conf" "${conf}.bak.$(date +%s)" 2>/dev/null || true
+  python3 - "$conf" <<'PY'
+import sys, re, time
 path = sys.argv[1]
-with open(path, encoding='utf-8') as f:
-    text = f.read()
-changed = False
-if not re.search(r'^\s*bindIp:\s*127\.0\.0\.1\s*$', text, re.M):
-    if re.search(r'^\s*bindIp:', text, re.M):
-        text, n = re.subn(r'^\s*bindIp:.*$', '  bindIp: 127.0.0.1', text, count=1, flags=re.M)
-        changed = changed or n > 0
-    elif re.search(r'^net:\s*$', text, re.M):
-        text = re.sub(r'^net:\s*$', 'net:\n  bindIp: 127.0.0.1', text, count=1, flags=re.M)
-        changed = True
-    else:
-        text += '\nnet:\n  bindIp: 127.0.0.1\n  port: 27017\n'
-        changed = True
-if not re.search(r'unixDomainSocket', text):
-    if re.search(r'^net:\s*$', text, re.M):
-        text = re.sub(
-            r'^net:\s*$',
-            'net:\n  unixDomainSocket:\n    enabled: false',
-            text,
-            count=1,
-            flags=re.M,
-        )
-        changed = True
-    else:
-        text = re.sub(
-            r'(^net:\s*\n)',
-            r'\1  unixDomainSocket:\n    enabled: false\n',
-            text,
-            count=1,
-            flags=re.M,
-        )
-        changed = True
-elif re.search(r'unixDomainSocket[\s\S]*?enabled:\s*true', text):
-    text, n = re.subn(
-        r'(unixDomainSocket:\s*\n\s*enabled:\s*)true',
-        r'\1false',
-        text,
-        count=1,
-    )
-    changed = changed or n > 0
-if changed:
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(text)
-    print('updated')
+text = open(path, encoding='utf-8').read()
+
+def find_val(pattern, default):
+    m = re.search(pattern, text, re.M)
+    return m.group(1).strip() if m else default
+
+db_path = find_val(r'^\s*dbPath:\s*(.+)$', '/var/lib/mongodb')
+log_path = find_val(r'^\s*path:\s*(.+)$', '/var/log/mongodb/mongod.log')
+port = find_val(r'^\s*port:\s*(\d+)$', '27017')
+auth = bool(re.search(r'authorization:\s*enabled', text))
+
+body = f"""# FoodMood — repaired mongod.conf ({time.strftime('%Y-%m-%d %H:%M:%S')})
+storage:
+  dbPath: {db_path}
+
+systemLog:
+  destination: file
+  logAppend: true
+  path: {log_path}
+
+net:
+  port: {port}
+  bindIp: 127.0.0.1
+  unixDomainSocket:
+    enabled: false
+
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+"""
+if auth:
+    body += """
+security:
+  authorization: enabled
+"""
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(body)
+print('repaired')
 PY
-)"
-  if [[ "$result" == "updated" ]]; then
-    log_ok "MongoDB config updated (bindIp 127.0.0.1, unix socket disabled)"
+  log_ok "Rewrote ${conf} (valid YAML, unix socket disabled)"
+}
+
+mongod_conf_valid() {
+  command -v mongod >/dev/null 2>&1 || return 0
+  mongod --config /etc/mongod.conf --configExpand rest --sysinfo >/dev/null 2>&1
+}
+
+fix_mongod_conf() {
+  local conf="/etc/mongod.conf"
+  [[ -f "$conf" ]] || return 0
+  if ! mongod_conf_valid; then
+    log_warn "mongod.conf is invalid — rewriting..."
+    repair_mongod_conf
+    return 0
+  fi
+  if ! grep -q 'unixDomainSocket' "$conf" 2>/dev/null \
+    || grep -qE 'unixDomainSocket:[[:space:]]*$' "$conf" 2>/dev/null \
+    || grep -A2 'unixDomainSocket' "$conf" 2>/dev/null | grep -q 'enabled: true'; then
+    repair_mongod_conf
   fi
 }
 
@@ -212,9 +223,17 @@ stop_stray_mongod_processes() {
 start_mongod_via_systemd() {
   fix_mongod_socket
   stop_stray_mongod_processes
+  fix_mongod_conf
   systemctl enable mongod 2>/dev/null || true
   systemctl restart mongod 2>/dev/null || systemctl start mongod 2>/dev/null || true
   sleep 2
+  if ! mongo_ping_server; then
+    log_warn "mongod did not start — rewriting /etc/mongod.conf..."
+    repair_mongod_conf
+    fix_mongod_socket
+    systemctl restart mongod 2>/dev/null || true
+    sleep 3
+  fi
 }
 
 ensure_mongod_running() {
