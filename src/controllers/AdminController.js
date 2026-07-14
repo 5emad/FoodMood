@@ -181,7 +181,18 @@ class AdminController {
         await refreshOriginPublicUrlCache();
         const { requestOrigin } = require('../helpers/AppUrlHelper');
         const { syncPublicUrlToEnv } = require('../helpers/EnvFileHelper');
-        syncPublicUrlToEnv(settings.publicUrl, { extraOrigins: [requestOrigin(req)] });
+        const currentOrigin = requestOrigin(req);
+        const extraOrigins = [currentOrigin];
+        if (currentOrigin) {
+          try {
+            const { hostname } = new URL(currentOrigin);
+            if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+              extraOrigins.push(`https://${hostname}`, `http://${hostname}`);
+            }
+          } catch { /* ignore */ }
+        }
+        syncPublicUrlToEnv(settings.publicUrl, { extraOrigins: extraOrigins.filter(Boolean) });
+        process.env.FORCE_APP_URL = 'false';
       }
       res.json({ success: true, message: 'تنظیمات بروزرسانی شد', data: publicSettings(settings) });
     } catch (error) {

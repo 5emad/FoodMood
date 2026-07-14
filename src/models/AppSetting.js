@@ -74,6 +74,10 @@ const appSettingSchema = new mongoose.Schema({
     default: '',
     trim: true,
   },
+  ldapCaCertPem: {
+    type: String,
+    default: '',
+  },
   ldapBaseDn: {
     type: String,
     default: '',

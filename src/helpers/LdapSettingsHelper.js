@@ -19,6 +19,7 @@ function mergeLdapSettings(saved = {}, body = {}) {
       : defaultSettings.ldapSecurity;
   }
   if (body.ldapCaCertPath !== undefined) settings.ldapCaCertPath = String(body.ldapCaCertPath || '').trim();
+  if (body.ldapCaCertPem !== undefined) settings.ldapCaCertPem = String(body.ldapCaCertPem || '').trim();
   if (body.ldapBaseDn !== undefined) settings.ldapBaseDn = String(body.ldapBaseDn || '').trim();
   if (body.ldapBindDn !== undefined) settings.ldapBindDn = String(body.ldapBindDn || '').trim();
   if (body.ldapUserFilter !== undefined) {
@@ -40,6 +41,12 @@ function ldapFieldsFromBody(body = {}) {
       : defaultSettings.ldapSecurity;
   }
   if (body.ldapCaCertPath !== undefined) update.ldapCaCertPath = String(body.ldapCaCertPath || '').trim();
+  if (body.ldapClearCaCert === true || body.ldapClearCaCert === 'true') {
+    update.ldapCaCertPem = '';
+    update.ldapCaCertPath = '';
+  } else if (body.ldapCaCertPem !== undefined) {
+    update.ldapCaCertPem = String(body.ldapCaCertPem || '').trim();
+  }
   if (body.ldapBaseDn !== undefined) update.ldapBaseDn = String(body.ldapBaseDn || '').trim();
   if (body.ldapBindDn !== undefined) update.ldapBindDn = String(body.ldapBindDn || '').trim();
   if (body.ldapUserFilter !== undefined) {

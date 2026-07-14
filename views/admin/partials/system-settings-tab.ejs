@@ -19,7 +19,6 @@
               <div class="form-group">
                 <label class="form-label">آدرس عمومی سامانه (دامنه)</label>
                 <input class="form-control" id="set_publicUrl" placeholder="https://food.example.com" dir="ltr" style="text-align:left">
-                <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">پس از ذخیره، سامانه از IP و دامنه هر دو در دسترس می‌ماند مگر FORCE_APP_URL فعال باشد</div>
               </div>
               <div class="form-group">
                 <label class="form-label">حداکثر رزرو فعال هر کاربر</label>
@@ -79,11 +78,14 @@
                       <option value="starttls">StartTLS — پورت ۳۸۹ + ارتقاء TLS</option>
                       <option value="ldap">LDAP — پورت ۳۸۹ (بدون TLS)</option>
                     </select>
-                    <div class="form-hint" style="margin-top:6px;font-size:.78rem;color:var(--text-muted)">برای LDAP بدون TLS، نوع اتصال را «LDAP» انتخاب کنید و آدرس را با <code dir="ltr">ldap://</code> وارد کنید.</div>
                   </div>
                   <div class="form-group">
-                    <label class="form-label">مسیر CA Certificate</label>
-                    <input class="form-control" id="set_ldapCaCertPath" placeholder="/opt/food/certs/ldap-ca.pem" dir="ltr" style="text-align:left">
+                    <label class="form-label">گواهی CA</label>
+                    <input class="form-control" type="file" id="set_ldapCaCertFile" accept=".pem,.crt,.cer" dir="ltr">
+                    <div class="d-flex gap-2 align-center" style="margin-top:8px;flex-wrap:wrap">
+                      <span id="ldapCaCertStatus" class="badge badge-gray">گواهی ثبت نشده</span>
+                      <button type="button" class="btn btn-outline btn-sm" id="ldapCaCertClearBtn" onclick="clearLdapCaCert()">حذف گواهی</button>
+                    </div>
                   </div>
                   <div class="form-group">
                     <label class="form-label">Base DN</label>
@@ -94,15 +96,15 @@
                     <input class="form-control" id="set_ldapBindDn" placeholder="CN=service,CN=Users,DC=company,DC=local" dir="ltr" style="text-align:left">
                   </div>
                   <div class="form-group">
-                    <label class="form-label">Bind Password موقت تست</label>
-                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="برای ذخیره یا تست — خالی = بدون تغییر" dir="ltr" style="text-align:left" autocomplete="new-password">
+                    <label class="form-label">رمز Bind</label>
+                    <input class="form-control" id="set_ldapBindPassword" type="password" placeholder="خالی = بدون تغییر" dir="ltr" style="text-align:left" autocomplete="new-password">
+                    <span id="ldapBindPasswordStatus" class="badge badge-gray" style="margin-top:8px;display:inline-flex">رمز ذخیره نشده</span>
                   </div>
                   <div class="form-group">
                     <label class="form-label">User Filter</label>
                     <input class="form-control" id="set_ldapUserFilter" placeholder="(sAMAccountName={{username}})" dir="ltr" style="text-align:left">
                   </div>
                 </div>
-                <div id="ldapPasswordHint" class="capacity-note" style="margin-top:8px">رمز Bind با scrypt + AES-256-GCM + HMAC در دیتابیس ذخیره می‌شود. کلید رمزنگاری: LDAP_ENCRYPTION_KEY در سرور.</div>
               </div>
             </div>
 
@@ -119,9 +121,7 @@
           <span id="sslStatusBadge" class="badge badge-gray" style="font-size:.75rem"><i class="fas fa-lock-open"></i> در حال بررسی...</span>
         </div>
         <div class="card-body">
-          <p id="sslStatusHint" class="form-hint" style="margin-bottom:14px;font-size:.82rem;color:var(--text-muted)">
-            پیش‌فرض: همه آدرس‌ها HTTPS هستند. تا آپلود گواهی واقعی، مرورگر «Not Secure» نشان می‌دهد (طبیعی است).
-          </p>
+          <p id="sslStatusHint" class="form-hint" style="margin-bottom:14px;font-size:.82rem;color:var(--text-muted);display:none"></p>
           <form id="sslCertForm" onsubmit="uploadSslCertificate(event)">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
               <div class="form-group">

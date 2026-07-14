@@ -199,6 +199,7 @@ configure_app_https_env() {
 
   nginx_tls_set_env_kv "$env_file" "TRUST_TLS" "true"
   nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
+  nginx_tls_set_env_kv "$env_file" "FORCE_APP_URL" "false"
 
   local allowed_origins="$https_url,${default_url}"
   local current_origins

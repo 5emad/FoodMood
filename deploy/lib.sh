@@ -66,6 +66,7 @@ sync_runtime_url_from_settings() {
   if declare -F nginx_tls_set_env_kv >/dev/null 2>&1; then
     nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
     nginx_tls_set_env_kv "$env_file" "TRUST_TLS" "true"
+    nginx_tls_set_env_kv "$env_file" "FORCE_APP_URL" "false"
     local origins="$https_url,https://${server_ip}"
     local current
     current="$(grep '^ALLOWED_ORIGINS=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"

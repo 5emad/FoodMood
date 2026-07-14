@@ -15,7 +15,7 @@ async function loadSecurityCenter() {
   if (!data.success) { notify(data.message || 'خطا در دریافت اطلاعات امنیتی', 'error'); return; }
   const { lockedUsers = [], failedSummary = [], recentLogs = [], unreadCount = 0 } = data.data || {};
   if (badge) {
-    badge.style.display = unreadCount ? 'inline-flex' : 'none';
+    badge.style.display = 'inline-flex';
     badge.textContent = unreadCount > 99 ? '+99' : String(unreadCount);
   }
   document.getElementById('lockedCount').textContent = lockedUsers.length.toLocaleString('fa-IR');

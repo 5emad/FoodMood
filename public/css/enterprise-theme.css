@@ -216,6 +216,12 @@ body > * { position: relative; z-index: 1; }
 .sidebar-link.active::before { transform: scaleY(1); }
 .sidebar-link.active i { color: var(--primary-light); }
 
+.sidebar-alert-badge {
+  margin-right: auto;
+  min-width: 1.5rem;
+  justify-content: center;
+}
+
 .sidebar-footer {
   padding: 16px 18px;
   border-top: 1px solid var(--border);

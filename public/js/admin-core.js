@@ -123,4 +123,24 @@
   window.notify = notify;
   window.showSuperToken = showSuperToken;
   window.confirmAction = confirmAction;
+
+  function updateSecurityNotifyBadge(unreadCount) {
+    var badge = document.getElementById('securityNotifyBadge');
+    if (!badge) return;
+    var count = Number(unreadCount || 0);
+    badge.style.display = 'inline-flex';
+    badge.textContent = count > 99 ? '+99' : String(count);
+  }
+
+  async function refreshSecurityNotifyBadge() {
+    var badge = document.getElementById('securityNotifyBadge');
+    if (!badge) return;
+    try {
+      var data = await api('/api/admin/security/summary');
+      if (data.success) updateSecurityNotifyBadge(data.data && data.data.unreadCount);
+    } catch (_e) { /* ignore */ }
+  }
+
+  refreshSecurityNotifyBadge();
+  setInterval(refreshSecurityNotifyBadge, 60000);
 })();

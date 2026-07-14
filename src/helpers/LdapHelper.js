@@ -20,6 +20,7 @@ function ldapConfig(settings = {}) {
     url:         settings.ldapUrl     || process.env.LDAP_URL    || '',
     security:    settings.ldapSecurity|| process.env.LDAP_SECURITY|| 'ldaps',
     caCertPath:  settings.ldapCaCertPath || process.env.LDAP_CA_CERT_PATH || '',
+    caCertPem:   settings.ldapCaCertPem || '',
     baseDn:      settings.ldapBaseDn  || process.env.LDAP_BASE_DN || 'DC=company,DC=local',
     bindDn:      settings.ldapBindDn  || process.env.LDAP_BIND_DN || '',
     bindPassword,
@@ -62,14 +63,17 @@ function validateConfig(cfg) {
   return { valid: true, hostname: parsed.hostname };
 }
 
-function tlsOptions(caCertPath, hostname) {
+function tlsOptions(cfg, hostname) {
   const opts = {
     rejectUnauthorized: true,
     minVersion: 'TLSv1.2',
     servername: hostname,
   };
-  if (caCertPath && fs.existsSync(caCertPath)) {
-    opts.ca = [fs.readFileSync(caCertPath)];
+  const pem = String(cfg.caCertPem || '').trim();
+  if (pem.includes('BEGIN CERTIFICATE')) {
+    opts.ca = [pem];
+  } else if (cfg.caCertPath && fs.existsSync(cfg.caCertPath)) {
+    opts.ca = [fs.readFileSync(cfg.caCertPath)];
   }
   return opts;
 }
@@ -107,7 +111,7 @@ function createClient(cfg) {
     connectTimeout: 5000,
   };
   if (String(cfg.security || '').toLowerCase() !== 'ldap') {
-    opts.tlsOptions = tlsOptions(cfg.caCertPath, validation.hostname);
+    opts.tlsOptions = tlsOptions(cfg, validation.hostname);
   }
   return new Client(opts);
 }
@@ -117,7 +121,7 @@ async function upgradeToTls(client, cfg) {
   if (typeof client.startTLS !== 'function') throw new Error('LDAP client does not support StartTLS');
   const validation = validateConfig(cfg);
   if (!validation.valid) throw new Error(validation.message);
-  await client.startTLS(tlsOptions(cfg.caCertPath, validation.hostname));
+  await client.startTLS(tlsOptions(cfg, validation.hostname));
 }
 
 // RFC 4515 / 4516 escape for filter values

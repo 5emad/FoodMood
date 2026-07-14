@@ -32,7 +32,7 @@
     <% if (isSuperadmin) { %>
       <li><div class="sidebar-section-title">سوپر ادمین</div></li>
       <li><a href="/admin/super/settings" class="sidebar-link<%= activePage === 'super-settings' ? ' active' : '' %>"><i class="fas fa-sliders"></i><span>تنظیمات سامانه</span></a></li>
-      <li><a href="/admin/super/security" class="sidebar-link<%= activePage === 'super-security' ? ' active' : '' %>"><i class="fas fa-shield-halved"></i><span>امنیت و لاگ</span> <span id="securityNotifyBadge" class="badge badge-danger" style="display:none;margin-right:auto">0</span></a></li>
+      <li><a href="/admin/super/security" class="sidebar-link<%= activePage === 'super-security' ? ' active' : '' %>"><i class="fas fa-shield-halved"></i><span>امنیت و لاگ</span> <span id="securityNotifyBadge" class="badge badge-danger sidebar-alert-badge">0</span></a></li>
       <li><a href="/admin/super/backup" class="sidebar-link<%= activePage === 'super-backup' ? ' active' : '' %>"><i class="fas fa-database"></i><span>پشتیبان‌گیری</span></a></li>
     <% } %>
   </ul>

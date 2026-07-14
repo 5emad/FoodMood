@@ -1,4 +1,6 @@
 let appSettings = {};
+let pendingLdapCaCertPem = null;
+let clearLdapCaCertPending = false;
 const themePresets = [
   { id: 'purple', label: 'تم بنفش', themePrimary: '#9B6DFF', themePrimaryLight: '#C4A8FF', themePrimaryDark: '#6C3FD4', themeGradientFrom: '#1A0E38', themeGradientTo: '#2D1460' },
   { id: 'blue', label: 'تم آبی', themePrimary: '#3B82F6', themePrimaryLight: '#93C5FD', themePrimaryDark: '#2563EB', themeGradientFrom: '#1D4ED8', themeGradientTo: '#3B82F6' },
@@ -63,6 +65,71 @@ function renderThemeOptions(activeId = currentThemePresetId()) {
   `).join('');
 }
 
+function updateLdapCaCertStatus() {
+  const status = document.getElementById('ldapCaCertStatus');
+  if (!status) return;
+  if (clearLdapCaCertPending) {
+    status.className = 'badge badge-gray';
+    status.textContent = 'گواهی حذف می‌شود (ذخیره کنید)';
+    return;
+  }
+  if (pendingLdapCaCertPem) {
+    status.className = 'badge badge-success';
+    status.textContent = 'گواهی جدید آماده ذخیره';
+    return;
+  }
+  if (appSettings.hasLdapCaCert) {
+    status.className = 'badge badge-success';
+    status.textContent = 'گواهی ذخیره شده';
+    return;
+  }
+  status.className = 'badge badge-gray';
+  status.textContent = 'گواهی ثبت نشده';
+}
+
+function updateLdapBindPasswordStatus() {
+  const status = document.getElementById('ldapBindPasswordStatus');
+  if (!status) return;
+  if (appSettings.hasLdapBindPassword) {
+    status.className = 'badge badge-success';
+    status.textContent = 'رمز ذخیره شده';
+  } else {
+    status.className = 'badge badge-gray';
+    status.textContent = 'رمز ذخیره نشده';
+  }
+}
+
+function clearLdapCaCert() {
+  pendingLdapCaCertPem = null;
+  clearLdapCaCertPending = true;
+  const fileInput = document.getElementById('set_ldapCaCertFile');
+  if (fileInput) fileInput.value = '';
+  updateLdapCaCertStatus();
+}
+
+function bindLdapCaCertFileInput() {
+  const fileInput = document.getElementById('set_ldapCaCertFile');
+  if (!fileInput || fileInput.dataset.bound === '1') return;
+  fileInput.dataset.bound = '1';
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '').trim();
+      if (!text.includes('BEGIN CERTIFICATE')) {
+        notify('فایل گواهی معتبر نیست (فرمت PEM)', 'error');
+        fileInput.value = '';
+        return;
+      }
+      pendingLdapCaCertPem = text;
+      clearLdapCaCertPending = false;
+      updateLdapCaCertStatus();
+    };
+    reader.readAsText(file);
+  });
+}
+
 function fillSystemSettingsForm() {
   const byId = id => document.getElementById(id);
   if (!byId('set_organizationName')) return;
@@ -80,11 +147,17 @@ function fillSystemSettingsForm() {
   byId('set_ldapEnabled').value = String(Boolean(appSettings.ldapEnabled));
   byId('set_ldapUrl').value = appSettings.ldapUrl || '';
   byId('set_ldapSecurity').value = appSettings.ldapSecurity || 'ldaps';
-  byId('set_ldapCaCertPath').value = appSettings.ldapCaCertPath || '';
   byId('set_ldapBaseDn').value = appSettings.ldapBaseDn || '';
   byId('set_ldapBindDn').value = appSettings.ldapBindDn || '';
   byId('set_ldapBindPassword').value = '';
   byId('set_ldapUserFilter').value = appSettings.ldapUserFilter || '(sAMAccountName={{username}})';
+  pendingLdapCaCertPem = null;
+  clearLdapCaCertPending = false;
+  const caFile = document.getElementById('set_ldapCaCertFile');
+  if (caFile) caFile.value = '';
+  bindLdapCaCertFileInput();
+  updateLdapCaCertStatus();
+  updateLdapBindPasswordStatus();
 }
 
 async function saveSystemSettings(event) {
@@ -103,11 +176,12 @@ async function saveSystemSettings(event) {
     ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
     ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
     ldapSecurity: document.getElementById('set_ldapSecurity').value,
-    ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
     ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
     ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
     ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
   };
+  if (clearLdapCaCertPending) body.ldapClearCaCert = true;
+  else if (pendingLdapCaCertPem) body.ldapCaCertPem = pendingLdapCaCertPem;
   const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
   if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
   const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify(body) });
@@ -138,11 +212,11 @@ async function testLdap(btn) {
       ldapEnabled: document.getElementById('set_ldapEnabled').value === 'true',
       ldapUrl: document.getElementById('set_ldapUrl').value.trim(),
       ldapSecurity: document.getElementById('set_ldapSecurity').value,
-      ldapCaCertPath: document.getElementById('set_ldapCaCertPath').value.trim(),
       ldapBaseDn: document.getElementById('set_ldapBaseDn').value.trim(),
       ldapBindDn: document.getElementById('set_ldapBindDn').value.trim(),
       ldapUserFilter: document.getElementById('set_ldapUserFilter').value.trim(),
     };
+    if (pendingLdapCaCertPem) body.ldapCaCertPem = pendingLdapCaCertPem;
     const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
     if (ldapBindPassword) body.ldapBindPassword = ldapBindPassword;
     const data = await api('/api/admin/settings/test-ldap', { method: 'POST', body: JSON.stringify(body) });
@@ -227,3 +301,9 @@ async function uploadSslCertificate(event) {
 
 loadSettings();
 loadSslStatus();
+
+window.saveSystemSettings = saveSystemSettings;
+window.testLdap = testLdap;
+window.uploadSslCertificate = uploadSslCertificate;
+window.selectThemePreset = selectThemePreset;
+window.clearLdapCaCert = clearLdapCaCert;

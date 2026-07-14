@@ -16,6 +16,7 @@ const defaultSettings = {
   ldapUrl: '',
   ldapSecurity: 'ldaps',
   ldapCaCertPath: '',
+  ldapCaCertPem: '',
   ldapBaseDn: '',
   ldapBindDn: '',
   ldapUserFilter: '(sAMAccountName={{username}})',
@@ -24,12 +25,15 @@ const defaultSettings = {
 function publicSettings(settings) {
   const raw = settings.toObject ? settings.toObject({ getters: false, virtuals: false }) : { ...settings };
   const storedEnc = raw.ldapBindPasswordEnc || '';
+  const caPem = raw.ldapCaCertPem || '';
   delete raw.ldapBindPasswordEnc;
+  delete raw.ldapCaCertPem;
   return {
     ...raw,
     hasLdapBindPassword: Boolean(storedEnc || process.env.LDAP_BIND_PASSWORD),
     ldapBindPasswordStored: Boolean(storedEnc),
     ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
+    hasLdapCaCert: Boolean(caPem || raw.ldapCaCertPath),
   };
 }
 
