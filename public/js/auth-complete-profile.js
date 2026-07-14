@@ -1,0 +1,57 @@
+(function () {
+  'use strict';
+
+  var text = 'کاربر عزیز، لطفا نام و نام خانوادگی خود را به فارسی بنویسید';
+  var target = document.getElementById('typed');
+  var index = 0;
+
+  function typeNext() {
+    if (!target) return;
+    target.textContent = text.slice(0, index);
+    index += 1;
+    if (index <= text.length) setTimeout(typeNext, 42);
+  }
+  typeNext();
+
+  var form = document.getElementById('profileForm');
+  var input = document.getElementById('fullName');
+  var error = document.getElementById('error');
+  var button = document.getElementById('submitBtn');
+  var persianName = /^[\u0600-\u06FF\s\u200c]{3,80}$/;
+
+  if (!form) return;
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    var value = input.value.trim();
+    error.textContent = '';
+
+    if (!persianName.test(value) || value.split(/\s+/).filter(Boolean).length < 2) {
+      error.textContent = 'نام و نام خانوادگی را کامل و به فارسی وارد کنید.';
+      input.focus();
+      return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ثبت...';
+
+    try {
+      var response = await fetch('/api/auth/set-fullname', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: value }),
+      });
+      var data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'ثبت نام انجام نشد');
+      var next = (window.FoodMood && window.FoodMood.appPath)
+        ? window.FoodMood.appPath('/user/dashboard')
+        : '/user/dashboard';
+      window.location.href = next;
+    } catch (err) {
+      error.textContent = err.message || 'خطا در ارتباط با سرور';
+      button.disabled = false;
+      button.innerHTML = '<i class="fas fa-arrow-left"></i> ورود به سامانه';
+    }
+  });
+})();

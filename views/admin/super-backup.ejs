@@ -8,7 +8,9 @@
   <%- include('../partials/head-assets', { includeSweetAlert: true }) %>
   <link rel="stylesheet" href="/css/enterprise-theme.css">
   <link rel="stylesheet" href="/css/theme-vars.css">
-  <script src="/js/security.js?v=5" defer></script>
+  <%- include('../partials/app-base-meta') %>
+  <script src="<%= jsAsset('app-base') %>" defer></script>
+  <script src="<%= jsAsset('security') %>" defer></script>
 </head>
 <body class="admin-body">
 
@@ -83,62 +85,7 @@
 </div>
 
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
-<script>
-<%- include('partials/admin-core-scripts') %>
-
-(function initBackupTab() {
-  const input = document.getElementById('backupFileInput');
-  const nameEl = document.getElementById('backupFileName');
-  const restoreBtn = document.getElementById('restoreBackupBtn');
-  if (!input) return;
-  input.addEventListener('change', () => {
-    const file = input.files?.[0];
-    if (!file) { nameEl.textContent = ''; restoreBtn.disabled = true; return; }
-    if (!file.name.toLowerCase().endsWith('.fzbackup')) {
-      notify('فقط فایل پشتیبان سامانه (.fzbackup) قابل قبول است.', 'error');
-      input.value = ''; nameEl.textContent = ''; restoreBtn.disabled = true; return;
-    }
-    nameEl.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} کیلوبایت)`;
-    restoreBtn.disabled = false;
-  });
-})();
-
-async function exportBackup(btn) {
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال آماده‌سازی...';
-  try {
-    const res = await fetch('/api/admin/backup/export', { credentials: 'same-origin' });
-    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
-    if (!res.ok) { const err = await res.json().catch(() => ({})); notify(err.message || 'خطا در ساخت پشتیبان', 'error'); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `sazman-food-backup-${new Date().toISOString().slice(0, 10)}.fzbackup`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    notify('فایل پشتیبان با موفقیت دانلود شد.', 'success');
-  } catch { notify('خطا در دانلود پشتیبان', 'error'); }
-  finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> دانلود فایل پشتیبان'; }
-}
-
-async function restoreBackup(btn) {
-  const input = document.getElementById('backupFileInput');
-  const file = input?.files?.[0];
-  if (!file) { notify('ابتدا فایل پشتیبان را انتخاب کنید.', 'warning'); return; }
-  if (!(await confirmAction({ title: 'بازیابی کامل داده‌ها؟', confirmText: 'بله، بازیابی کن', icon: 'warning' }))) return;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال بازیابی...';
-  try {
-    const form = new FormData();
-    form.append('backupFile', file);
-    const res = await fetch('/api/admin/backup/restore', { method: 'POST', credentials: 'same-origin', body: form });
-    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
-    const data = await res.json().catch(() => ({ success: false }));
-    if (data.success) { notify(data.message || 'بازیابی انجام شد.', 'success'); setTimeout(() => window.location.reload(), 1800); }
-    else { notify(data.message || 'بازیابی ناموفق بود', 'error'); btn.disabled = false; }
-  } catch { notify('خطا در ارسال فایل پشتیبان', 'error'); btn.disabled = false; }
-  finally { if (!btn.disabled) btn.innerHTML = '<i class="fas fa-rotate-left"></i> بازیابی داده‌ها'; }
-}
-</script>
+<script src="<%= jsAsset('admin-core') %>"></script>
+<script src="<%= jsAsset('admin-super-backup') %>" defer></script>
 </body>
 </html>

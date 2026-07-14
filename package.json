@@ -1,6 +1,6 @@
 {
   "name": "food-ordering-system",
-  "version": "1.5.23",
+  "version": "1.5.24",
   "description": "سیستم رزرو و سفارش غذا",
   "main": "server.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "restart": "npm run stop && npm start",
     "dev": "nodemon server.js",
     "vendor:sync": "node scripts/sync-vendor.js",
+    "build:client": "node scripts/build-client-js.js",
     "postinstall": "node scripts/sync-vendor.js",
     "test:outage": "node scripts/test-db-outage.js"
   },

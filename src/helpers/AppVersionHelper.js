@@ -51,8 +51,10 @@ function refreshAppVersion() {
   return getAppVersion();
 }
 
+const { jsAsset } = require('./AssetHelper');
+
 function versionMiddleware(req, res, next) {
-  Object.assign(res.locals, getVersionViewModel());
+  Object.assign(res.locals, getVersionViewModel(), { jsAsset });
   next();
 }
 

@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <%- include('../partials/app-base-meta') %>
   <title>ورود به سامانه تغذیه</title>
   <%- include('../partials/head-assets') %>
   <link rel="stylesheet" href="/css/enterprise-theme.css">
   <link rel="stylesheet" href="/css/theme-vars.css">
-  <script src="/js/security.js?v=5" defer></script>
+  <script src="<%= jsAsset('app-base') %>" defer></script>
+  <script src="<%= jsAsset('security') %>" defer></script>
 </head>
 <body class="auth-body">
   <div class="auth-wrap">
@@ -84,6 +86,9 @@
           </label>
           <input type="password" class="form-control input-secret" id="superToken" name="superToken"
                  placeholder="توکن یک‌بار نمایش داده‌شده" dir="ltr" autocomplete="new-password" lang="en">
+          <div class="form-hint" style="margin-top:8px;font-size:.78rem;color:var(--text-muted)">
+            <button type="button" class="btn btn-outline btn-sm" id="loginRestart">شروع مجدد ورود</button>
+          </div>
         </div>
 
         <button type="submit" class="btn btn-primary btn-w100 mt-2" style="padding:13px;font-size:.95rem;">
@@ -94,141 +99,7 @@
     </div>
   </div>
 
-  <script>
-    (function initAuthSideCarousel() {
-      const slides = Array.from(document.querySelectorAll('#authSideCarousel .auth-side-slide'));
-      const dots = Array.from(document.querySelectorAll('#authSideDots [data-slide]'));
-      if (!slides.length || !dots.length) return;
-
-      let index = 0;
-      let timer = null;
-
-      function showSlide(next) {
-        index = (next + slides.length) % slides.length;
-        slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
-        dots.forEach((dot, i) => {
-          const on = i === index;
-          dot.classList.toggle('active', on);
-          dot.setAttribute('aria-selected', on ? 'true' : 'false');
-        });
-      }
-
-      function startAuto() {
-        stopAuto();
-        timer = setInterval(() => showSlide(index + 1), 4500);
-      }
-
-      function stopAuto() {
-        if (timer) clearInterval(timer);
-        timer = null;
-      }
-
-      dots.forEach((dot) => {
-        dot.addEventListener('click', () => {
-          showSlide(Number(dot.dataset.slide) || 0);
-          startAuto();
-        });
-      });
-
-      showSlide(0);
-      startAuto();
-    })();
-
-    const APP_BASE = '<%= typeof publicUrl !== "undefined" && publicUrl ? publicUrl.replace(/'/g, "\\'") : "" %>';
-    function appPath(path) {
-      const normalized = path.startsWith('/') ? path : `/${path}`;
-      return APP_BASE ? `${APP_BASE.replace(/\/$/, '')}${normalized}` : normalized;
-    }
-
-    const form = document.getElementById('loginForm');
-    const submitButton = form.querySelector('button[type="submit"]');
-    const defaultButtonHtml = submitButton.innerHTML;
-
-    function showError(message) {
-      const oldAlert = document.querySelector('.auth-card .alert-danger');
-      if (oldAlert) oldAlert.remove();
-      const alert = document.createElement('div');
-      alert.className = 'alert alert-danger';
-      const icon = document.createElement('i');
-      icon.className = 'fas fa-exclamation-triangle';
-      alert.appendChild(icon);
-      alert.appendChild(document.createTextNode(' ' + String(message || '')));
-      form.before(alert);
-    }
-
-    form.addEventListener('submit', async (event) => {
-      if (form.dataset.mode === 'super-token') return;
-      event.preventDefault();
-      submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ورود...';
-      submitButton.disabled = true;
-
-      try {
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: document.getElementById('username').value.trim(),
-            password: document.getElementById('password').value,
-          }),
-        });
-        const data = await response.json();
-
-        if (data.tokenRequired) {
-          document.getElementById('superTokenGroup').style.display = 'block';
-          document.getElementById('username').disabled = true;
-          document.getElementById('password').disabled = true;
-          submitButton.innerHTML = '<i class="fas fa-shield-halved"></i> تایید توکن امنیتی';
-          submitButton.disabled = false;
-          form.dataset.mode = 'super-token';
-          showError(data.message || 'توکن امنیتی سوپر ادمین را وارد کنید');
-          document.getElementById('superToken').focus();
-          return;
-        }
-
-        if (data.success) {
-          window.location.href = data.user.mustSetFullName
-            ? appPath('/complete-profile')
-            : (['admin', 'superadmin'].includes(data.user.role) ? appPath('/admin/dashboard') : appPath('/user/dashboard'));
-          return;
-        }
-
-        showError(data.message || 'اطلاعات ورود صحیح نیست');
-      } catch (error) {
-        showError('خطا در ارتباط با سرور');
-      } finally {
-        submitButton.innerHTML = defaultButtonHtml;
-        submitButton.disabled = false;
-      }
-    });
-
-    form.addEventListener('submit', async (event) => {
-      if (form.dataset.mode !== 'super-token') return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      submitButton.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تایید...';
-      submitButton.disabled = true;
-      try {
-        const response = await fetch('/api/auth/verify-super-token', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: document.getElementById('superToken').value }),
-        });
-        const data = await response.json();
-        if (data.success) {
-          window.location.href = appPath('/admin/dashboard');
-          return;
-        }
-        showError(data.message || 'توکن امنیتی اشتباه است');
-      } catch {
-        showError('خطا در تایید توکن امنیتی');
-      } finally {
-        submitButton.innerHTML = '<i class="fas fa-shield-halved"></i> تایید توکن امنیتی';
-        submitButton.disabled = false;
-      }
-    }, true);
-  </script>
+  <script src="<%= jsAsset('auth-login') %>" defer></script>
   <%- include('../partials/app-version') %>
 </body>
 </html>

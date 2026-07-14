@@ -2,18 +2,23 @@
   'use strict';
 
   var csrfTokenPromise = null;
+
   function getCsrfToken() {
     if (!csrfTokenPromise) {
       csrfTokenPromise = _fetch('/api/auth/csrf', {
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json' },
       })
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (data) { return data && data.csrfToken ? data.csrfToken : ''; })
         .catch(function () { return ''; });
     }
     return csrfTokenPromise;
+  }
+
+  function resetCsrfToken() {
+    csrfTokenPromise = null;
   }
 
   function methodOf(args) {
@@ -25,8 +30,10 @@
 
   function redirectToLogin(reason) {
     if (window.location.pathname.indexOf('/login') !== -1) return;
-    var query = reason === 'idle' ? 'idle=1' : 'expired=1';
-    window.location.replace('/login?' + query);
+    var target = (window.FoodMood && window.FoodMood.loginUrl)
+      ? window.FoodMood.loginUrl(reason)
+      : '/login?' + (reason === 'idle' ? 'idle=1' : 'expired=1');
+    window.location.replace(target);
   }
 
   function handleUnauthorized(res) {
@@ -36,7 +43,6 @@
     });
   }
 
-  // Add CSRF to same-origin mutating requests and redirect to login on 401.
   var _fetch = window.fetch;
   window.fetch = function () {
     var args = Array.prototype.slice.call(arguments);
@@ -51,6 +57,7 @@
         args[1] = Object.assign({}, init, { headers: headers });
       }
       return _fetch.apply(this, args).then(function (res) {
+        if (res.status === 403 && needsCsrf) resetCsrfToken();
         handleUnauthorized(res);
         return res;
       });
@@ -74,6 +81,7 @@
     function logoutAndRedirect(reason) {
       if (loggingOut) return;
       loggingOut = true;
+      resetCsrfToken();
       window.fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'same-origin',
@@ -117,7 +125,7 @@
       window.fetch('/api/auth/ping', {
         credentials: 'same-origin',
         cache: 'no-store',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json' },
       });
     }, Math.min(5 * 60 * 1000, Math.max(idleMs / 2, 60000)));
 
