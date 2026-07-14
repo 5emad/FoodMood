@@ -1,73 +1,7 @@
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
 const { getReportFontCss, copyFontsToDir } = require('./ReportFontHelper');
-
-const execFileAsync = promisify(execFile);
-
-const DEB_CHROME_PATHS = [
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/google-chrome',
-];
-
-const windowsCandidates = [
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-];
-
-function isSnapBinary(binaryPath) {
-  return String(binaryPath || '').includes('/snap/');
-}
-
-async function isUsableChromeBinary(candidate) {
-  if (!candidate || isSnapBinary(candidate)) return false;
-
-  let realPath = candidate;
-  try {
-    await fs.access(candidate);
-    realPath = await fs.realpath(candidate);
-  } catch {
-    return false;
-  }
-
-  if (isSnapBinary(realPath)) return false;
-
-  const head = await fs.readFile(realPath, { encoding: 'utf8' }).catch(() => '');
-  if (head.startsWith('#!')) {
-    if (/snap/i.test(head)) return false;
-    if (/chromium/i.test(head) && !/google-chrome/i.test(head)) return false;
-  }
-
-  return true;
-}
-
-async function findChrome() {
-  if (process.platform === 'win32') {
-    for (const candidate of windowsCandidates) {
-      if (await isUsableChromeBinary(candidate)) return candidate;
-    }
-  } else {
-    const candidates = [
-      process.env.CHROME_BIN,
-      ...DEB_CHROME_PATHS,
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (await isUsableChromeBinary(candidate)) return candidate;
-    }
-  }
-
-  const error = new Error(
-    'Google Chrome برای ساخت PDF نصب نیست — روی سرور: curl -fsSL .../deploy/update.sh | sudo bash',
-  );
-  error.status = 503;
-  error.expose = true;
-  throw error;
-}
 
 function injectLocalFonts(html, fontCss) {
   const styleTag = `<style id="report-fonts">\n${fontCss}\n</style>`;
@@ -86,6 +20,7 @@ async function ensurePdfRuntimeDirs(root) {
   await fs.mkdir(path.join(root, 'config'), { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(root, 'cache'), { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(root, 'run'), { recursive: true, mode: 0o700 });
+  await fs.mkdir(path.join(root, 'puppeteer-profile'), { recursive: true, mode: 0o700 });
 }
 
 function buildChromeEnv(runtimeRoot) {
@@ -103,47 +38,67 @@ function buildChromeEnv(runtimeRoot) {
     XDG_CONFIG_HOME: path.join(runtimeRoot, 'config'),
     XDG_CACHE_HOME: path.join(runtimeRoot, 'cache'),
     XDG_RUNTIME_DIR: runtimeDir,
+    PUPPETEER_CACHE_DIR: process.env.PUPPETEER_CACHE_DIR || path.join(path.dirname(runtimeRoot), 'puppeteer'),
     TMPDIR: process.env.TMPDIR || os.tmpdir(),
     PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
   };
 }
 
+async function launchBrowser(runtimeRoot) {
+  const puppeteer = require('puppeteer');
+  const launchOptions = {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--allow-file-access-from-files',
+    ],
+    userDataDir: path.join(runtimeRoot, 'puppeteer-profile'),
+    env: buildChromeEnv(runtimeRoot),
+  };
+
+  if (process.env.CHROME_BIN) {
+    launchOptions.executablePath = process.env.CHROME_BIN;
+  }
+
+  return puppeteer.launch(launchOptions);
+}
+
 async function htmlToPdfBuffer(html) {
-  const chromePath = await findChrome();
   const runtimeRoot = pdfCacheRoot();
   await ensurePdfRuntimeDirs(runtimeRoot);
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'food-report-'));
   const htmlPath = path.join(dir, 'report.html');
-  const pdfPath = path.join(dir, 'report.pdf');
 
   try {
     const fontPrefix = await copyFontsToDir(dir);
     const fontCss = getReportFontCss({ relativePrefix: fontPrefix });
     const htmlWithFonts = injectLocalFonts(html, fontCss);
     await fs.writeFile(htmlPath, htmlWithFonts, 'utf8');
-    const fileUrl = `file://${htmlPath.replace(/\\/g, '/')}`;
-    await execFileAsync(chromePath, [
-      '--headless=new',
-      '--disable-gpu',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-software-rasterizer',
-      '--allow-file-access-from-files',
-      '--run-all-compositor-stages-before-draw',
-      '--virtual-time-budget=10000',
-      `--print-to-pdf=${pdfPath}`,
-      '--print-to-pdf-no-header',
-      fileUrl,
-    ], {
-      timeout: 90000,
-      env: buildChromeEnv(runtimeRoot),
-    });
 
-    return await fs.readFile(pdfPath);
+    const browser = await launchBrowser(runtimeRoot);
+    try {
+      const page = await browser.newPage();
+      const fileUrl = `file:///${htmlPath.replace(/\\/g, '/')}`;
+      await page.goto(fileUrl, { waitUntil: 'networkidle0', timeout: 60000 });
+      const pdfBuffer = await page.pdf({
+        printBackground: true,
+        preferCSSPageSize: true,
+        format: 'A4',
+      });
+      return Buffer.from(pdfBuffer);
+    } finally {
+      await browser.close();
+    }
   } catch (error) {
-    const detail = error?.stderr || error?.message || 'نامشخص';
-    const wrapped = new Error(`خطا در ساخت PDF: ${detail}`);
+    const detail = error?.message || 'نامشخص';
+    const wrapped = new Error(
+      detail.includes('Could not find Chrome')
+        ? 'مرورگر PDF هنوز دانلود نشده — روی سرور: curl -fsSL .../deploy/update.sh | sudo bash'
+        : `خطا در ساخت PDF: ${detail}`,
+    );
     wrapped.status = 503;
     wrapped.expose = true;
     throw wrapped;
@@ -154,9 +109,6 @@ async function htmlToPdfBuffer(html) {
 
 module.exports = {
   htmlToPdfBuffer,
-  findChrome,
   pdfCacheRoot,
   buildChromeEnv,
-  isSnapBinary,
-  isUsableChromeBinary,
 };

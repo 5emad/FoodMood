@@ -430,29 +430,29 @@ run_diagnose() {
 }
 
 ensure_chrome_for_pdf() {
-  if [[ -x /usr/bin/google-chrome-stable ]]; then
-    log_ok "PDF browser: /usr/bin/google-chrome-stable"
+  mkdir -p "${INSTALL_DIR}/.cache/puppeteer"
+  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache" 2>/dev/null || true
+
+  if sudo -u "$APP_USER" bash -c "cd '${INSTALL_DIR}' && node -e \"require('puppeteer')\" 2>/dev/null"; then
+    log_ok "Puppeteer PDF browser ready (bundled Chromium)"
     return 0
   fi
 
-  log_warn "Google Chrome not found — installing .deb package (not Snap)..."
-  export DEBIAN_FRONTEND=noninteractive
+  log_warn "Puppeteer Chromium will download on npm install (npmmirror mirror)"
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    log_ok "Fallback system Chrome available"
+    return 0
+  fi
 
+  log_warn "Trying Google Chrome .deb fallback..."
+  export DEBIAN_FRONTEND=noninteractive
   local chrome_deb="/tmp/google-chrome-stable.deb"
   if curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then
-    if apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }; then
-      rm -f "$chrome_deb"
-    fi
+    apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }
+    rm -f "$chrome_deb"
   fi
-  rm -f "$chrome_deb"
-
-  if [[ -x /usr/bin/google-chrome-stable ]]; then
-    log_ok "Google Chrome installed: /usr/bin/google-chrome-stable"
-    return 0
-  fi
-
-  log_err "Could not install Google Chrome for PDF export"
-  return 1
+  [[ -x /usr/bin/google-chrome-stable ]] && log_ok "Google Chrome .deb installed" && return 0
+  return 0
 }
 
 pdf_browser_deb_path() {
@@ -487,31 +487,22 @@ EOF
 
 configure_chrome_env() {
   local env_file="${INSTALL_DIR}/.env"
-  local chrome_path
-  chrome_path="$(pdf_browser_deb_path || echo /usr/bin/google-chrome-stable)"
   [[ -f "$env_file" ]] || return 0
 
-  if grep -q '^CHROME_BIN=' "$env_file" 2>/dev/null; then
-    sed -i "s|^CHROME_BIN=.*|CHROME_BIN=${chrome_path}|" "$env_file"
-  else
-    echo "CHROME_BIN=${chrome_path}" >> "$env_file"
+  if ! grep -q '^PUPPETEER_CACHE_DIR=' "$env_file" 2>/dev/null; then
+    echo "PUPPETEER_CACHE_DIR=${INSTALL_DIR}/.cache/puppeteer" >> "$env_file"
   fi
   chown "$APP_USER:$APP_USER" "$env_file"
   chmod 600 "$env_file"
-  log_ok "CHROME_BIN=${chrome_path} saved in .env"
+  log_ok "PUPPETEER_CACHE_DIR configured in .env"
 }
 
 test_pdf_browser() {
-  local chrome runtime
-  chrome="$(pdf_browser_deb_path || true)"
-  [[ -n "$chrome" ]] || return 1
-  runtime="${INSTALL_DIR}/.cache/pdf-runtime"
-  mkdir -p "${runtime}/run"
-  sudo -u "$APP_USER" env \
-    HOME="${runtime}" \
-    XDG_CONFIG_HOME="${runtime}/config" \
-    XDG_CACHE_HOME="${runtime}/cache" \
-    XDG_RUNTIME_DIR="${runtime}/run" \
-    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    "$chrome" --version >/dev/null 2>&1
+  sudo -u "$APP_USER" bash -c "cd '${INSTALL_DIR}' && node -e \"
+const puppeteer = require('puppeteer');
+puppeteer.launch({ headless: true, args: ['--no-sandbox'] })
+  .then((b) => b.close())
+  .then(() => process.exit(0))
+  .catch((e) => { console.error(e.message); process.exit(1); });
+\"" 2>/dev/null
 }

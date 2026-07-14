@@ -120,6 +120,16 @@ const authMiddleware = async (req, res, next) => {
     res.locals.sessionPolicy = getSessionPolicy();
     next();
   } catch (error) {
+    if (isDatabaseError(error) && wantsHtml(req) && (req.originalUrl || '').startsWith('/admin')) {
+      return res.status(503).render('auth/login', {
+        organizationName: 'سامانه تغذیه',
+        publicUrl: '',
+        expired: false,
+        idle: false,
+        inactive: false,
+        error: 'اتصال به پایگاه داده برقرار نیست. روی سرور: sudo bash /opt/food/deploy/update.sh',
+      });
+    }
     if (isDatabaseError(error)) return next(error);
     if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
     return res.status(401).json({ message: 'خطا در احراز هویت' });

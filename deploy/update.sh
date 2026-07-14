@@ -260,9 +260,12 @@ apply_update() {
   chmod 600 "${INSTALL_DIR}/.env"
 
   log_info "Installing npm dependencies..."
-  if ! sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"; then
+  mkdir -p "${INSTALL_DIR}/.cache/puppeteer" "${INSTALL_DIR}/.cache/pdf-runtime"
+  chown -R "$APP_USER:$APP_USER" "${INSTALL_DIR}/.cache" 2>/dev/null || true
+  local npm_env="export PUPPETEER_CACHE_DIR='${INSTALL_DIR}/.cache/puppeteer'; export PUPPETEER_DOWNLOAD_BASE_URL='https://cdn.npmmirror.com/binaries/chrome-for-testing'"
+  if ! sudo -u "$APP_USER" bash -c "${npm_env}; cd '$INSTALL_DIR' && npm install --omit=dev"; then
     log_warn "npmjs.org unreachable — trying npmmirror.com..."
-    sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --registry=https://registry.npmmirror.com"
+    sudo -u "$APP_USER" bash -c "${npm_env}; cd '$INSTALL_DIR' && npm install --omit=dev --registry=https://registry.npmmirror.com"
   fi
 
   log_info "Syncing vendor fonts and assets..."

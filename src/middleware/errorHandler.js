@@ -3,6 +3,33 @@ const { markUnhealthy, isDatabaseError } = require('../helpers/HealthState');
 const { renderUnavailable, isSuperadminSession } = require('../helpers/UnavailableHelper');
 const { buildErrorLogEntry } = require('../helpers/SystemLogCatalog');
 
+function isAdminRequest(req) {
+  const url = req.originalUrl || req.path || '';
+  return url.startsWith('/admin') || url.startsWith('/api/admin');
+}
+
+function wantsHtml(req) {
+  return req.accepts(['html', 'json']) === 'html' && !req.originalUrl.startsWith('/api/');
+}
+
+function renderAdminDbError(req, res) {
+  if (wantsHtml(req)) {
+    return res.status(503).render('auth/login', {
+      organizationName: 'سامانه تغذیه',
+      publicUrl: '',
+      expired: false,
+      idle: false,
+      inactive: false,
+      error: 'اتصال به پایگاه داده برقرار نیست. روی سرور دستور update را اجرا کنید و دوباره وارد شوید.',
+    });
+  }
+  return res.status(503).json({
+    success: false,
+    code: 'SERVICE_UNAVAILABLE',
+    message: 'اتصال به پایگاه داده برقرار نیست',
+  });
+}
+
 const errorHandler = (err, req, res, next) => {
   const status = err.status || 500;
   const isServerError = status >= 500;
@@ -15,6 +42,10 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const isApiRequest = req.originalUrl.startsWith('/api/');
+
+  if (isServerError && isAdminRequest(req)) {
+    return renderAdminDbError(req, res);
+  }
 
   if (isServerError && !isSuperadminSession(req)) {
     if (!isApiRequest) {
@@ -37,7 +68,7 @@ const errorHandler = (err, req, res, next) => {
         ? 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد'
         : (err.message || 'خطای داخلی سرور')));
 
-  if (req.accepts(['html', 'json']) === 'html' && !req.originalUrl.startsWith('/api/')) {
+  if (wantsHtml(req)) {
     if (isServerError) return renderUnavailable(req, res, 503);
     return res.status(status).render('index', {
       user: req.user || null,
