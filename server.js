@@ -48,6 +48,7 @@ const {
 const { markUnhealthy } = require('./src/helpers/HealthState');
 const { appUrlMiddleware, canonicalHostMiddleware } = require('./src/middleware/appUrlMiddleware');
 const healthGateMiddleware = require('./src/middleware/healthGateMiddleware');
+const ensureDbMiddleware = require('./src/middleware/ensureDbMiddleware');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -263,6 +264,8 @@ app.get('/api/auth/csrf', (req, res) => {
 });
 app.use('/api', csrfMiddleware);
 
+app.use('/api/auth/login', ensureDbMiddleware);
+app.use('/api/admin', ensureDbMiddleware);
 app.use('/api/auth',   authRoutes);
 app.use('/api/foods',  foodRoutes);
 app.use('/api/orders', orderRoutes);
@@ -273,7 +276,7 @@ app.use('/api/announcements', announcementRoutes);
 // ── View routes (add no-cache to all rendered pages) ─────────────────────────
 app.use('/',       noCache, viewRoutes);
 app.use('/user',   noCache, userRoutes);
-app.use('/admin',  noCache, adminViewRoutes);
+app.use('/admin',  noCache, ensureDbMiddleware, adminViewRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {

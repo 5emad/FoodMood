@@ -39,6 +39,57 @@ url_encode() {
   python3 -c 'import urllib.parse,sys; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"
 }
 
+update_env_var() {
+  local key="$1" value="$2"
+  local env_file="${INSTALL_DIR}/.env"
+  [[ -f "$env_file" ]] || return 1
+  python3 - "$env_file" "$key" "$value" <<'PY'
+import sys
+path, key, value = sys.argv[1:4]
+lines = []
+found = False
+with open(path, encoding='utf-8') as f:
+    for line in f:
+        if line.startswith(key + '='):
+            lines.append(f'{key}={value}\n')
+            found = True
+        else:
+            lines.append(line)
+if not found:
+    if lines and not lines[-1].endswith('\n'):
+        lines[-1] += '\n'
+    lines.append(f'{key}={value}\n')
+with open(path, 'w', encoding='utf-8') as f:
+    f.writelines(lines)
+PY
+  chown "$APP_USER:$APP_USER" "$env_file"
+  chmod 600 "$env_file"
+}
+
+mongo_auth_uri_for() {
+  local user="$1" pass="$2"
+  local encoded
+  encoded="$(url_encode "$pass")"
+  echo "mongodb://${user}:${encoded}@127.0.0.1:27017/${DB_NAME}?authSource=${DB_NAME}"
+}
+
+find_mongo_backup_env() {
+  local candidate newest="" ts best=0
+  for candidate in /tmp/food-env-backup-*.env; do
+    [[ -f "$candidate" ]] || continue
+    ts="$(stat -c '%Y' "$candidate" 2>/dev/null || echo 0)"
+    if (( ts >= best )); then
+      best="$ts"
+      newest="$candidate"
+    fi
+  done
+  if [[ -n "$newest" ]]; then
+    echo "$newest"
+    return 0
+  fi
+  return 1
+}
+
 parse_mongo_uri_credentials() {
   local uri="$1"
   python3 - "$uri" <<'PY'
@@ -218,9 +269,23 @@ mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 }
 \"" 2>&1 || true
 }
 
+test_mongodb_app_query() {
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node -e \"
+require('dotenv').config();
+const mongoose = require('mongoose');
+const User = require('./src/models/User');
+const uri = process.env.MONGODB_URI || '';
+mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 })
+  .then(() => User.findOne({ role: 'superadmin' }).select('username role status').lean())
+  .then((u) => { console.log(u ? 'OK:' + u.username : 'OK:no-superadmin'); return mongoose.disconnect(); })
+  .catch((e) => { console.log('FAIL:' + (e.message || e)); process.exit(1); });
+\"" 2>&1 || true
+}
+
 repair_mongodb_from_env() {
   local env_file="${INSTALL_DIR}/.env"
   local uri mongo_user mongo_pass tmp_js encoded_pass new_uri
+  local backup_env backup_uri backup_user backup_pass auth_uri test_result
 
   [[ -f "$env_file" ]] || return 1
   uri="$(grep '^MONGODB_URI=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
@@ -229,7 +294,6 @@ repair_mongodb_from_env() {
     return 1
   fi
 
-  local test_result
   test_result="$(test_mongodb_uri_from_env)"
   if [[ "$test_result" == "OK" ]]; then
     log_ok "MongoDB connection OK (.env credentials)"
@@ -238,7 +302,7 @@ repair_mongodb_from_env() {
 
   log_warn "MongoDB connection failed (${test_result#FAIL:}) — attempting repair..."
   if ! ensure_mongod_running ""; then
-    log_err "mongod is not running"
+    log_err "mongod is not running — try: systemctl restart mongod"
     return 1
   fi
 
@@ -248,17 +312,55 @@ repair_mongodb_from_env() {
     return 0
   fi
 
+  if backup_env="$(find_mongo_backup_env 2>/dev/null || true)"; then
+    backup_uri="$(grep '^MONGODB_URI=' "$backup_env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    if [[ -n "$backup_uri" ]] && mongo_ping "$backup_uri"; then
+      log_warn "Current .env URI failed — restoring MONGODB_URI from backup..."
+      update_env_var "MONGODB_URI" "$backup_uri"
+      test_result="$(test_mongodb_uri_from_env)"
+      if [[ "$test_result" == "OK" ]]; then
+        log_ok "MongoDB connection OK after restoring backup URI"
+        return 0
+      fi
+      uri="$backup_uri"
+    fi
+  fi
+
   mapfile -t _creds < <(parse_mongo_uri_credentials "$uri" 2>/dev/null || true)
   if [[ "${#_creds[@]}" -lt 2 ]]; then
     log_err "Cannot parse MongoDB credentials from MONGODB_URI"
+    log_err "Check ${env_file} — password may need URL-encoding"
     return 1
   fi
   mongo_user="${_creds[0]}"
   mongo_pass="${_creds[1]}"
 
   if mongo_ping "$uri"; then
-    log_ok "MongoDB shell auth OK — app may need foodmood restart"
+    log_ok "MongoDB shell auth OK — restarting app should fix connection"
     return 0
+  fi
+
+  if backup_env="$(find_mongo_backup_env 2>/dev/null || true)"; then
+    backup_uri="$(grep '^MONGODB_URI=' "$backup_env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    mapfile -t _backup_creds < <(parse_mongo_uri_credentials "$backup_uri" 2>/dev/null || true)
+    if [[ "${#_backup_creds[@]}" -ge 2 ]]; then
+      backup_user="${_backup_creds[0]}"
+      backup_pass="${_backup_creds[1]}"
+      auth_uri="$(mongo_auth_uri_for "$backup_user" "$backup_pass")"
+      if mongo_ping "$auth_uri" && [[ "$backup_user" == "$mongo_user" ]]; then
+        log_info "Resetting MongoDB password using backup credentials..."
+        mongo_set_user_password "$mongo_user" "$mongo_pass" "$auth_uri"
+        new_uri="$(mongo_auth_uri_for "$mongo_user" "$mongo_pass")"
+        if mongo_ping "$new_uri"; then
+          update_env_var "MONGODB_URI" "$new_uri"
+          test_result="$(test_mongodb_uri_from_env)"
+          if [[ "$test_result" == "OK" ]]; then
+            log_ok "MongoDB password synced from backup credentials"
+            return 0
+          fi
+        fi
+      fi
+    fi
   fi
 
   log_warn "Resetting MongoDB user '${mongo_user}' from .env credentials..."
@@ -273,22 +375,15 @@ repair_mongodb_from_env() {
   fi
 
   mongodb_enable_auth || return 1
-  encoded_pass="$(url_encode "$mongo_pass")"
-  new_uri="mongodb://${mongo_user}:${encoded_pass}@127.0.0.1:27017/${DB_NAME}?authSource=${DB_NAME}"
+  new_uri="$(mongo_auth_uri_for "$mongo_user" "$mongo_pass")"
   wait_for_mongodb "MongoDB (authenticated)" "$new_uri" 30 || return 1
 
   if ! mongo_ping "$new_uri"; then
-    log_err "MongoDB repair failed — run install.sh again or reset-mongodb.sh"
+    log_err "MongoDB repair failed — run: curl -fsSL .../deploy/reset-mongodb.sh | sudo bash"
     return 1
   fi
 
-  if grep -q '^MONGODB_URI=' "$env_file" 2>/dev/null; then
-    sed -i "s|^MONGODB_URI=.*|MONGODB_URI=${new_uri}|" "$env_file"
-  else
-    echo "MONGODB_URI=${new_uri}" >> "$env_file"
-  fi
-  chown "$APP_USER:$APP_USER" "$env_file"
-  chmod 600 "$env_file"
+  update_env_var "MONGODB_URI" "$new_uri"
 
   test_result="$(test_mongodb_uri_from_env)"
   if [[ "$test_result" == "OK" ]]; then
@@ -296,7 +391,7 @@ repair_mongodb_from_env() {
     return 0
   fi
 
-  log_err "MongoDB repair finished but app still cannot connect"
+  log_err "MongoDB repair finished but app still cannot connect: ${test_result#FAIL:}"
   return 1
 }
 
@@ -407,6 +502,14 @@ run_diagnose() {
     MISSING_URI) log_err "MONGODB_URI missing" ;;
     FAIL:*) log_err "App MongoDB failed: ${mongo_test#FAIL:}" ;;
     *) log_err "MongoDB test failed: $mongo_test" ;;
+  esac
+
+  local app_query
+  app_query="$(test_mongodb_app_query)"
+  case "$app_query" in
+    OK:*) log_ok "Superadmin DB query OK (${app_query#OK:})" ;;
+    FAIL:*) log_err "Superadmin DB query failed: ${app_query#FAIL:}" ;;
+    *) log_warn "Superadmin DB query: $app_query" ;;
   esac
 
   health_json="$(curl -s --max-time 8 http://127.0.0.1:3000/api/system/health 2>/dev/null || echo '{}')"
@@ -529,15 +632,8 @@ install_google_chrome_deb() {
 
 configure_chrome_bin() {
   local chrome_bin="$1"
-  local env_file="${INSTALL_DIR}/.env"
-  [[ -f "$env_file" && -n "$chrome_bin" ]] || return 0
-  if grep -q '^CHROME_BIN=' "$env_file" 2>/dev/null; then
-    sed -i "s|^CHROME_BIN=.*|CHROME_BIN=${chrome_bin}|" "$env_file"
-  else
-    echo "CHROME_BIN=${chrome_bin}" >> "$env_file"
-  fi
-  chown "$APP_USER:$APP_USER" "$env_file"
-  chmod 600 "$env_file"
+  [[ -n "$chrome_bin" ]] || return 0
+  update_env_var "CHROME_BIN" "$chrome_bin"
 }
 
 configure_chrome_env() {

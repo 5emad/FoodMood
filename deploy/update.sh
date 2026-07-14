@@ -14,6 +14,7 @@
 #  Status / diagnosis only (no download):
 #    sudo bash /opt/food/deploy/update.sh --status
 #    sudo bash /opt/food/deploy/update.sh --diagnose
+#    sudo bash /opt/food/deploy/update.sh --repair-db
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -26,6 +27,7 @@ TAG=""
 LIST_TAGS=0
 SHOW_STATUS=0
 DIAGNOSE_ONLY=0
+REPAIR_DB_ONLY=0
 SUPERADMIN_USER="${SUPERADMIN_USER:-superadmin}"
 SUPERADMIN_PASS="${SUPERADMIN_PASS:-}"
 
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --list)   LIST_TAGS=1; shift ;;
     --status) SHOW_STATUS=1; shift ;;
     --diagnose) DIAGNOSE_ONLY=1; shift ;;
+    --repair-db) REPAIR_DB_ONLY=1; shift ;;
     --superadmin-user) SUPERADMIN_USER="$2"; shift 2 ;;
     --superadmin-pass) SUPERADMIN_PASS="$2"; shift 2 ;;
     -h|--help)
@@ -281,7 +284,20 @@ apply_update() {
 
   log_info "Ensuring MongoDB is running..."
   ensure_services_running
-  repair_mongodb_from_env || log_warn "MongoDB repair had issues — continuing with service restart"
+  if ! repair_mongodb_from_env; then
+    log_err "MongoDB repair failed — superadmin and login will not work"
+    run_diagnose "$server_ip"
+    exit 1
+  fi
+
+  local mongo_query
+  mongo_query="$(test_mongodb_app_query)"
+  if [[ "$mongo_query" != OK:* ]]; then
+    log_err "MongoDB query test failed: ${mongo_query#FAIL:}"
+    run_diagnose "$server_ip"
+    exit 1
+  fi
+  log_ok "MongoDB ready (${mongo_query#OK:})"
 
   log_info "Ensuring PDF browser and runtime cache..."
   ensure_chrome_for_pdf || true
@@ -390,6 +406,28 @@ main() {
   if [[ "$DIAGNOSE_ONLY" -eq 1 ]]; then
     load_lib || exit 1
     run_diagnose "$(detect_server_ip)"
+    exit 0
+  fi
+
+  if [[ "$REPAIR_DB_ONLY" -eq 1 ]]; then
+    load_lib || exit 1
+    local server_ip
+    server_ip="$(detect_server_ip)"
+    log_info "MongoDB repair only (no code sync)..."
+    ensure_services_running
+    if ! repair_mongodb_from_env; then
+      run_diagnose "$server_ip"
+      exit 1
+    fi
+    systemctl restart "$SERVICE_NAME"
+    if ! wait_for_api_health 20; then
+      run_diagnose "$server_ip"
+      exit 1
+    fi
+    if [[ -n "$SUPERADMIN_PASS" ]]; then
+      reset_superadmin_credentials "$SUPERADMIN_USER" "$SUPERADMIN_PASS" || exit 1
+    fi
+    log_ok "MongoDB repair complete — open https://${server_ip}/login and sign in again"
     exit 0
   fi
 

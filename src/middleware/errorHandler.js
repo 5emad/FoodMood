@@ -43,7 +43,7 @@ const errorHandler = (err, req, res, next) => {
 
   const isApiRequest = req.originalUrl.startsWith('/api/');
 
-  if (isServerError && isAdminRequest(req)) {
+  if (isServerError && isAdminRequest(req) && isDatabaseError(err)) {
     return renderAdminDbError(req, res);
   }
 
