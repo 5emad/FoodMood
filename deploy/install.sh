@@ -385,14 +385,17 @@ mongo_port_listening() {
     || netstat -tln 2>/dev/null | grep -q ':27017 '
 }
 
-start_mongod_direct() {
-  command -v mongod >/dev/null 2>&1 || return 1
-  mkdir -p /var/lib/mongodb /var/log/mongodb
-  chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
-  if [[ -f /etc/mongod.conf ]]; then
-    mongod --config /etc/mongod.conf --fork >/dev/null 2>&1 && return 0
+start_mongod_via_systemd() {
+  if [[ -S /tmp/mongodb-27017.sock ]]; then
+    local owner
+    owner="$(stat -c '%U:%G' /tmp/mongodb-27017.sock 2>/dev/null || echo ':')"
+    if [[ "$owner" != "mongodb:mongodb" ]]; then
+      rm -f /tmp/mongodb-27017.sock
+    fi
   fi
-  mongod --dbpath /var/lib/mongodb --logpath /var/log/mongodb/mongod.log --bind_ip 127.0.0.1 --fork >/dev/null 2>&1
+  systemctl enable mongod 2>/dev/null || true
+  systemctl restart mongod 2>/dev/null || systemctl start mongod 2>/dev/null || true
+  sleep 2
 }
 
 ensure_mongod_running() {
@@ -402,26 +405,19 @@ ensure_mongod_running() {
   if mongo_ping_server; then
     server_up=1
   else
-    log_warn "MongoDB not responding — starting mongod..."
-    systemctl start mongod 2>/dev/null || true
-    sleep 2
-    if mongo_ping_server; then
-      server_up=1
-    else
-      log_warn "MongoDB still not responding — restarting mongod..."
+    log_warn "MongoDB not responding — restarting via systemd..."
+    start_mongod_via_systemd
+    mongo_ping_server && server_up=1
+    if [[ "$server_up" -ne 1 ]]; then
+      rm -f /tmp/mongodb-27017.sock 2>/dev/null || true
       systemctl restart mongod 2>/dev/null || true
-      sleep 2
-      mongo_ping_server && server_up=1
-    fi
-    if [[ "$server_up" -ne 1 ]] && ! mongo_port_listening; then
-      log_warn "Port 27017 is not listening — starting mongod directly..."
-      start_mongod_direct || true
-      sleep 2
+      sleep 3
       mongo_ping_server && server_up=1
     fi
   fi
 
   if [[ "$server_up" -ne 1 ]]; then
+    log_err "mongod failed — check: journalctl -u mongod -n 30"
     return 1
   fi
 

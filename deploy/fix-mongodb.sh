@@ -53,7 +53,7 @@ echo ""
 log_info "Stopping foodmood (MongoDB repair)..."
 systemctl stop "$SERVICE_NAME" 2>/dev/null || true
 
-fix_mongod_filesystem
+stabilize_mongod_service || true
 ensure_services_running
 
 if ! repair_mongodb_from_env; then

@@ -126,39 +126,77 @@ mongo_port_listening() {
   ss -tln 2>/dev/null | awk '$4 ~ /:27017$/ {found=1} END{exit !found}'
 }
 
-start_mongod_direct() {
-  command -v mongod >/dev/null 2>&1 || return 1
-  mkdir -p /var/lib/mongodb /var/log/mongodb
-  chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
-  if [[ -f /etc/mongod.conf ]]; then
-    mongod --config /etc/mongod.conf --fork >/dev/null 2>&1 && return 0
+fix_mongod_socket() {
+  local sock="/tmp/mongodb-27017.sock"
+  [[ -S "$sock" ]] || return 0
+  local owner
+  owner="$(stat -c '%U:%G' "$sock" 2>/dev/null || echo ':')"
+  if [[ "$owner" != "mongodb:mongodb" ]]; then
+    log_warn "Removing MongoDB socket with wrong owner (${owner})..."
+    rm -f "$sock"
   fi
-  mongod --dbpath /var/lib/mongodb --logpath /var/log/mongodb/mongod.log --bind_ip 127.0.0.1 --fork >/dev/null 2>&1
+}
+
+fix_mongod_conf() {
+  local conf="/etc/mongod.conf"
+  [[ -f "$conf" ]] || return 0
+  if ! grep -qE 'bindIp:[[:space:]]*127\.0\.0\.1' "$conf" 2>/dev/null; then
+    log_info "Setting MongoDB bindIp to 127.0.0.1 in ${conf}..."
+    if grep -qE '^[[:space:]]*bindIp:' "$conf" 2>/dev/null; then
+      sed -i 's/^[[:space:]]*bindIp:.*/  bindIp: 127.0.0.1/' "$conf"
+    elif grep -qE '^net:' "$conf" 2>/dev/null; then
+      sed -i '/^net:/a\  bindIp: 127.0.0.1' "$conf"
+    else
+      printf '\nnet:\n  bindIp: 127.0.0.1\n  port: 27017\n' >> "$conf"
+    fi
+  fi
+}
+
+stop_stray_mongod_processes() {
+  local pid cmd
+  while read -r pid cmd; do
+    [[ -n "$pid" ]] || continue
+    if [[ "$cmd" != *"--fork"* ]]; then
+      continue
+    fi
+    log_warn "Stopping stray forked mongod (pid ${pid})..."
+    kill "$pid" 2>/dev/null || true
+  done < <(pgrep -af '[m]ongod.*--fork' 2>/dev/null || true)
+  sleep 1
+}
+
+start_mongod_via_systemd() {
+  fix_mongod_socket
+  stop_stray_mongod_processes
+  systemctl enable mongod 2>/dev/null || true
+  systemctl restart mongod 2>/dev/null || systemctl start mongod 2>/dev/null || true
+  sleep 2
 }
 
 ensure_mongod_running() {
   local uri="${1:-}"
   local server_up=0
+
+  fix_mongod_conf
+  fix_mongod_filesystem
+  fix_mongod_socket
+
   if mongo_ping_server; then
     server_up=1
   else
-    log_warn "MongoDB not responding — starting mongod..."
-    systemctl enable mongod 2>/dev/null || true
-    systemctl start mongod 2>/dev/null || true
-    sleep 2
+    log_warn "MongoDB not responding — restarting via systemd..."
+    start_mongod_via_systemd
     mongo_ping_server && server_up=1
     if [[ "$server_up" -ne 1 ]]; then
+      fix_mongod_socket
+      stop_stray_mongod_processes
       systemctl restart mongod 2>/dev/null || true
-      sleep 2
-      mongo_ping_server && server_up=1
-    fi
-    if [[ "$server_up" -ne 1 ]] && ! mongo_port_listening; then
-      start_mongod_direct || true
-      sleep 2
+      sleep 3
       mongo_ping_server && server_up=1
     fi
   fi
   if [[ "$server_up" -ne 1 ]]; then
+    log_err "mongod failed — check: journalctl -u mongod -n 30"
     return 1
   fi
   if [[ -n "$uri" ]]; then
@@ -266,12 +304,27 @@ fix_mongod_filesystem() {
   if id mongodb &>/dev/null; then
     chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true
   fi
+  fix_mongod_socket
   if [[ -f /var/lib/mongodb/mongod.lock ]]; then
-    log_warn "Removing stale mongod.lock..."
-    rm -f /var/lib/mongodb/mongod.lock
-    systemctl restart mongod 2>/dev/null || true
-    sleep 2
+    if ! mongo_port_listening; then
+      log_warn "Removing stale mongod.lock (no listener on 27017)..."
+      rm -f /var/lib/mongodb/mongod.lock
+    fi
   fi
+}
+
+stabilize_mongod_service() {
+  log_info "Stabilizing MongoDB (systemd only, fixing socket permissions)..."
+  systemctl stop foodmood 2>/dev/null || true
+  stop_stray_mongod_processes
+  fix_mongod_conf
+  fix_mongod_filesystem
+  fix_mongod_socket
+  systemctl stop mongod 2>/dev/null || true
+  sleep 1
+  fix_mongod_socket
+  start_mongod_via_systemd
+  wait_for_mongodb "MongoDB (stable)" "" 20
 }
 
 mongo_recreate_user_from_env() {
@@ -336,7 +389,7 @@ repair_mongodb_from_env() {
   fi
 
   log_warn "MongoDB connection failed (${test_result#FAIL:}) — attempting repair..."
-  fix_mongod_filesystem
+  stabilize_mongod_service || true
   if ! ensure_mongod_running ""; then
     log_err "mongod is not running — try: systemctl restart mongod"
     return 1
@@ -540,6 +593,11 @@ run_diagnose() {
   echo "  nginx:    $(systemctl is-active nginx 2>/dev/null || echo inactive)"
   echo "  version:  v$(read_installed_version)"
 
+  if journalctl -u mongod --since "10 min ago" --no-pager 2>/dev/null | grep -q 'fassert\|Failed to unlink socket'; then
+    log_warn "mongod crash loop detected (socket/fassert) — run fix-mongodb.sh"
+  fi
+
+  fix_mongod_socket
   ensure_mongod_running "" || true
   if mongo_ping_server; then
     log_ok "mongod ping OK"
