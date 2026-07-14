@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const User = require('../models/User');
-const AppSetting = require('../models/AppSetting');
 const { hashPassword, comparePassword, compareSensitiveToken } = require('../helpers/SecurityHelper');
 const { generateToken, generateLdapToken } = require('../helpers/TokenHelper');
 const LdapHelper = require('../helpers/LdapHelper');
+const { getSettingsLean } = require('../services/SettingsService');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const {
   SESSION_COOKIE_NAME,
@@ -101,7 +101,7 @@ class AuthController {
         });
       }
 
-      const settings = await AppSetting.findOne({ key: 'default' }).lean();
+      const settings = await getSettingsLean();
 
       const canUseLocalAuth = user && !user.ldapUser && ['admin', 'superadmin'].includes(user.role);
 
@@ -208,13 +208,21 @@ class AuthController {
       }
 
       // ── Final auth failure handling ──────────────────────────────────────────
+      const ldapActive = LdapHelper.isEnabled(settings || {});
+
       if (!user) {
         await handleFailedLogin(user);
         await writeSecurityLog(req, 'login_failed', null, 'Unknown username login failure', { username: identifier });
+        if (ldapActive) {
+          return res.status(401).json({ message: 'نام کاربری یا رمز Active Directory اشتباه است' });
+        }
         return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
       }
 
       if (user && !['admin', 'superadmin'].includes(user.role)) {
+        if (ldapActive) {
+          return res.status(401).json({ message: 'نام کاربری یا رمز Active Directory اشتباه است' });
+        }
         return res.status(401).json({ message: 'ورود کاربران فقط از طریق Active Directory انجام می‌شود' });
       }
 

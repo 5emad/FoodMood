@@ -247,6 +247,19 @@ async function testLdap(btn) {
       badge.className = 'badge badge-success';
       badge.innerHTML = '<i class="fas fa-check-circle" style="font-size:.7rem"></i> متصل';
       notify(data.message, 'success', 'LDAP');
+      if (ldapBindPassword) {
+        const saveData = await api('/api/admin/settings', {
+          method: 'POST',
+          body: JSON.stringify({ ldapBindPassword }),
+        });
+        if (saveData.success) {
+          appSettings = saveData.data;
+          updateLdapBindPasswordStatus();
+          notify('رمز Bind ذخیره شد', 'success', 'LDAP');
+        } else {
+          notify(saveData.message || 'تست موفق بود؛ رمز Bind را با «ذخیره تنظیمات» ثبت کنید', 'warning', 'LDAP');
+        }
+      }
     } else {
       badge.className = 'badge badge-danger';
       badge.innerHTML = '<i class="fas fa-times-circle" style="font-size:.7rem"></i> قطع';

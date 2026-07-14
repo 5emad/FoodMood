@@ -54,7 +54,7 @@ async function getOrCreateSettings() {
     { key: 'default' },
     { $setOnInsert: defaultSettings },
     { upsert: true, new: true }
-  );
+  ).select('+ldapBindPasswordEnc');
 }
 
 async function getSettingsLean() {

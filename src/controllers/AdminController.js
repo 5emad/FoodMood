@@ -175,7 +175,7 @@ class AdminController {
         { key: 'default' },
         { $set: update },
         { new: true }
-      );
+      ).select('+ldapBindPasswordEnc');
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
         await refreshOriginPublicUrlCache();

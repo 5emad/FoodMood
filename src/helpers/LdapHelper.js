@@ -205,6 +205,71 @@ function buildFilter(template, username) {
   return template.replace('{{username}}', escapeFilterValue(username));
 }
 
+function normalizeLoginIdentifier(identifier) {
+  const raw = String(identifier || '').trim();
+  if (!raw) return { sam: '', upn: null, raw: '' };
+  if (raw.includes('\\')) {
+    const sam = raw.split('\\').pop().trim();
+    return { sam, upn: null, raw };
+  }
+  if (raw.includes('@')) {
+    const sam = raw.split('@')[0].trim();
+    return { sam, upn: raw, raw };
+  }
+  return { sam: raw, upn: null, raw };
+}
+
+function inferUpnSuffix(baseDn) {
+  const matches = [...String(baseDn || '').matchAll(/DC=([^,]+)/gi)];
+  if (!matches.length) return '';
+  return `@${matches.map((match) => match[1]).join('.')}`;
+}
+
+function collectUpnCandidates(identity, baseDn) {
+  const candidates = new Set();
+  if (identity.upn) candidates.add(identity.upn);
+  const suffix = inferUpnSuffix(baseDn);
+  if (identity.sam && suffix) candidates.add(`${identity.sam}${suffix}`);
+  return [...candidates];
+}
+
+function buildUserSearchFilter(cfg, identity) {
+  const clauses = [buildFilter(cfg.userFilter, identity.sam)];
+  collectUpnCandidates(identity, cfg.baseDn).forEach((upn) => {
+    clauses.push(`(userPrincipalName=${escapeFilterValue(upn)})`);
+  });
+  if (clauses.length === 1) return clauses[0];
+  return `(|${clauses.join('')})`;
+}
+
+async function authenticateViaUpnBind(upn, password, cfg, settings) {
+  const client = createClient(cfg, settings);
+  const attrs = ['sAMAccountName', 'cn', 'displayName', 'mail', 'department', 'dn'];
+  try {
+    await upgradeToTls(client, cfg);
+    await client.bind(upn, password);
+    const sam = upn.split('@')[0];
+    const filter = `(|(userPrincipalName=${escapeFilterValue(upn)})(sAMAccountName=${escapeFilterValue(sam)}))`;
+    const { searchEntries } = await client.search(cfg.baseDn, {
+      scope: 'sub',
+      filter,
+      attributes: attrs,
+      sizeLimit: 1,
+    });
+    const entry = searchEntries[0] || {};
+    return {
+      username: entry.sAMAccountName || sam,
+      displayName: entry.displayName || entry.cn || sam,
+      email: entry.mail || null,
+      department: entry.department || null,
+    };
+  } catch {
+    return null;
+  } finally {
+    await client.unbind().catch(() => {});
+  }
+}
+
 /**
  * Authenticate user via LDAP.
  * Returns user attributes on success, null on auth failure, throws on config errors.
@@ -217,6 +282,9 @@ async function authenticate(username, password, settings = {}) {
   // Reject empty passwords (some LDAP servers allow unauthenticated bind with empty password)
   if (!password) return null;
 
+  const identity = normalizeLoginIdentifier(username);
+  if (!identity.sam) return null;
+
   const svcClient = createClient(cfg, settings);
   try {
     await upgradeToTls(svcClient, cfg);
@@ -225,7 +293,7 @@ async function authenticate(username, password, settings = {}) {
       await svcClient.bind(cfg.bindDn, cfg.bindPassword);
     }
 
-    const filter = buildFilter(cfg.userFilter, username);
+    const filter = buildUserSearchFilter(cfg, identity);
     const { searchEntries } = await svcClient.search(cfg.baseDn, {
       scope:      'sub',
       filter,
@@ -233,33 +301,38 @@ async function authenticate(username, password, settings = {}) {
       sizeLimit:  2,
     });
 
-    if (!searchEntries.length) return null;
+    if (searchEntries.length) {
+      const entry  = searchEntries[0];
+      const userDn = entry.dn;
 
-    const entry  = searchEntries[0];
-    const userDn = entry.dn;
-
-    // Bind as the user to verify password
-    const userClient = createClient(cfg, settings);
-    try {
-      await upgradeToTls(userClient, cfg);
-      await userClient.bind(userDn, password);
-      return {
-        username:    entry.sAMAccountName || username,
-        displayName: entry.displayName    || entry.cn || username,
-        email:       entry.mail           || null,
-        department:  entry.department     || null,
-      };
-    } catch {
-      return null; // wrong password
-    } finally {
-      await userClient.unbind().catch(() => {});
+      const userClient = createClient(cfg, settings);
+      try {
+        await upgradeToTls(userClient, cfg);
+        await userClient.bind(userDn, password);
+        return {
+          username:    entry.sAMAccountName || identity.sam,
+          displayName: entry.displayName    || entry.cn || identity.sam,
+          email:       entry.mail           || null,
+          department:  entry.department     || null,
+        };
+      } catch {
+        return null;
+      } finally {
+        await userClient.unbind().catch(() => {});
+      }
     }
   } catch (err) {
-    if (err.message?.includes('{{username}}')) throw err; // config error — propagate
-    return null;
+    if (err.message?.includes('{{username}}')) throw err;
   } finally {
     await svcClient.unbind().catch(() => {});
   }
+
+  for (const upn of collectUpnCandidates(identity, cfg.baseDn)) {
+    const viaUpn = await authenticateViaUpnBind(upn, password, cfg, settings);
+    if (viaUpn) return viaUpn;
+  }
+
+  return null;
 }
 
 async function testConnection(settings = {}) {
@@ -320,4 +393,11 @@ async function testConnection(settings = {}) {
   }
 }
 
-module.exports = { isEnabled, authenticate, testConnection, validateConfig, ldapConfig };
+module.exports = {
+  isEnabled,
+  authenticate,
+  testConnection,
+  validateConfig,
+  ldapConfig,
+  normalizeLoginIdentifier,
+};
