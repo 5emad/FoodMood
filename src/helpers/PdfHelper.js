@@ -7,31 +7,38 @@ const { getReportFontCss, copyFontsToDir } = require('./ReportFontHelper');
 
 const execFileAsync = promisify(execFile);
 
-const chromeCandidates = process.platform === 'win32'
-  ? [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ]
-  : [
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/snap/bin/chromium',
-  ];
+const linuxCandidates = [
+  '/usr/bin/google-chrome-stable',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+];
+
+const windowsCandidates = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+];
+
+function isSnapBinary(binaryPath) {
+  return String(binaryPath || '').includes('/snap/');
+}
+
+function chromeCandidates() {
+  return process.platform === 'win32' ? windowsCandidates : linuxCandidates;
+}
 
 async function findChrome() {
-  for (const candidate of chromeCandidates) {
+  for (const candidate of chromeCandidates()) {
     try {
       await fs.access(candidate);
-      return candidate;
+      if (!isSnapBinary(candidate)) return candidate;
     } catch (error) {
       // Try the next browser path.
     }
   }
-  const error = new Error('مرورگر Chrome/Chromium برای ساخت PDF نصب نیست — روی سرور: sudo bash /opt/food/deploy/update.sh');
+  const error = new Error('مرورگر Chrome/Chromium (غیر Snap) برای ساخت PDF نصب نیست — روی سرور: sudo bash /opt/food/deploy/update.sh');
   error.status = 503;
   error.expose = true;
   throw error;
@@ -53,6 +60,21 @@ function pdfCacheRoot() {
 async function ensurePdfRuntimeDirs(root) {
   await fs.mkdir(path.join(root, 'config'), { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(root, 'cache'), { recursive: true, mode: 0o700 });
+  await fs.mkdir(path.join(root, 'run'), { recursive: true, mode: 0o700 });
+}
+
+function buildChromeEnv(runtimeRoot) {
+  const runtimeDir = path.join(runtimeRoot, 'run');
+  return {
+    ...process.env,
+    HOME: runtimeRoot,
+    XDG_CONFIG_HOME: path.join(runtimeRoot, 'config'),
+    XDG_CACHE_HOME: path.join(runtimeRoot, 'cache'),
+    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || runtimeDir,
+    TMPDIR: process.env.TMPDIR || os.tmpdir(),
+    SNAP_USER_DATA: '',
+    SNAP_REAL_HOME: '',
+  };
 }
 
 async function htmlToPdfBuffer(html) {
@@ -84,13 +106,7 @@ async function htmlToPdfBuffer(html) {
       fileUrl,
     ], {
       timeout: 90000,
-      env: {
-        ...process.env,
-        HOME: runtimeRoot,
-        XDG_CONFIG_HOME: path.join(runtimeRoot, 'config'),
-        XDG_CACHE_HOME: path.join(runtimeRoot, 'cache'),
-        TMPDIR: os.tmpdir(),
-      },
+      env: buildChromeEnv(runtimeRoot),
     });
 
     return await fs.readFile(pdfPath);
@@ -105,4 +121,10 @@ async function htmlToPdfBuffer(html) {
   }
 }
 
-module.exports = { htmlToPdfBuffer, findChrome, pdfCacheRoot };
+module.exports = {
+  htmlToPdfBuffer,
+  findChrome,
+  pdfCacheRoot,
+  buildChromeEnv,
+  isSnapBinary,
+};

@@ -430,19 +430,23 @@ run_diagnose() {
 }
 
 ensure_chrome_for_pdf() {
-  if command -v google-chrome-stable >/dev/null 2>&1 \
-    || command -v google-chrome >/dev/null 2>&1 \
-    || command -v chromium >/dev/null 2>&1 \
-    || command -v chromium-browser >/dev/null 2>&1; then
-    log_ok "PDF browser (Chrome/Chromium) is installed"
+  if pdf_browser_deb_path >/dev/null; then
+    log_ok "PDF browser (deb): $(pdf_browser_deb_path)"
     return 0
   fi
 
-  log_warn "PDF browser missing — installing Chromium/Chrome..."
+  log_warn "PDF browser missing or only Snap Chromium — installing Google Chrome (.deb)..."
   export DEBIAN_FRONTEND=noninteractive
+
   if apt-get install -y -qq chromium-browser 2>/dev/null \
-    || apt-get install -y -qq chromium 2>/dev/null; then
-    log_ok "Chromium installed for PDF export"
+    && pdf_browser_deb_path >/dev/null; then
+    log_ok "Chromium (.deb) installed: $(pdf_browser_deb_path)"
+    return 0
+  fi
+
+  if apt-get install -y -qq chromium 2>/dev/null \
+    && pdf_browser_deb_path >/dev/null; then
+    log_ok "Chromium (.deb) installed: $(pdf_browser_deb_path)"
     return 0
   fi
 
@@ -450,31 +454,47 @@ ensure_chrome_for_pdf() {
   if curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then
     if apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }; then
       rm -f "$chrome_deb"
-      log_ok "Google Chrome installed for PDF export"
-      return 0
+      if pdf_browser_deb_path >/dev/null; then
+        log_ok "Google Chrome installed: $(pdf_browser_deb_path)"
+        return 0
+      fi
     fi
     rm -f "$chrome_deb"
   fi
 
-  log_warn "Could not install PDF browser automatically"
+  log_warn "Could not install a non-Snap PDF browser"
+  return 1
+}
+
+pdf_browser_deb_path() {
+  local candidate
+  for candidate in /usr/bin/google-chrome-stable /usr/bin/google-chrome /usr/bin/chromium-browser /usr/bin/chromium; do
+    if [[ -x "$candidate" && "$candidate" != *"/snap/"* ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
   return 1
 }
 
 ensure_pdf_runtime_dirs() {
   local cache_root="${INSTALL_DIR}/.cache/pdf-runtime"
-  mkdir -p "${cache_root}/config" "${cache_root}/cache"
+  mkdir -p "${cache_root}/config" "${cache_root}/cache" "${cache_root}/run"
   chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache"
-  chmod 700 "${cache_root}" "${cache_root}/config" "${cache_root}/cache" 2>/dev/null || true
+  chmod 700 "${cache_root}" "${cache_root}/config" "${cache_root}/cache" "${cache_root}/run" 2>/dev/null || true
 }
 
 test_pdf_browser() {
-  local chrome=""
-  for candidate in /usr/bin/google-chrome-stable /usr/bin/google-chrome /usr/bin/chromium /usr/bin/chromium-browser; do
-    if [[ -x "$candidate" ]]; then
-      chrome="$candidate"
-      break
-    fi
-  done
+  local chrome runtime
+  chrome="$(pdf_browser_deb_path || true)"
   [[ -n "$chrome" ]] || return 1
-  sudo -u "$APP_USER" HOME="${INSTALL_DIR}/.cache/pdf-runtime" "$chrome" --version >/dev/null 2>&1
+  runtime="${INSTALL_DIR}/.cache/pdf-runtime"
+  mkdir -p "${runtime}/run"
+  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache" 2>/dev/null || true
+  sudo -u "$APP_USER" env \
+    HOME="${runtime}" \
+    XDG_CONFIG_HOME="${runtime}/config" \
+    XDG_CACHE_HOME="${runtime}/cache" \
+    XDG_RUNTIME_DIR="${runtime}/run" \
+    "$chrome" --version >/dev/null 2>&1
 }
