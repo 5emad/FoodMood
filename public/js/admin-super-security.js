@@ -1,4 +1,6 @@
 let systemLogPagination = { page: 1, perPage: 15, total: 0, totalPages: 1 };
+let failedPagination = { page: 1, limit: 15, total: 0, totalPages: 1 };
+let securityLogsPagination = { page: 1, limit: 15, total: 0, totalPages: 1 };
 
 function securityTypeLabel(type) {
   return {
@@ -9,17 +11,51 @@ function securityTypeLabel(type) {
   }[type] || type;
 }
 
-async function loadSecurityCenter() {
+function buildSecuritySummaryQuery() {
+  return new URLSearchParams({
+    failedPage: String(failedPagination.page),
+    failedLimit: String(failedPagination.limit),
+    logsPage: String(securityLogsPagination.page),
+    logsLimit: String(securityLogsPagination.limit),
+  });
+}
+
+function updateSecurityBadge(unreadCount) {
   const badge = document.getElementById('securityNotifyBadge');
-  const data = await api('/api/admin/security/summary');
+  if (!badge) return;
+  badge.style.display = 'inline-flex';
+  badge.textContent = unreadCount > 99 ? '+99' : String(unreadCount);
+}
+
+async function loadSecurityCenter() {
+  const data = await api(`/api/admin/security/summary?${buildSecuritySummaryQuery().toString()}`);
   if (!data.success) { notify(data.message || 'خطا در دریافت اطلاعات امنیتی', 'error'); return; }
-  const { lockedUsers = [], failedSummary = [], recentLogs = [], unreadCount = 0 } = data.data || {};
-  if (badge) {
-    badge.style.display = 'inline-flex';
-    badge.textContent = unreadCount > 99 ? '+99' : String(unreadCount);
-  }
+  const {
+    lockedUsers = [],
+    failedSummary = [],
+    recentLogs = [],
+    unreadCount = 0,
+    failedAttemptsTotal = 0,
+    failedPagination: failedMeta = {},
+    logsPagination: logsMeta = {},
+  } = data.data || {};
+
+  failedPagination = {
+    page: Number(failedMeta.page || failedPagination.page || 1),
+    limit: Number(failedMeta.limit || failedPagination.limit || 15),
+    total: Number(failedMeta.total || 0),
+    totalPages: Number(failedMeta.totalPages || 1),
+  };
+  securityLogsPagination = {
+    page: Number(logsMeta.page || securityLogsPagination.page || 1),
+    limit: Number(logsMeta.limit || securityLogsPagination.limit || 15),
+    total: Number(logsMeta.total || 0),
+    totalPages: Number(logsMeta.totalPages || 1),
+  };
+
+  updateSecurityBadge(unreadCount);
   document.getElementById('lockedCount').textContent = lockedUsers.length.toLocaleString('fa-IR');
-  document.getElementById('failedCount').textContent = failedSummary.reduce((s, i) => s + Number(i.count || 0), 0).toLocaleString('fa-IR');
+  document.getElementById('failedCount').textContent = Number(failedAttemptsTotal || 0).toLocaleString('fa-IR');
   document.getElementById('securityUnreadCount').textContent = unreadCount.toLocaleString('fa-IR');
 
   document.getElementById('lockedUsersWrap').innerHTML = `<table class="table"><thead><tr><th>کاربر</th><th>نقش</th><th>تلاش‌ها</th><th>قفل تا</th><th>عملیات</th></tr></thead><tbody>${lockedUsers.map(u => `
@@ -28,11 +64,25 @@ async function loadSecurityCenter() {
 
   document.getElementById('failedSummaryWrap').innerHTML = `<table class="table"><thead><tr><th>شناسه</th><th>تعداد</th><th>آخرین IP</th><th>آخرین تلاش</th></tr></thead><tbody>${failedSummary.map(item => `
     <tr><td style="direction:ltr">${esc(item._id)}</td><td><span class="badge badge-danger">${Number(item.count || 0).toLocaleString('fa-IR')}</span></td><td style="direction:ltr">${esc(item.ip || '-')}</td><td>${new Date(item.lastAt).toLocaleString('fa-IR')}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted)">موردی ثبت نشده</td></tr>'}</tbody></table>`;
+  const failedPager = document.getElementById('failedSummaryPagination');
+  if (failedPager) failedPager.innerHTML = renderPaginationBar(failedPagination, 'goToFailedSummaryPage') || '';
 
   document.getElementById('securityLogsWrap').innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>نوع</th><th>کاربر</th><th>IP</th><th>پیام</th></tr></thead><tbody>${recentLogs.map(log => `
     <tr><td style="white-space:nowrap">${new Date(log.createdAt).toLocaleString('fa-IR')}</td><td><span class="badge badge-primary">${esc(securityTypeLabel(log.type))}</span></td><td style="direction:ltr">${esc(log.username || '-')}</td><td style="direction:ltr">${esc(log.ip || '-')}</td><td>${esc(log.message || '-')}</td></tr>`).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">لاگی ثبت نشده</td></tr>'}</tbody></table>`;
+  const logsPager = document.getElementById('securityLogsPagination');
+  if (logsPager) logsPager.innerHTML = renderPaginationBar(securityLogsPagination, 'goToSecurityLogsPage') || '';
 
   await loadSystemLogs();
+}
+
+function goToFailedSummaryPage(page) {
+  failedPagination.page = Math.min(Math.max(1, Number(page) || 1), Number(failedPagination.totalPages || 1));
+  loadSecurityCenter();
+}
+
+function goToSecurityLogsPage(page) {
+  securityLogsPagination.page = Math.min(Math.max(1, Number(page) || 1), Number(securityLogsPagination.totalPages || 1));
+  loadSecurityCenter();
 }
 
 function systemLogLevelFilterChanged() { systemLogPagination.page = 1; loadSystemLogs(); }
@@ -92,5 +142,14 @@ async function resetOwnSuperToken() {
   if (data.success && data.superToken) { await showSuperToken(data.superToken); loadSecurityCenter(); }
   else notify(data.message || 'خطا در تغییر توکن', 'error');
 }
+
+window.loadSecurityCenter = loadSecurityCenter;
+window.goToFailedSummaryPage = goToFailedSummaryPage;
+window.goToSecurityLogsPage = goToSecurityLogsPage;
+window.goToSystemLogsPage = goToSystemLogsPage;
+window.unlockSecurityUser = unlockSecurityUser;
+window.resetOwnSuperToken = resetOwnSuperToken;
+window.runDbOutageTest = runDbOutageTest;
+window.systemLogLevelFilterChanged = systemLogLevelFilterChanged;
 
 loadSecurityCenter();

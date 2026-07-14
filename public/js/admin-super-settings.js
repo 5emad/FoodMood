@@ -203,6 +203,29 @@ async function toggleUserPrices() {
 
 async function testLdap(btn) {
   const badge = document.getElementById('ldapStatusBadge');
+  const ldapEnabled = document.getElementById('set_ldapEnabled').value === 'true';
+  const ldapUrl = document.getElementById('set_ldapUrl').value.trim();
+  const ldapBindDn = document.getElementById('set_ldapBindDn').value.trim();
+  const ldapBindPassword = document.getElementById('set_ldapBindPassword').value;
+  const hasStoredPassword = !!appSettings.hasLdapBindPassword;
+
+  if (!ldapEnabled) {
+    notify('ابتدا LDAP را در تنظیمات فعال کنید', 'warning', 'LDAP');
+    return;
+  }
+  if (!ldapUrl) {
+    notify('آدرس LDAP را وارد کنید', 'warning', 'LDAP');
+    return;
+  }
+  if (!ldapBindDn) {
+    notify('Bind DN را وارد کنید', 'warning', 'LDAP');
+    return;
+  }
+  if (!ldapBindPassword && !hasStoredPassword) {
+    notify('رمز Bind را وارد کنید یا ابتدا ذخیره کنید', 'warning', 'LDAP');
+    return;
+  }
+
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال تست...';
   badge.className = 'badge badge-gray';

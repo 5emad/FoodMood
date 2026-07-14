@@ -272,31 +272,78 @@ class AdminController {
 
   static async getSecuritySummary(req, res, next) {
     try {
+      const failedPage = Math.max(1, parseInt(req.query.failedPage, 10) || 1);
+      const failedLimit = Math.min(50, Math.max(5, parseInt(req.query.failedLimit, 10) || 15));
+      const logsPage = Math.max(1, parseInt(req.query.logsPage, 10) || 1);
+      const logsLimit = Math.min(100, Math.max(5, parseInt(req.query.logsLimit, 10) || 15));
+
       const lockedUsers = await User.find({ lockUntil: { $gt: new Date() } })
         .select('username fullName email role status loginAttempts lockUntil')
         .sort({ lockUntil: -1 })
         .lean();
 
-      const recentLogs = await SecurityLog.find({})
-        .sort({ createdAt: -1 })
-        .limit(120)
-        .lean();
-
       const failedSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const failedMatch = {
+        type: { $in: ['login_failed', 'super_token_failed'] },
+        createdAt: { $gte: failedSince },
+        username: { $nin: [null, ''] },
+      };
+
+      const failedTotalAgg = await SecurityLog.aggregate([
+        { $match: failedMatch },
+        { $group: { _id: '$username' } },
+        { $count: 'total' },
+      ]);
+      const failedTotal = failedTotalAgg[0]?.total || 0;
+      const failedAttemptsAgg = await SecurityLog.aggregate([
+        { $match: failedMatch },
+        { $group: { _id: null, total: { $sum: 1 } } },
+      ]);
+      const failedAttemptsTotal = failedAttemptsAgg[0]?.total || 0;
+      const failedTotalPages = Math.max(1, Math.ceil(failedTotal / failedLimit));
+
       const failedAgg = await SecurityLog.aggregate([
-        { $match: { type: { $in: ['login_failed', 'super_token_failed'] }, createdAt: { $gte: failedSince } } },
+        { $match: failedMatch },
         { $group: { _id: '$username', count: { $sum: 1 }, lastAt: { $max: '$createdAt' }, ip: { $last: '$ip' } } },
         { $sort: { count: -1, lastAt: -1 } },
-        { $limit: 20 },
+        { $skip: (failedPage - 1) * failedLimit },
+        { $limit: failedLimit },
       ]);
+
+      const logsTotal = await SecurityLog.countDocuments({});
+      const logsTotalPages = Math.max(1, Math.ceil(logsTotal / logsLimit));
+      const recentLogs = await SecurityLog.find({})
+        .sort({ createdAt: -1 })
+        .skip((logsPage - 1) * logsLimit)
+        .limit(logsLimit)
+        .lean();
+
+      const unreadSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const unreadCount = await SecurityLog.countDocuments({
+        type: { $in: ['account_locked', 'super_token_failed', 'login_failed'] },
+        createdAt: { $gte: unreadSince },
+      });
 
       res.json({
         success: true,
         data: {
           lockedUsers,
           recentLogs,
-          failedSummary: failedAgg.filter(item => item._id),
-          unreadCount: recentLogs.filter(log => ['account_locked', 'super_token_failed', 'login_failed'].includes(log.type)).length,
+          failedSummary: failedAgg.filter((item) => item._id),
+          failedAttemptsTotal,
+          unreadCount,
+          failedPagination: {
+            page: failedPage,
+            limit: failedLimit,
+            total: failedTotal,
+            totalPages: failedTotalPages,
+          },
+          logsPagination: {
+            page: logsPage,
+            limit: logsLimit,
+            total: logsTotal,
+            totalPages: logsTotalPages,
+          },
         },
       });
     } catch (error) {
@@ -703,7 +750,8 @@ class AdminController {
       const saved = await getSettingsLean();
       const settings = mergeLdapSettings(saved, req.body || {});
       const result = await testLdapConn(settings);
-      res.json(result);
+      const status = result.success ? 200 : 400;
+      return res.status(status).json(result);
     } catch (error) {
       next(error);
     }

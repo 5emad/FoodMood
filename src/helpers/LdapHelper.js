@@ -202,21 +202,42 @@ async function testConnection(settings = {}) {
   if (!Client) {
     return { success: false, message: 'پکیج ldapts نصب نشده است', status: 'no_client' };
   }
+  const enabled = settings.ldapEnabled === true || settings.ldapEnabled === 'true' || settings.ldapEnabled === '1';
+  if (!enabled) {
+    return { success: false, message: 'LDAP در تنظیمات غیرفعال است', status: 'disabled' };
+  }
+
   const cfg = ldapConfig(settings);
   if (!cfg.url) {
     return { success: false, message: 'LDAP URL تنظیم نشده است', status: 'no_url' };
   }
+  if (!cfg.baseDn) {
+    return { success: false, message: 'Base DN تنظیم نشده است', status: 'no_base_dn' };
+  }
+  if (!cfg.bindDn) {
+    return { success: false, message: 'Bind DN برای تست اتصال الزامی است', status: 'no_bind_dn' };
+  }
+  if (!cfg.bindPassword) {
+    return { success: false, message: 'رمز Bind برای تست اتصال الزامی است (ذخیره‌شده یا وارد شده در فرم)', status: 'no_bind_password' };
+  }
+
   const validation = validateConfig(cfg);
   if (!validation.valid) {
     return { success: false, message: validation.message, status: validation.status };
   }
+
   const client = createClient(cfg);
   try {
     await upgradeToTls(client, cfg);
-    if (cfg.bindDn && cfg.bindPassword) {
-      await client.bind(cfg.bindDn, cfg.bindPassword);
-    }
-    return { success: true, message: 'اتصال به LDAP با موفقیت برقرار شد', status: 'connected' };
+    await client.bind(cfg.bindDn, cfg.bindPassword);
+    await client.search(cfg.baseDn, {
+      scope: 'base',
+      filter: '(objectClass=*)',
+      attributes: ['dn'],
+      sizeLimit: 1,
+      timeLimit: 5,
+    });
+    return { success: true, message: 'اتصال و احراز هویت LDAP با موفقیت انجام شد', status: 'connected' };
   } catch (err) {
     return classifyConnectionError(err, cfg);
   } finally {

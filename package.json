@@ -1,6 +1,6 @@
 {
   "name": "food-ordering-system",
-  "version": "1.5.29",
+  "version": "1.5.30",
   "description": "سیستم رزرو و سفارش غذا",
   "main": "server.js",
   "scripts": {
