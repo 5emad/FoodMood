@@ -18,7 +18,8 @@ const generateToken = (userId, email, role, username, sessionId) => {
   );
 };
 
-const generateLdapToken = ({ username, email, fullName, department, sessionId }) => {
+const generateLdapToken = ({ username, email, fullName, department, sessionId, role = 'user' }) => {
+  const normalizedRole = role === 'admin' ? 'admin' : 'user';
   return jwt.sign(
     {
       id: `ldap:${username}`,
@@ -27,7 +28,7 @@ const generateLdapToken = ({ username, email, fullName, department, sessionId })
       email: email || null,
       fullName: fullName || username,
       department: department || null,
-      role: 'user',
+      role: normalizedRole,
       sessionId,
       jti: sessionId,
     },

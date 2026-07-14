@@ -83,6 +83,9 @@ async function updateProfileAdmin(ldapUsername, fields = {}) {
   if (fields.status !== undefined) {
     profile.status = fields.status === 'inactive' ? 'inactive' : 'active';
   }
+  if (fields.role !== undefined) {
+    profile.role = fields.role === 'admin' ? 'admin' : 'user';
+  }
   if (fields.departmentId !== undefined) {
     profile.departmentId = fields.departmentId || null;
     if (!fields.departmentId) {
@@ -116,11 +119,17 @@ async function resolveDisplayName(username, fallback = '') {
   return String(fallback || username || '').trim();
 }
 
+async function resolveLdapRole(username) {
+  const profile = await findProfile(username);
+  return profile?.role === 'admin' ? 'admin' : 'user';
+}
+
 async function enrichLdapSessionUser(user = {}) {
   const profile = await findProfile(user.username);
   if (!profile) return user;
   return {
     ...user,
+    role: profile.role === 'admin' ? 'admin' : (user.role || 'user'),
     fullName: isValidPersianFullName(profile.fullName) ? profile.fullName : user.fullName,
     email: profile.email || user.email || null,
     phone: profile.phone || null,
@@ -140,5 +149,6 @@ module.exports = {
   updateProfileAdmin,
   deleteProfile,
   resolveDisplayName,
+  resolveLdapRole,
   enrichLdapSessionUser,
 };

@@ -39,6 +39,11 @@ const ldapProfileSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active',
   },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user',
+  },
   updatedAt: {
     type: Date,
     default: Date.now,

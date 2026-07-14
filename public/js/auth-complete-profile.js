@@ -56,9 +56,12 @@
       });
       var data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.message || 'ثبت نام انجام نشد');
+      var me = await fetch('/api/auth/me', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).catch(function () { return null; });
+      var role = me && me.user && me.user.role;
+      var path = (role === 'admin' || role === 'superadmin') ? '/admin/dashboard' : '/user/dashboard';
       var next = (window.FoodMood && window.FoodMood.appPath)
-        ? window.FoodMood.appPath('/user/dashboard')
-        : '/user/dashboard';
+        ? window.FoodMood.appPath(path)
+        : path;
       window.location.href = next;
     } catch (err) {
       showError(err.message || 'خطا در ارتباط با سرور');

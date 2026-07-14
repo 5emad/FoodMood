@@ -863,7 +863,7 @@ async function loadUsers(page = userPagination.page || 1) {
           <td style="font-weight:700">${esc(u.fullName || '-')}</td>
           <td style="direction:ltr;text-align:center">${esc(u.username)}</td>
           <td>${esc(u.departmentId?.name || '-')}</td>
-          <td>${u.authSource === 'ldap' || u.ldapUser ? 'کاربر (AD)' : esc(roleLabel[u.role] || u.role)}</td>
+          <td>${esc(roleLabel[u.role] || u.role)}${u.authSource === 'ldap' || u.ldapUser ? ' (AD)' : ''}</td>
           <td><span class="badge ${statusBadge[u.status] || 'badge-gray'}">${u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
           ${tableActionsHtml(`
             <button class="btn btn-outline btn-sm" onclick="openEditUser('${esc(String(u._id))}')" title="ویرایش"><i class="fas fa-edit"></i></button>
@@ -902,7 +902,10 @@ function resetUserFormGuards() {
     statusEl.title = '';
   }
   if (roleEl) {
-    Array.from(roleEl.options).forEach((opt) => { opt.disabled = false; });
+    Array.from(roleEl.options).forEach((opt) => {
+      opt.disabled = false;
+      opt.style.display = '';
+    });
     roleEl.title = '';
   }
 }
@@ -911,11 +914,15 @@ function applyLdapUserFormGuards(user) {
   resetUserFormGuards();
   if (!(user?.authSource === 'ldap' || user?.ldapUser)) return;
   const pwdGroup = document.getElementById('uf_password')?.closest('.form-group');
-  const roleGroup = document.getElementById('uf_role')?.closest('.form-group');
   const usernameInput = document.getElementById('uf_username');
+  const roleEl = document.getElementById('uf_role');
   if (pwdGroup) pwdGroup.style.display = 'none';
-  if (roleGroup) roleGroup.style.display = 'none';
   if (usernameInput) usernameInput.readOnly = true;
+  if (roleEl) {
+    Array.from(roleEl.options).forEach((opt) => {
+      opt.style.display = opt.value === 'superadmin' ? 'none' : '';
+    });
+  }
 }
 
 function applySelfUserFormGuards(userId, userRole) {
@@ -967,6 +974,7 @@ function openEditUser(id) {
   populateDeptSelect(u.departmentId?._id || u.departmentId || '');
   if (u.authSource === 'ldap' || u.ldapUser) {
     applyLdapUserFormGuards(u);
+    applySelfUserFormGuards(id, u.role || 'user');
   } else {
     applySelfUserFormGuards(id, u.role || 'user');
   }
@@ -994,8 +1002,9 @@ async function saveUser(event) {
   };
   if (!isLdap) {
     body.username = document.getElementById('uf_username').value.trim();
-    body.role = document.getElementById('uf_role').value;
   }
+  body.role = document.getElementById('uf_role').value;
+  if (isLdap && body.role === 'superadmin') body.role = 'admin';
   if (id && String(id) === String(currentUserId)) {
     body.status = 'active';
   }

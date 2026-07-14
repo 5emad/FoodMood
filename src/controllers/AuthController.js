@@ -8,6 +8,7 @@ const {
   needsProfileSetup,
   saveFullName: saveLdapFullName,
   resolveDisplayName,
+  resolveLdapRole,
   isProfileActive,
   isValidPersianFullName,
 } = require('../helpers/LdapProfileHelper');
@@ -185,6 +186,7 @@ class AuthController {
           const displayName = mustSetFullName
             ? ldapResult.username
             : await resolveDisplayName(ldapResult.username, ldapResult.displayName || ldapResult.username);
+          const ldapRole = await resolveLdapRole(ldapResult.username);
           const ldapUser = {
             authSource: 'ldap',
             id: `ldap:${ldapResult.username}`,
@@ -192,7 +194,7 @@ class AuthController {
             fullName: displayName,
             email: ldapResult.email || null,
             department: ldapResult.department || null,
-            role: 'user',
+            role: ldapRole,
           };
 
           await writeSecurityLog(req, 'login_success', null, 'LDAP login success', {
@@ -205,6 +207,7 @@ class AuthController {
             fullName: ldapUser.fullName,
             department: ldapUser.department,
             sessionId,
+            role: ldapUser.role,
           });
           await commitAuthenticatedSession(req, buildSessionData(ldapUser, token, sessionId));
           setAuthCookies(res, { token, role: ldapUser.role });
@@ -330,6 +333,7 @@ class AuthController {
       if (req.user?.authSource === 'ldap') {
         await saveLdapFullName(req.user.username, fullName, req.user.department);
         const sessionId = req.user.sessionId || req.session?.sessionId;
+        const ldapRole = await resolveLdapRole(req.user.username);
         const ldapUser = {
           authSource: 'ldap',
           id: req.user.id,
@@ -337,7 +341,7 @@ class AuthController {
           fullName,
           email: req.user.email || null,
           department: req.user.department || null,
-          role: 'user',
+          role: ldapRole,
         };
         const token = generateLdapToken({
           username: ldapUser.username,
@@ -345,9 +349,10 @@ class AuthController {
           fullName,
           department: ldapUser.department,
           sessionId,
+          role: ldapRole,
         });
         await commitAuthenticatedSession(req, buildSessionData(ldapUser, token, sessionId));
-        setAuthCookies(res, { token, role: 'user' });
+        setAuthCookies(res, { token, role: ldapRole });
         return res.json({ success: true, message: 'نام با موفقیت ثبت شد' });
       }
 

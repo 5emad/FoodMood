@@ -3,6 +3,7 @@ const User = require('../models/User');
 const LdapProfile = require('../models/LdapProfile');
 const {
   parseLdapUserId,
+  findProfile,
   updateProfileAdmin,
   deleteProfile,
   isValidPersianFullName,
@@ -66,10 +67,17 @@ function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
 }
 
-async function countActiveAdmins(excludeId = null) {
-  const filter = { role: { $in: ['admin', 'superadmin'] }, status: 'active' };
-  if (excludeId) filter._id = { $ne: excludeId };
-  return User.countDocuments(filter);
+async function countActiveAdmins(excludeLocalId = null, excludeLdapUsername = null) {
+  const localFilter = { role: { $in: ['admin', 'superadmin'] }, status: 'active' };
+  if (excludeLocalId) localFilter._id = { $ne: excludeLocalId };
+  const ldapFilter = { role: 'admin', status: 'active' };
+  if (excludeLdapUsername) ldapFilter.ldapUsername = { $ne: excludeLdapUsername };
+
+  const [localCount, ldapCount] = await Promise.all([
+    User.countDocuments(localFilter),
+    LdapProfile.countDocuments(ldapFilter),
+  ]);
+  return localCount + ldapCount;
 }
 
 function generateOneTimeSuperToken() {
@@ -233,7 +241,10 @@ class AdminController {
       else if (department) filter.departmentId = department;
 
       const pageInfo = paginationFromQuery(req.query, { limit: 20, maxLimit: 200 });
-      const includeLdapUsers = !role || role === 'user';
+      const includeLdapUsers = !role || role === 'user' || role === 'admin';
+      let ldapQuery = {};
+      if (role === 'admin') ldapQuery = { role: 'admin' };
+      else if (role === 'user') ldapQuery = { $or: [{ role: 'user' }, { role: { $exists: false } }] };
 
       const [localUsers, ldapProfiles, departmentDoc] = await Promise.all([
         User.find(filter)
@@ -242,7 +253,7 @@ class AdminController {
           .sort({ fullName: 1 })
           .lean(),
         includeLdapUsers
-          ? LdapProfile.find({}).populate('departmentId', 'name').sort({ fullName: 1 }).lean()
+          ? LdapProfile.find(ldapQuery).populate('departmentId', 'name').sort({ fullName: 1 }).lean()
           : Promise.resolve([]),
         department && department !== 'none'
           ? Department.findById(department).select('name').lean()
@@ -257,7 +268,7 @@ class AdminController {
         email: profile.email || null,
         phone: profile.phone || null,
         departmentId: profile.departmentId || null,
-        role: 'user',
+        role: profile.role === 'admin' ? 'admin' : 'user',
         status: profile.status || 'active',
         authSource: 'ldap',
         ldapUser: true,
@@ -497,7 +508,12 @@ class AdminController {
       const { id } = req.params;
       const ldapUsername = parseLdapUserId(id);
       if (ldapUsername) {
-        const { fullName, email, phone, status, departmentId } = req.body;
+        const profile = await findProfile(ldapUsername);
+        if (!profile) {
+          return res.status(404).json({ message: 'کاربر یافت نشد' });
+        }
+
+        const { fullName, email, phone, status, departmentId, role } = req.body;
         const hasEmail = Object.prototype.hasOwnProperty.call(req.body, 'email');
         const hasPhone = Object.prototype.hasOwnProperty.call(req.body, 'phone');
         const hasDepartmentId = Object.prototype.hasOwnProperty.call(req.body, 'departmentId');
@@ -507,9 +523,40 @@ class AdminController {
         if (hasPhone) update.phone = phone ? String(phone).trim() : null;
         if (status !== undefined) update.status = status === 'inactive' ? 'inactive' : 'active';
         if (hasDepartmentId) update.departmentId = departmentId || null;
+        if (role !== undefined) {
+          if (!['user', 'admin'].includes(role)) {
+            return res.status(400).json({ message: 'نقش کاربر Active Directory فقط می‌تواند کاربر عادی یا مدیر باشد' });
+          }
+          update.role = role;
+        }
         if (update.fullName !== undefined && !isValidPersianFullName(update.fullName)) {
           return res.status(400).json({ message: 'نام کامل باید فارسی و شامل نام و نام خانوادگی باشد' });
         }
+
+        const currentRole = profile.role === 'admin' ? 'admin' : 'user';
+        const nextRole = update.role || currentRole;
+        const nextStatus = update.status || profile.status || 'active';
+        const isSelf = String(req.user.id) === `ldap:${ldapUsername}`;
+
+        if (isSelf) {
+          if (nextStatus === 'inactive') {
+            return res.status(400).json({ message: 'امکان غیرفعال‌سازی حساب خودتان وجود ندارد' });
+          }
+          if (update.role && ROLE_RANK[nextRole] < ROLE_RANK[currentRole]) {
+            return res.status(400).json({ message: 'امکان تنزل نقش حساب خودتان وجود ندارد' });
+          }
+        }
+
+        const removesAdminAccess = isAdminRole(currentRole) && (
+          nextStatus === 'inactive' || !isAdminRole(nextRole)
+        );
+        if (removesAdminAccess) {
+          const remainingAdmins = await countActiveAdmins(null, ldapUsername);
+          if (remainingAdmins === 0) {
+            return res.status(400).json({ message: 'حداقل یک مدیر فعال در سامانه باید باقی بماند' });
+          }
+        }
+
         await updateProfileAdmin(ldapUsername, update);
         return res.json({ success: true, message: 'کاربر Active Directory بروزرسانی شد' });
       }
@@ -601,6 +648,13 @@ class AdminController {
       const { id } = req.params;
       const ldapUsername = parseLdapUserId(id);
       if (ldapUsername) {
+        const profile = await LdapProfile.findOne({ ldapUsername }).lean();
+        if (profile?.role === 'admin' && profile.status === 'active') {
+          const remainingAdmins = await countActiveAdmins(null, ldapUsername);
+          if (remainingAdmins === 0) {
+            return res.status(400).json({ message: 'حداقل یک مدیر فعال در سامانه باید باقی بماند' });
+          }
+        }
         await deleteProfile(ldapUsername);
         return res.json({ success: true, message: 'پروفایل کاربر Active Directory حذف شد' });
       }

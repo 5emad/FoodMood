@@ -87,6 +87,11 @@ const authMiddleware = async (req, res, next) => {
         return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
       }
       req.user = await enrichLdapSessionUser(user);
+      if ((req.user.role || 'user') !== (user.role || 'user')) {
+        await invalidateSession(req, res, 'expired');
+        if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
+        return res.status(401).json({ message: 'سطح دسترسی شما تغییر کرده است. لطفاً دوباره وارد شوید.' });
+      }
       touchSessionActivity(req);
       await touchSession(user.sessionId);
       res.locals.sessionPolicy = getSessionPolicy();
