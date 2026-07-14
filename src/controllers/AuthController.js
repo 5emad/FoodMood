@@ -4,6 +4,12 @@ const { hashPassword, comparePassword, compareSensitiveToken } = require('../hel
 const { generateToken, generateLdapToken } = require('../helpers/TokenHelper');
 const LdapHelper = require('../helpers/LdapHelper');
 const { getSettingsLean } = require('../services/SettingsService');
+const {
+  needsProfileSetup,
+  saveFullName: saveLdapFullName,
+  resolveDisplayName,
+  isValidPersianFullName,
+} = require('../helpers/LdapProfileHelper');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const {
   SESSION_COOKIE_NAME,
@@ -168,11 +174,15 @@ class AuthController {
             authSource: 'ldap',
             req,
           });
+          const mustSetFullName = await needsProfileSetup(ldapResult.username);
+          const displayName = mustSetFullName
+            ? ldapResult.username
+            : await resolveDisplayName(ldapResult.username, ldapResult.displayName || ldapResult.username);
           const ldapUser = {
             authSource: 'ldap',
             id: `ldap:${ldapResult.username}`,
             username: ldapResult.username,
-            fullName: ldapResult.displayName || ldapResult.username,
+            fullName: displayName,
             email: ldapResult.email || null,
             department: ldapResult.department || null,
             role: 'user',
@@ -202,6 +212,7 @@ class AuthController {
               email: ldapUser.email,
               role: ldapUser.role,
               department: ldapUser.department,
+              mustSetFullName,
             },
           });
         }
@@ -300,17 +311,37 @@ class AuthController {
 
   static async setFullName(req, res, next) {
     try {
-      if (req.user?.authSource === 'ldap') {
-        return res.status(400).json({ message: 'نام کاربران Active Directory از AD خوانده می‌شود و قابل ویرایش نیست' });
-      }
       const fullName = String(req.body.fullName || '').trim();
       if (!fullName) {
         return res.status(400).json({ message: 'نام کامل الزامی است' });
       }
 
-      const persianNamePattern = /^[\u0600-\u06FF\s‌]{3,80}$/;
-      if (!persianNamePattern.test(fullName) || fullName.split(/\s+/).filter(Boolean).length < 2) {
+      if (!isValidPersianFullName(fullName)) {
         return res.status(400).json({ message: 'لطفا نام و نام خانوادگی خود را به فارسی وارد کنید' });
+      }
+
+      if (req.user?.authSource === 'ldap') {
+        await saveLdapFullName(req.user.username, fullName, req.user.department);
+        const sessionId = req.user.sessionId || req.session?.sessionId;
+        const ldapUser = {
+          authSource: 'ldap',
+          id: req.user.id,
+          username: req.user.username,
+          fullName,
+          email: req.user.email || null,
+          department: req.user.department || null,
+          role: 'user',
+        };
+        const token = generateLdapToken({
+          username: ldapUser.username,
+          email: ldapUser.email,
+          fullName,
+          department: ldapUser.department,
+          sessionId,
+        });
+        await commitAuthenticatedSession(req, buildSessionData(ldapUser, token, sessionId));
+        setAuthCookies(res, { token, role: 'user' });
+        return res.json({ success: true, message: 'نام با موفقیت ثبت شد' });
       }
 
       const user = await User.findById(req.user.id);
@@ -320,11 +351,11 @@ class AuthController {
       user.mustSetFullName = false;
       await user.save();
 
-      // Update session cache
       if (req.session) req.session.fullName = fullName;
 
       return res.json({ success: true, message: 'نام با موفقیت ثبت شد' });
     } catch (error) {
+      if (error.status) return res.status(error.status).json({ message: error.message });
       next(error);
     }
   }
@@ -355,15 +386,20 @@ class AuthController {
   static async getCurrentUser(req, res, next) {
     try {
       if (req.user?.authSource === 'ldap') {
+        const mustSetFullName = await needsProfileSetup(req.user.username);
+        const fullName = mustSetFullName
+          ? req.user.fullName
+          : await resolveDisplayName(req.user.username, req.user.fullName);
         return res.json({
           success: true,
           user: {
             id: req.user.id,
             username: req.user.username,
-            fullName: req.user.fullName,
+            fullName,
             email: req.user.email || null,
             department: req.user.department ? { name: req.user.department } : null,
             role: req.user.role,
+            mustSetFullName,
           },
         });
       }

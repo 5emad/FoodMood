@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
+const LdapProfile = require('../models/LdapProfile');
 const Week = require('../models/Week');
 const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
@@ -176,13 +177,14 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     }
   }
 
-  const [candidateOrders, allUsers] = await Promise.all([
+  const [candidateOrders, allUsers, ldapProfiles] = await Promise.all([
     findOrdersInRange(rangeStartInput, endOfRange(rangeEndInput)),
     User.find({
       status: { $ne: 'inactive' },
       role: { $nin: ['superadmin', 'guest'] },
       username: { $ne: 'superadmin' },
     }).populate('departmentId').sort({ fullName: 1 }).lean(),
+    LdapProfile.find({}).lean(),
   ]);
 
   const reportDateOfOrder = (order) => startOfDay(order.menuItemId?.dailyMenuId?.date || order.orderDate);
@@ -241,6 +243,20 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     days: reportDates.map((date) => ({ ...date, foods: [] })),
   }]));
 
+  for (const profile of ldapProfiles) {
+    const ownerKey = `ldap:${profile.ldapUsername}`;
+    if (byUserMap.has(ownerKey)) continue;
+    byUserMap.set(ownerKey, {
+      userId: ownerKey,
+      fullName: profile.fullName || profile.ldapUsername,
+      username: profile.ldapUsername,
+      role: 'user',
+      department: profile.department || 'بدون واحد',
+      total: 0,
+      days: reportDates.map((date) => ({ ...date, foods: [] })),
+    });
+  }
+
   for (const order of orders) {
     if (order.status === 'cancelled') continue;
 
@@ -260,6 +276,9 @@ async function buildReport(rangeStartInput, rangeEndInput) {
         });
       }
       row = byUserMap.get(ownerKey);
+      if (row && order.orderUserName && row.fullName === order.ldapUsername) {
+        row.fullName = order.orderUserName;
+      }
     } else {
       ownerKey = String(order.userId?._id || order.userId);
       row = byUserMap.get(ownerKey);

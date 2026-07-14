@@ -1,5 +1,6 @@
 const { verifyToken } = require('../helpers/TokenHelper');
 const { isLdapAuth } = require('../helpers/AuthUserHelper');
+const { resolveDisplayName } = require('../helpers/LdapProfileHelper');
 const { resolveSessionUser, readAuthToken } = require('../helpers/SessionUserHelper');
 const {
   assertActiveSession,
@@ -80,7 +81,10 @@ const authMiddleware = async (req, res, next) => {
         if (wantsHtml(req)) return htmlLoginRedirect(req, res, ldapSession.reason || 'expired');
         return res.status(401).json({ message: ldapSession.message || 'نشست شما منقضی شده است' });
       }
-      req.user = user;
+      req.user = {
+        ...user,
+        fullName: await resolveDisplayName(user.username, user.fullName),
+      };
       touchSessionActivity(req);
       await touchSession(user.sessionId);
       res.locals.sessionPolicy = getSessionPolicy();
