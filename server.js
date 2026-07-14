@@ -314,15 +314,16 @@ async function runPostConnectTasks() {
 
   if (process.env.APP_URL) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean();
-    const publicUrl = normalizePublicUrl(process.env.APP_URL);
-    if (publicUrl) {
-      const stored = normalizePublicUrl(settings?.publicUrl || '');
-      const shouldSync = !stored || (!prefersHttps() && stored !== publicUrl);
-      if (shouldSync) {
-        await AppSetting.updateOne({ key: 'default' }, { $set: { publicUrl } }, { upsert: true });
-        refreshPublicUrlCache(publicUrl);
-        await refreshOriginPublicUrlCache();
-      }
+    const stored = normalizePublicUrl(settings?.publicUrl || '');
+    const envUrl = normalizePublicUrl(process.env.APP_URL);
+
+    if (!stored && envUrl) {
+      await AppSetting.updateOne({ key: 'default' }, { $set: { publicUrl: envUrl } }, { upsert: true });
+      refreshPublicUrlCache(envUrl);
+      await refreshOriginPublicUrlCache();
+    } else if (stored) {
+      refreshPublicUrlCache(stored);
+      await refreshOriginPublicUrlCache();
     }
   }
 

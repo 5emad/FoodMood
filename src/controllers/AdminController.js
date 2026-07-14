@@ -179,6 +179,9 @@ class AdminController {
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
         await refreshOriginPublicUrlCache();
+        const { requestOrigin } = require('../helpers/AppUrlHelper');
+        const { syncPublicUrlToEnv } = require('../helpers/EnvFileHelper');
+        syncPublicUrlToEnv(settings.publicUrl, { extraOrigins: [requestOrigin(req)] });
       }
       res.json({ success: true, message: 'تنظیمات بروزرسانی شد', data: publicSettings(settings) });
     } catch (error) {

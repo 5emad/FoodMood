@@ -135,9 +135,10 @@ source_nginx_tls_lib() {
 
 configure_tls_deployment() {
   local server_ip
-  server_ip="$(detect_server_ip)"
+  server_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)"
   source_nginx_tls_lib || return 1
-  log_info "Configuring HTTPS for https://${server_ip} ..."
+  sync_runtime_url_from_settings || true
+  log_info "Configuring HTTPS (server IP ${server_ip}, app URL from settings/.env)..."
   configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER"
 
   if [[ ! -f /etc/sudoers.d/foodmood-ssl ]]; then

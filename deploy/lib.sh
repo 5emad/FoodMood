@@ -28,11 +28,54 @@ detect_server_ip() {
     app_url="${app_url#http://}"
     app_url="${app_url#https://}"
     ip="${app_url%%/*}"
+    ip="${ip%%:*}"
   fi
-  if [[ -z "$ip" ]]; then
+  if [[ -z "$ip" || "$ip" == "127.0.0.1" || "$ip" == "localhost" ]]; then
     ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
   fi
   echo "${ip:-127.0.0.1}"
+}
+
+read_mongo_public_url() {
+  local env_file="${1:-${INSTALL_DIR}/.env}"
+  local mongo_uri url
+  [[ -f "$env_file" ]] || return 0
+  mongo_uri="$(grep '^MONGODB_URI=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  [[ -n "$mongo_uri" ]] || return 0
+  command -v mongosh >/dev/null 2>&1 || return 0
+  url="$(mongosh "$mongo_uri" --quiet --eval "const s=db.appsettings.findOne({key:'default'}); if (s && s.publicUrl) print(String(s.publicUrl));" 2>/dev/null || true)"
+  url="${url//$'\r'/}"
+  url="${url//$'\n'/}"
+  echo "$url"
+}
+
+sync_runtime_url_from_settings() {
+  local env_file="${INSTALL_DIR}/.env"
+  local server_ip stored_url https_url
+  [[ -f "$env_file" ]] || return 0
+  server_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)"
+  stored_url="$(read_mongo_public_url "$env_file" 2>/dev/null || true)"
+  stored_url="${stored_url//$'\r'/}"
+  stored_url="${stored_url//$'\n'/}"
+  [[ -n "$stored_url" ]] || return 0
+
+  https_url="${stored_url#http://}"
+  https_url="${https_url#https://}"
+  https_url="https://${https_url%%/*}"
+
+  if declare -F nginx_tls_set_env_kv >/dev/null 2>&1; then
+    nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
+    nginx_tls_set_env_kv "$env_file" "TRUST_TLS" "true"
+    local origins="$https_url,https://${server_ip}"
+    local current
+    current="$(grep '^ALLOWED_ORIGINS=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    [[ -n "$current" ]] && origins="${origins},${current}"
+    origins="$(echo "$origins" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF && !seen[$0]++' | paste -sd, -)"
+    nginx_tls_set_env_kv "$env_file" "ALLOWED_ORIGINS" "$origins"
+    chown "${APP_USER}:${APP_USER}" "$env_file" 2>/dev/null || true
+    chmod 600 "$env_file" 2>/dev/null || true
+    log_ok "Runtime URL preserved from settings: ${https_url}"
+  fi
 }
 
 url_encode() {

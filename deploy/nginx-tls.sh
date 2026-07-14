@@ -171,21 +171,51 @@ configure_app_https_env() {
   local install_dir="$2"
   local app_user="$3"
   local env_file="${install_dir}/.env"
-  local https_url="https://${server_ip}"
+  local default_url="https://${server_ip}"
+  local https_url="$default_url"
+  local stored_url=""
 
   [[ -f "$env_file" ]] || return 0
 
+  if declare -F read_mongo_public_url >/dev/null 2>&1; then
+    stored_url="$(read_mongo_public_url "$env_file" 2>/dev/null || true)"
+    stored_url="${stored_url//$'\r'/}"
+    stored_url="${stored_url//$'\n'/}"
+  fi
+
+  if [[ -n "$stored_url" ]]; then
+    https_url="${stored_url#http://}"
+    https_url="${https_url#https://}"
+    https_url="https://${https_url%%/*}"
+  else
+    local current_app_url
+    current_app_url="$(grep '^APP_URL=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    if [[ -n "$current_app_url" && "$current_app_url" != "http://${server_ip}"* && "$current_app_url" != "http://${server_ip}/"* ]]; then
+      https_url="${current_app_url#http://}"
+      https_url="${https_url#https://}"
+      https_url="https://${https_url%%/*}"
+    fi
+  fi
+
   nginx_tls_set_env_kv "$env_file" "TRUST_TLS" "true"
   nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
-  nginx_tls_set_env_kv "$env_file" "ALLOWED_ORIGINS" "$https_url"
+
+  local allowed_origins="$https_url,${default_url}"
+  local current_origins
+  current_origins="$(grep '^ALLOWED_ORIGINS=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  if [[ -n "$current_origins" ]]; then
+    allowed_origins="${allowed_origins},${current_origins}"
+  fi
+  allowed_origins="$(echo "$allowed_origins" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF && !seen[$0]++' | paste -sd, -)"
+  nginx_tls_set_env_kv "$env_file" "ALLOWED_ORIGINS" "$allowed_origins"
   chown "${app_user}:${app_user}" "$env_file"
   chmod 600 "$env_file"
 
   local mongo_uri
   mongo_uri="$(grep '^MONGODB_URI=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
-  if [[ -n "$mongo_uri" ]] && command -v mongosh >/dev/null 2>&1; then
+  if [[ -n "$mongo_uri" ]] && command -v mongosh >/dev/null 2>&1 && [[ -z "$stored_url" ]]; then
     mongosh "$mongo_uri" --quiet --eval \
-      "db.appsettings.updateOne({key:'default'}, {\$set:{publicUrl:'${https_url}'}}, {upsert:true})" \
+      "db.appsettings.updateOne({key:'default'}, {\$set:{publicUrl:'${default_url}'}}, {upsert:true})" \
       >/dev/null 2>&1 || true
   fi
 }

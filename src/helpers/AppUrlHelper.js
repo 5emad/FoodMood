@@ -74,9 +74,7 @@ async function buildAbsoluteUrl(req, path) {
 }
 
 function shouldEnforceCanonicalHost() {
-  if (process.env.FORCE_APP_URL === 'true') return true;
-  if (process.env.NODE_ENV === 'production') return true;
-  return Boolean(normalizePublicUrl(process.env.APP_URL));
+  return process.env.FORCE_APP_URL === 'true';
 }
 
 function isLocalOrigin(origin) {
