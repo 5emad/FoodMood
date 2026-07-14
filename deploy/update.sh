@@ -275,6 +275,10 @@ apply_update() {
   ensure_services_running
   repair_mongodb_from_env || log_warn "MongoDB repair had issues — continuing with service restart"
 
+  log_info "Ensuring PDF browser and runtime cache..."
+  ensure_chrome_for_pdf || true
+  ensure_pdf_runtime_dirs
+
   configure_tls_deployment
 
   log_info "Restarting ${SERVICE_NAME}..."
@@ -321,6 +325,12 @@ apply_update() {
     exit 1
   else
     log_warn "Login probe: HTTP ${login_probe%%|*} — ${login_probe#*|}"
+  fi
+
+  if test_pdf_browser; then
+    log_ok "PDF browser executable by ${APP_USER}"
+  else
+    log_warn "PDF browser check failed — report PDF may not work until Chrome/Chromium is installed"
   fi
 
   if [[ -n "$SUPERADMIN_PASS" ]]; then

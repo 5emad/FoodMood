@@ -428,3 +428,53 @@ run_diagnose() {
   verify_fonts_and_site "$server_ip" | sed 's/^/  /'
   echo ""
 }
+
+ensure_chrome_for_pdf() {
+  if command -v google-chrome-stable >/dev/null 2>&1 \
+    || command -v google-chrome >/dev/null 2>&1 \
+    || command -v chromium >/dev/null 2>&1 \
+    || command -v chromium-browser >/dev/null 2>&1; then
+    log_ok "PDF browser (Chrome/Chromium) is installed"
+    return 0
+  fi
+
+  log_warn "PDF browser missing — installing Chromium/Chrome..."
+  export DEBIAN_FRONTEND=noninteractive
+  if apt-get install -y -qq chromium-browser 2>/dev/null \
+    || apt-get install -y -qq chromium 2>/dev/null; then
+    log_ok "Chromium installed for PDF export"
+    return 0
+  fi
+
+  local chrome_deb="/tmp/google-chrome-stable.deb"
+  if curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then
+    if apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }; then
+      rm -f "$chrome_deb"
+      log_ok "Google Chrome installed for PDF export"
+      return 0
+    fi
+    rm -f "$chrome_deb"
+  fi
+
+  log_warn "Could not install PDF browser automatically"
+  return 1
+}
+
+ensure_pdf_runtime_dirs() {
+  local cache_root="${INSTALL_DIR}/.cache/pdf-runtime"
+  mkdir -p "${cache_root}/config" "${cache_root}/cache"
+  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache"
+  chmod 700 "${cache_root}" "${cache_root}/config" "${cache_root}/cache" 2>/dev/null || true
+}
+
+test_pdf_browser() {
+  local chrome=""
+  for candidate in /usr/bin/google-chrome-stable /usr/bin/google-chrome /usr/bin/chromium /usr/bin/chromium-browser; do
+    if [[ -x "$candidate" ]]; then
+      chrome="$candidate"
+      break
+    fi
+  done
+  [[ -n "$chrome" ]] || return 1
+  sudo -u "$APP_USER" HOME="${INSTALL_DIR}/.cache/pdf-runtime" "$chrome" --version >/dev/null 2>&1
+}

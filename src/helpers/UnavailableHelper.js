@@ -1,3 +1,5 @@
+const { isSuperadminRequest } = require('./AuthCookieHelper');
+
 const PUBLIC_UNAVAILABLE_PATHS = new Set([
   '/css/unavailable.css',
   '/css/theme-vars.css',
@@ -5,7 +7,7 @@ const PUBLIC_UNAVAILABLE_PATHS = new Set([
 ]);
 
 function isSuperadminSession(req) {
-  return req.session?.userRole === 'superadmin';
+  return isSuperadminRequest(req);
 }
 
 function isPublicUnavailableAsset(req) {

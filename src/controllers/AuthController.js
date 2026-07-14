@@ -12,6 +12,7 @@ const {
   touchSessionActivity,
   invalidateSession,
 } = require('../helpers/SessionSecurityHelper');
+const { setAuthCookies } = require('../helpers/AuthCookieHelper');
 const { issueSession, revokeUserSessions } = require('../services/SessionTokenService');
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -140,6 +141,7 @@ class AuthController {
 
         const token = generateToken(user._id, user.email, user.role, user.username, sessionId);
         await commitAuthenticatedSession(req, buildSessionData(user, token, sessionId));
+        setAuthCookies(res, { token, role: user.role });
 
         return res.json({
           success: true,
@@ -188,6 +190,7 @@ class AuthController {
             sessionId,
           });
           await commitAuthenticatedSession(req, buildSessionData(ldapUser, token, sessionId));
+          setAuthCookies(res, { token, role: ldapUser.role });
 
           return res.json({
             success: true,
@@ -266,6 +269,7 @@ class AuthController {
 
       const jwt = generateToken(user._id, user.email, user.role, user.username, sessionId);
       await commitAuthenticatedSession(req, buildSessionData(user, jwt, sessionId));
+      setAuthCookies(res, { token: jwt, role: user.role });
       delete req.session.pendingSuperLogin;
       await writeSecurityLog(req, 'super_token_success', user, 'Superadmin token accepted');
       await writeSecurityLog(req, 'login_success', user, 'Superadmin login success');

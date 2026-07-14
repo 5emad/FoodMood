@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { revokeUserSessions, touchSession } = require('../services/SessionTokenService');
+const { clearAuthCookies } = require('./AuthCookieHelper');
 
 const DEFAULT_IDLE_MINUTES = 30;
 const DEFAULT_MAX_HOURS = 8;
@@ -37,7 +38,15 @@ function initSessionSecurity(req) {
 }
 
 function assertActiveSession(req) {
-  if (!req.session?.token) return { ok: true };
+  if (!req.session?.token) {
+    try {
+      const { readAuthTokenFromCookie } = require('./AuthCookieHelper');
+      if (readAuthTokenFromCookie(req)) return { ok: true };
+    } catch {
+      // ignore
+    }
+    return { ok: true };
+  }
 
   const now = Date.now();
   if (!req.session.lastActivityAt) req.session.lastActivityAt = now;
@@ -134,11 +143,13 @@ async function invalidateSession(req, res, reason) {
 
   return new Promise((resolve) => {
     if (!req.session) {
-      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/' });
+      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/', secure: process.env.TRUST_TLS === 'true' });
+      clearAuthCookies(res);
       return resolve();
     }
     req.session.destroy(() => {
-      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/' });
+      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/', secure: process.env.TRUST_TLS === 'true' });
+      clearAuthCookies(res);
       resolve();
     });
   });

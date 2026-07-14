@@ -32,9 +32,14 @@ function resolveSessionUser(req, decoded) {
   };
 }
 
+const { readAuthTokenFromCookie } = require('./AuthCookieHelper');
+
 function readAuthToken(req) {
   const raw = (v) => (v && v !== 'null' && v !== 'undefined' ? v : null);
-  return raw(req.headers.authorization?.split(' ')[1]) || req.session?.token || null;
+  return raw(req.headers.authorization?.split(' ')[1])
+    || raw(req.session?.token)
+    || raw(readAuthTokenFromCookie(req))
+    || null;
 }
 
 function readAuthContext(req) {

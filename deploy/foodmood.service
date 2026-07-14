@@ -26,10 +26,12 @@ LogsDirectoryMode=0750
 
 # Hardening
 NoNewPrivileges=true
-PrivateTmp=true
+PrivateTmp=false
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/food /var/log/foodmood
+Environment=HOME=/opt/food
+Environment=FOOD_INSTALL_DIR=/opt/food
+ReadWritePaths=/opt/food /var/log/foodmood /tmp /run
 
 [Install]
 WantedBy=multi-user.target

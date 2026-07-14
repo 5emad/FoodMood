@@ -63,7 +63,7 @@ const authMiddleware = async (req, res, next) => {
 
     const user = resolveSessionUser(req, decoded);
 
-    if (!user.sessionId || !req.session?.sessionId || user.sessionId !== req.session.sessionId) {
+    if (!user.sessionId || (req.session?.sessionId && user.sessionId !== req.session.sessionId)) {
       await invalidateSession(req, res, 'expired');
       if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
       return res.status(401).json({ message: 'سشن شما منقضی شده است. لطفاً دوباره وارد شوید.' });
