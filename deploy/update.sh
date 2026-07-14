@@ -278,6 +278,7 @@ apply_update() {
   log_info "Ensuring PDF browser and runtime cache..."
   ensure_chrome_for_pdf || true
   ensure_pdf_runtime_dirs
+  configure_chrome_env
 
   configure_tls_deployment
 

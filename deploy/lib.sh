@@ -430,58 +430,75 @@ run_diagnose() {
 }
 
 ensure_chrome_for_pdf() {
-  if pdf_browser_deb_path >/dev/null; then
-    log_ok "PDF browser (deb): $(pdf_browser_deb_path)"
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    log_ok "PDF browser: /usr/bin/google-chrome-stable"
     return 0
   fi
 
-  log_warn "PDF browser missing or only Snap Chromium — installing Google Chrome (.deb)..."
+  log_warn "Google Chrome not found — installing .deb package (not Snap)..."
   export DEBIAN_FRONTEND=noninteractive
-
-  if apt-get install -y -qq chromium-browser 2>/dev/null \
-    && pdf_browser_deb_path >/dev/null; then
-    log_ok "Chromium (.deb) installed: $(pdf_browser_deb_path)"
-    return 0
-  fi
-
-  if apt-get install -y -qq chromium 2>/dev/null \
-    && pdf_browser_deb_path >/dev/null; then
-    log_ok "Chromium (.deb) installed: $(pdf_browser_deb_path)"
-    return 0
-  fi
 
   local chrome_deb="/tmp/google-chrome-stable.deb"
   if curl -fsSL -o "$chrome_deb" https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb; then
     if apt-get install -y -qq "$chrome_deb" 2>/dev/null || { dpkg -i "$chrome_deb" || true; apt-get install -f -y -qq; }; then
       rm -f "$chrome_deb"
-      if pdf_browser_deb_path >/dev/null; then
-        log_ok "Google Chrome installed: $(pdf_browser_deb_path)"
-        return 0
-      fi
     fi
-    rm -f "$chrome_deb"
+  fi
+  rm -f "$chrome_deb"
+
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    log_ok "Google Chrome installed: /usr/bin/google-chrome-stable"
+    return 0
   fi
 
-  log_warn "Could not install a non-Snap PDF browser"
+  log_err "Could not install Google Chrome for PDF export"
   return 1
 }
 
 pdf_browser_deb_path() {
-  local candidate
-  for candidate in /usr/bin/google-chrome-stable /usr/bin/google-chrome /usr/bin/chromium-browser /usr/bin/chromium; do
-    if [[ -x "$candidate" && "$candidate" != *"/snap/"* ]]; then
-      echo "$candidate"
-      return 0
-    fi
-  done
+  if [[ -x /usr/bin/google-chrome-stable ]]; then
+    echo "/usr/bin/google-chrome-stable"
+    return 0
+  fi
+  if [[ -x /usr/bin/google-chrome ]]; then
+    echo "/usr/bin/google-chrome"
+    return 0
+  fi
   return 1
 }
 
 ensure_pdf_runtime_dirs() {
   local cache_root="${INSTALL_DIR}/.cache/pdf-runtime"
+  local uid
+  uid="$(id -u "$APP_USER" 2>/dev/null || echo 999)"
   mkdir -p "${cache_root}/config" "${cache_root}/cache" "${cache_root}/run"
-  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache"
+  mkdir -p "/run/user/${uid}" 2>/dev/null || true
+  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache" 2>/dev/null || true
+  chown "${APP_USER}:${APP_USER}" "/run/user/${uid}" 2>/dev/null || true
   chmod 700 "${cache_root}" "${cache_root}/config" "${cache_root}/cache" "${cache_root}/run" 2>/dev/null || true
+  chmod 700 "/run/user/${uid}" 2>/dev/null || true
+
+  cat > /etc/tmpfiles.d/foodmood-runtime.conf <<EOF
+d /run/user/${uid} 0700 ${APP_USER} ${APP_USER} -
+d ${cache_root}/run 0700 ${APP_USER} ${APP_USER} -
+EOF
+  systemd-tmpfiles --create /etc/tmpfiles.d/foodmood-runtime.conf 2>/dev/null || true
+}
+
+configure_chrome_env() {
+  local env_file="${INSTALL_DIR}/.env"
+  local chrome_path
+  chrome_path="$(pdf_browser_deb_path || echo /usr/bin/google-chrome-stable)"
+  [[ -f "$env_file" ]] || return 0
+
+  if grep -q '^CHROME_BIN=' "$env_file" 2>/dev/null; then
+    sed -i "s|^CHROME_BIN=.*|CHROME_BIN=${chrome_path}|" "$env_file"
+  else
+    echo "CHROME_BIN=${chrome_path}" >> "$env_file"
+  fi
+  chown "$APP_USER:$APP_USER" "$env_file"
+  chmod 600 "$env_file"
+  log_ok "CHROME_BIN=${chrome_path} saved in .env"
 }
 
 test_pdf_browser() {
@@ -490,11 +507,11 @@ test_pdf_browser() {
   [[ -n "$chrome" ]] || return 1
   runtime="${INSTALL_DIR}/.cache/pdf-runtime"
   mkdir -p "${runtime}/run"
-  chown -R "${APP_USER}:${APP_USER}" "${INSTALL_DIR}/.cache" 2>/dev/null || true
   sudo -u "$APP_USER" env \
     HOME="${runtime}" \
     XDG_CONFIG_HOME="${runtime}/config" \
     XDG_CACHE_HOME="${runtime}/cache" \
     XDG_RUNTIME_DIR="${runtime}/run" \
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     "$chrome" --version >/dev/null 2>&1
 }

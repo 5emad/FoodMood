@@ -7,11 +7,9 @@ const { getReportFontCss, copyFontsToDir } = require('./ReportFontHelper');
 
 const execFileAsync = promisify(execFile);
 
-const linuxCandidates = [
+const DEB_CHROME_PATHS = [
   '/usr/bin/google-chrome-stable',
   '/usr/bin/google-chrome',
-  '/usr/bin/chromium-browser',
-  '/usr/bin/chromium',
 ];
 
 const windowsCandidates = [
@@ -25,20 +23,47 @@ function isSnapBinary(binaryPath) {
   return String(binaryPath || '').includes('/snap/');
 }
 
-function chromeCandidates() {
-  return process.platform === 'win32' ? windowsCandidates : linuxCandidates;
+async function isUsableChromeBinary(candidate) {
+  if (!candidate || isSnapBinary(candidate)) return false;
+
+  let realPath = candidate;
+  try {
+    await fs.access(candidate);
+    realPath = await fs.realpath(candidate);
+  } catch {
+    return false;
+  }
+
+  if (isSnapBinary(realPath)) return false;
+
+  const head = await fs.readFile(realPath, { encoding: 'utf8' }).catch(() => '');
+  if (head.startsWith('#!')) {
+    if (/snap/i.test(head)) return false;
+    if (/chromium/i.test(head) && !/google-chrome/i.test(head)) return false;
+  }
+
+  return true;
 }
 
 async function findChrome() {
-  for (const candidate of chromeCandidates()) {
-    try {
-      await fs.access(candidate);
-      if (!isSnapBinary(candidate)) return candidate;
-    } catch (error) {
-      // Try the next browser path.
+  if (process.platform === 'win32') {
+    for (const candidate of windowsCandidates) {
+      if (await isUsableChromeBinary(candidate)) return candidate;
+    }
+  } else {
+    const candidates = [
+      process.env.CHROME_BIN,
+      ...DEB_CHROME_PATHS,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (await isUsableChromeBinary(candidate)) return candidate;
     }
   }
-  const error = new Error('مرورگر Chrome/Chromium (غیر Snap) برای ساخت PDF نصب نیست — روی سرور: sudo bash /opt/food/deploy/update.sh');
+
+  const error = new Error(
+    'Google Chrome برای ساخت PDF نصب نیست — روی سرور: curl -fsSL .../deploy/update.sh | sudo bash',
+  );
   error.status = 503;
   error.expose = true;
   throw error;
@@ -65,15 +90,21 @@ async function ensurePdfRuntimeDirs(root) {
 
 function buildChromeEnv(runtimeRoot) {
   const runtimeDir = path.join(runtimeRoot, 'run');
+  const env = { ...process.env };
+  delete env.SNAP;
+  delete env.SNAP_VERSION;
+  delete env.SNAP_NAME;
+  delete env.SNAP_INSTANCE_NAME;
+  delete env.SNAP_USER_DATA;
+  delete env.SNAP_REAL_HOME;
   return {
-    ...process.env,
+    ...env,
     HOME: runtimeRoot,
     XDG_CONFIG_HOME: path.join(runtimeRoot, 'config'),
     XDG_CACHE_HOME: path.join(runtimeRoot, 'cache'),
-    XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR || runtimeDir,
+    XDG_RUNTIME_DIR: runtimeDir,
     TMPDIR: process.env.TMPDIR || os.tmpdir(),
-    SNAP_USER_DATA: '',
-    SNAP_REAL_HOME: '',
+    PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
   };
 }
 
@@ -127,4 +158,5 @@ module.exports = {
   pdfCacheRoot,
   buildChromeEnv,
   isSnapBinary,
+  isUsableChromeBinary,
 };

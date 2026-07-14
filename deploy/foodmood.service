@@ -31,6 +31,7 @@ ProtectSystem=strict
 ProtectHome=true
 Environment=HOME=/opt/food
 Environment=FOOD_INSTALL_DIR=/opt/food
+Environment=CHROME_BIN=/usr/bin/google-chrome-stable
 Environment=XDG_RUNTIME_DIR=/opt/food/.cache/pdf-runtime/run
 ReadWritePaths=/opt/food /var/log/foodmood /tmp /run
 
