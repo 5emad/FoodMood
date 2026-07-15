@@ -35,6 +35,7 @@ const { clampPercent } = require('../services/UserStatementService');
 const { buildAdminFinanceReport, buildAdminFinancePdfPayload } = require('../services/AdminFinanceService');
 const { renderFinanceStatementHtml } = require('../views/FinanceStatementPdfView');
 const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper');
+const { normalizePublicUrl, refreshPublicUrlCache, requestOrigin } = require('../helpers/AppUrlHelper');
 const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
 
 function firstString(value) {
@@ -186,7 +187,6 @@ class AdminController {
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
         await refreshOriginPublicUrlCache();
-        const { requestOrigin } = require('../helpers/AppUrlHelper');
         const { syncPublicUrlToEnv } = require('../helpers/EnvFileHelper');
         const currentOrigin = requestOrigin(req);
         const extraOrigins = [currentOrigin];
