@@ -145,15 +145,31 @@ function isDatabaseError(err) {
   if (!err) return false;
   const name = String(err.name || '');
   const message = String(err.message || '').toLowerCase();
-  return name === 'MongoServerError'
-    || name === 'MongoNetworkError'
-    || name === 'MongooseError'
-    || name === 'MongooseServerSelectionError'
-    || name.startsWith('Mongo')
-    || message.includes('mongodb')
-    || message.includes('buffering timed out')
-    || message.includes('connection')
-    || message.includes('econnrefused');
+  const code = Number(err.code);
+
+  // Application-level Mongo write errors — not an outage.
+  if (code === 40 || code === 11000 || code === 121) return false;
+  if (message.includes('would create a conflict')) return false;
+
+  if (
+    name === 'MongoNetworkError'
+    || name === 'MongoServerSelectionError'
+    || name === 'MongoTimeoutError'
+    || name === 'MongoParseError'
+    || name === 'MongoNotConnectedError'
+    || name === 'PoolClearedOnNetworkError'
+    || name === 'MongoPoolClearedError'
+  ) {
+    return true;
+  }
+
+  return message.includes('buffering timed out')
+    || message.includes('econnrefused')
+    || message.includes('server selection')
+    || message.includes('topology was destroyed')
+    || message.includes('connection refused')
+    || message.includes('interrupted due to server monitor')
+    || (name === 'MongooseError' && message.includes('buffering'));
 }
 
 module.exports = {

@@ -54,11 +54,36 @@ function adminWorkspaceSettings(settings) {
 }
 
 async function getOrCreateSettings() {
-  return AppSetting.findOneAndUpdate(
+  let settings = await AppSetting.findOne({ key: 'default' }).select('+ldapBindPasswordEnc');
+  if (settings) return settings;
+
+  try {
+    settings = await AppSetting.create({ ...defaultSettings, key: 'default' });
+    return settings;
+  } catch (error) {
+    // Concurrent create race
+    if (Number(error?.code) !== 11000) throw error;
+  }
+
+  settings = await AppSetting.findOne({ key: 'default' }).select('+ldapBindPasswordEnc');
+  if (!settings) throw new Error('امکان ایجاد تنظیمات سامانه وجود ندارد');
+  return settings;
+}
+
+/**
+ * Apply settings fields with a plain $set only.
+ * Avoids Mongo conflict from combining $set + $setOnInsert on the same paths.
+ */
+async function updateAppSettings(fields = {}) {
+  await getOrCreateSettings();
+  const update = { ...fields, updatedAt: new Date() };
+  const settings = await AppSetting.findOneAndUpdate(
     { key: 'default' },
-    { $setOnInsert: defaultSettings },
-    { upsert: true, new: true }
+    { $set: update },
+    { new: true },
   ).select('+ldapBindPasswordEnc');
+  if (!settings) throw new Error('تنظیمات سامانه یافت نشد');
+  return settings;
 }
 
 async function getSettingsLean() {
@@ -71,5 +96,6 @@ module.exports = {
   publicSettings,
   adminWorkspaceSettings,
   getOrCreateSettings,
+  updateAppSettings,
   getSettingsLean,
 };

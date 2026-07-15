@@ -14,7 +14,6 @@ const Order = require('../models/Order');
 const Department = require('../models/Department');
 const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
-const AppSetting = require('../models/AppSetting');
 const SecurityLog = require('../models/SecurityLog');
 const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
 const { testConnection: testLdapConn, validateConfig: validateLdapConfig, ldapConfig } = require('../helpers/LdapHelper');
@@ -23,7 +22,7 @@ const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
 const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
-const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
+const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, updateAppSettings, getSettingsLean } = require('../services/SettingsService');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
@@ -183,17 +182,7 @@ class AdminController {
         }
       }
 
-      await AppSetting.updateOne(
-        { key: 'default' },
-        { $setOnInsert: defaultSettings },
-        { upsert: true }
-      );
-
-      const settings = await AppSetting.findOneAndUpdate(
-        { key: 'default' },
-        { $set: update },
-        { new: true }
-      ).select('+ldapBindPasswordEnc');
+      const settings = await updateAppSettings(update);
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
         await refreshOriginPublicUrlCache();
@@ -928,12 +917,7 @@ class AdminController {
         update.organizationSharePercent = clampPercent(req.body.organizationSharePercent);
       }
 
-      await getOrCreateSettings();
-      const settings = await AppSetting.findOneAndUpdate(
-        { key: 'default' },
-        { $set: update },
-        { new: true },
-      );
+      const settings = await updateAppSettings(update);
 
       const organizationSharePercent = clampPercent(settings.organizationSharePercent);
       res.json({
