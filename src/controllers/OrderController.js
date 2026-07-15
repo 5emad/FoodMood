@@ -4,6 +4,7 @@ const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const { finalizeExpiredOrders, isCancelable, decorateOrder } = require('../helpers/OrderStatusHelper');
 const { getUserCapabilities, stripPricesFromOrder, isAdminPortalUser } = require('../helpers/PermissionHelper');
+const { resolveEffectiveCapacity } = require('../helpers/CapacityHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
 const {
   orderOwnerFilter,
@@ -72,7 +73,7 @@ async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
 
   const settings = await AppSetting.findOne({ key: 'default' }).lean();
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? 20);
-  const effectiveCapacity = Number(menuItem.maxCapacity) > 0 && Number(menuItem.maxCapacity) !== 50 ? Number(menuItem.maxCapacity) : defaultCapacity;
+  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity);
   const resolvedMenuItemId = menuItem._id;
   const reservedCount = await Order.countDocuments({ menuItemId: resolvedMenuItemId, status: { $ne: 'cancelled' } });
   if (effectiveCapacity > 0 && reservedCount >= effectiveCapacity) {

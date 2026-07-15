@@ -186,6 +186,13 @@ class AdminController {
       }
 
       const settings = await updateAppSettings(update);
+
+      // Capacity is inherited at runtime when maxCapacity is 0. Reset snapshots so
+      // changing "ظرفیت پیش‌فرض" immediately applies to existing menu foods.
+      if (update.defaultMenuItemCapacity !== undefined) {
+        await MenuItem.updateMany({}, { $set: { maxCapacity: 0 } });
+      }
+
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
         await refreshOriginPublicUrlCache();

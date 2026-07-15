@@ -815,7 +815,7 @@ async function saveWeekMenu(weekId) {
       const foodId = cb.value;
       const mid = cb.dataset.mid;
       if (cb.checked && !mid) {
-        await api('/api/admin/menu-items', { method: 'POST', body: JSON.stringify({ dailyMenuId, foodId, maxCapacity: appSettings?.defaultMenuItemCapacity ?? 50 }) });
+        await api('/api/admin/menu-items', { method: 'POST', body: JSON.stringify({ dailyMenuId, foodId, maxCapacity: 0 }) });
       } else if (!cb.checked && mid) {
         await api(`/api/admin/menu-items/${mid}`, { method: 'DELETE' });
       }

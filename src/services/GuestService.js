@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const { generateUniqueGuestCode } = require('../helpers/GuestCodeHelper');
+const { resolveEffectiveCapacity } = require('../helpers/CapacityHelper');
 
 function guestTypeLabel(type) {
   return type === 'permanent' ? 'دائم' : 'موقت';
@@ -129,9 +130,7 @@ async function buildGuestOrderFromMenuItem(menuItemId, guest) {
 
   const settings = await AppSetting.findOne({ key: 'default' }).lean();
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? 20);
-  const effectiveCapacity = Number(menuItem.maxCapacity) > 0 && Number(menuItem.maxCapacity) !== 50
-    ? Number(menuItem.maxCapacity)
-    : defaultCapacity;
+  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity);
   const reservedCount = await Order.countDocuments({
     menuItemId: menuItem._id,
     status: { $ne: 'cancelled' },

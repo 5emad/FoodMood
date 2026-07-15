@@ -2,8 +2,9 @@ const Week = require('../models/Week');
 const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
 const Order = require('../models/Order');
-const { defaultSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
+const { defaultSettings, getSettingsLean } = require('../services/SettingsService');
 const { getUserCapabilities, stripPricesFromMenuPayload, isAdminPortalUser } = require('../helpers/PermissionHelper');
+const { resolveEffectiveCapacity } = require('../helpers/CapacityHelper');
 
 async function attachMenuItems(dailyMenus, settings) {
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity);
@@ -25,7 +26,7 @@ async function attachMenuItems(dailyMenus, settings) {
         ...item,
         price: item.customPrice ?? item.foodId?.price,
         reservedCount: countMap.get(String(item._id)) || 0,
-        effectiveCapacity: Number(item.maxCapacity) > 0 && Number(item.maxCapacity) !== 50 ? Number(item.maxCapacity) : defaultCapacity,
+        effectiveCapacity: resolveEffectiveCapacity(item.maxCapacity, defaultCapacity),
       })),
     };
   }));
@@ -80,12 +81,12 @@ class MenuController {
         return res.status(400).json({ message: 'روز منو و غذا الزامی هستند' });
       }
 
-      const settings = await getSettingsLean();
-      const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity);
+      // 0 = inherit system default capacity at reservation time
+      const hasExplicitCapacity = max_capacity !== undefined || maxCapacity !== undefined;
       const item = await MenuItem.create({
         dailyMenuId: dailyMenu,
         foodId: food,
-        maxCapacity: Math.max(Number(max_capacity ?? maxCapacity ?? defaultCapacity), 0),
+        maxCapacity: hasExplicitCapacity ? Math.max(Number(max_capacity ?? maxCapacity) || 0, 0) : 0,
         customPrice: custom_price || customPrice || null,
         isAvailable: true,
       });

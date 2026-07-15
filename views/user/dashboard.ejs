@@ -454,7 +454,9 @@ function renderMenu() {
           <span class="day-date-badge">${jdate(day.date)}</span>
         </div>
         <div class="day-card-body">${day.items.length ? day.items.map(item => {
-          const capacity = Number(item.effectiveCapacity) > 0 ? Number(item.effectiveCapacity) : (Number(item.maxCapacity) > 0 && Number(item.maxCapacity) !== 50 ? Number(item.maxCapacity) : defaultMenuItemCapacity);
+          const capacity = Number(item.effectiveCapacity) > 0
+            ? Number(item.effectiveCapacity)
+            : Number(defaultMenuItemCapacity) || 0;
           const full = capacity > 0 && item.reservedCount >= capacity;
           const selectedItem = orderedItemIds.has(String(item._id));
           const order = menuItemToOrder[String(item._id)];
