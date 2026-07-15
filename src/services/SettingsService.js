@@ -71,19 +71,25 @@ async function getOrCreateSettings() {
 }
 
 /**
- * Apply settings fields with a plain $set only.
- * Avoids Mongo conflict from combining $set + $setOnInsert on the same paths.
+ * Apply settings fields with a plain native $set only.
+ * Bypasses Mongoose upsert/$setOnInsert merges that can conflict on the same path.
  */
 async function updateAppSettings(fields = {}) {
   await getOrCreateSettings();
-  const update = { ...fields, updatedAt: new Date() };
-  const settings = await AppSetting.findOneAndUpdate(
+  const $set = { ...fields, updatedAt: new Date() };
+  const raw = await AppSetting.collection.findOneAndUpdate(
     { key: 'default' },
-    { $set: update },
-    { new: true },
-  ).select('+ldapBindPasswordEnc');
-  if (!settings) throw new Error('تنظیمات سامانه یافت نشد');
-  return settings;
+    { $set },
+    { returnDocument: 'after' },
+  );
+  const doc = raw && Object.prototype.hasOwnProperty.call(raw, 'value') ? raw.value : raw;
+  if (!doc) {
+    const err = new Error('تنظیمات سامانه یافت نشد');
+    err.status = 404;
+    err.expose = true;
+    throw err;
+  }
+  return doc;
 }
 
 async function getSettingsLean() {

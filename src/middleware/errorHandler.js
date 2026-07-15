@@ -40,20 +40,28 @@ function isAuthApiRequest(req) {
   return url.startsWith('/api/auth');
 }
 
+function isConflictError(err) {
+  return Number(err?.code) === 40
+    || /would create a conflict/i.test(String(err?.message || ''));
+}
+
 const errorHandler = (err, req, res, next) => {
-  const status = err.status || 500;
+  let status = err.status || 500;
+  if (isConflictError(err) && status >= 500) status = 409;
+
   const isServerError = status >= 500;
+  const dbOutage = isDatabaseError(err);
   const logEntry = buildErrorLogEntry(req, err, status);
 
   writeSystemLog(logEntry.level, logEntry.category, logEntry.message, logEntry.meta);
 
-  if (isDatabaseError(err)) {
+  if (dbOutage) {
     markUnhealthy('database', err.message);
   }
 
   const isApiRequest = req.originalUrl.startsWith('/api/');
 
-  if (isServerError && isAdminRequest(req) && isDatabaseError(err)) {
+  if (isServerError && isAdminRequest(req) && dbOutage) {
     return renderAdminDbError(req, res);
   }
 
@@ -61,7 +69,7 @@ const errorHandler = (err, req, res, next) => {
     if (!isApiRequest) {
       return renderUnavailable(req, res, 503);
     }
-    if (isDatabaseError(err)) {
+    if (dbOutage) {
       return res.status(503).json({
         success: false,
         code: 'SERVICE_UNAVAILABLE',
@@ -70,15 +78,26 @@ const errorHandler = (err, req, res, next) => {
     }
   }
 
-  const safeMessage = (err.status && status < 500)
-    ? err.message
-    : (err.expose
-      ? err.message
-      : (process.env.NODE_ENV === 'production' && isServerError
-        ? 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد'
-        : (err.message || 'خطای داخلی سرور')));
+  let safeMessage;
+  if (err.status && status < 500) {
+    safeMessage = err.message;
+  } else if (err.expose) {
+    safeMessage = err.message;
+  } else if (isConflictError(err)) {
+    safeMessage = 'ذخیره تنظیمات با تداخل انجام شد؛ لطفاً دوباره تلاش کنید';
+  } else if (dbOutage) {
+    safeMessage = 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد';
+  } else if (isServerError) {
+    // Keep API errors actionable — do not masquerade every 500 as a portal outage.
+    safeMessage = isApiRequest
+      ? (err.message || 'خطای داخلی سرور')
+      : 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد';
+  } else {
+    safeMessage = err.message || 'خطای داخلی سرور';
+  }
 
   if (wantsHtml(req)) {
+    if (isServerError && dbOutage) return renderUnavailable(req, res, 503);
     if (isServerError) return renderUnavailable(req, res, 503);
     return res.status(status).render('index', {
       user: req.user || null,
@@ -89,8 +108,8 @@ const errorHandler = (err, req, res, next) => {
   res.status(isServerError ? 503 : status).json({
     success: false,
     code: isServerError
-      ? (isDatabaseError(err) ? 'SERVICE_UNAVAILABLE' : 'SERVER_ERROR')
-      : 'REQUEST_ERROR',
+      ? (dbOutage ? 'SERVICE_UNAVAILABLE' : 'SERVER_ERROR')
+      : (isConflictError(err) ? 'CONFLICT' : 'REQUEST_ERROR'),
     message: safeMessage,
     ...(process.env.NODE_ENV !== 'production' && isServerError && safeMessage !== err.message && { detail: err.message }),
   });

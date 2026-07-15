@@ -203,6 +203,12 @@ class AdminController {
       }
       res.json({ success: true, message: 'تنظیمات بروزرسانی شد', data: publicSettings(settings) });
     } catch (error) {
+      if (Number(error?.code) === 40 || /would create a conflict/i.test(String(error?.message || ''))) {
+        return res.status(409).json({
+          success: false,
+          message: 'ذخیره تنظیمات با تداخل انجام شد؛ لطفاً دوباره تلاش کنید',
+        });
+      }
       next(error);
     }
   }
@@ -930,6 +936,12 @@ class AdminController {
         },
       });
     } catch (error) {
+      if (Number(error?.code) === 40 || /would create a conflict/i.test(String(error?.message || ''))) {
+        return res.status(409).json({
+          success: false,
+          message: 'ذخیره تنظیمات با تداخل انجام شد؛ لطفاً دوباره تلاش کنید',
+        });
+      }
       next(error);
     }
   }

@@ -99,8 +99,30 @@ const connectDB = async () => {
 
   const state = mongoose.connection.readyState;
   if (state === 1) return;
-  if (state !== 0) {
-    await mongoose.disconnect().catch(() => {});
+  // Wait for an in-flight connect instead of tearing the pool down.
+  if (state === 2) {
+    await new Promise((resolve, reject) => {
+      const onConnected = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = (error) => {
+        cleanup();
+        reject(error);
+      };
+      const cleanup = () => {
+        mongoose.connection.off('connected', onConnected);
+        mongoose.connection.off('error', onError);
+      };
+      mongoose.connection.once('connected', onConnected);
+      mongoose.connection.once('error', onError);
+      setTimeout(() => {
+        cleanup();
+        reject(new Error('MongoDB connection timeout'));
+      }, Number(process.env.MONGODB_CONNECT_TIMEOUT_MS || 10000));
+    });
+    markHealthy('database');
+    return;
   }
 
   await mongoose.connect(mongoUri, options);
