@@ -322,6 +322,7 @@ class AuthController {
   static async setFullName(req, res, next) {
     try {
       const fullName = String(req.body.fullName || '').trim();
+      const departmentId = String(req.body.departmentId || '').trim();
       if (!fullName) {
         return res.status(400).json({ message: 'نام کامل الزامی است' });
       }
@@ -330,8 +331,18 @@ class AuthController {
         return res.status(400).json({ message: 'لطفا نام و نام خانوادگی خود را به فارسی وارد کنید' });
       }
 
+      if (!departmentId) {
+        return res.status(400).json({ message: 'انتخاب واحد الزامی است' });
+      }
+
+      const Department = require('../models/Department');
+      const department = await Department.findById(departmentId).select('name').lean();
+      if (!department) {
+        return res.status(400).json({ message: 'واحد انتخاب‌شده معتبر نیست' });
+      }
+
       if (req.user?.authSource === 'ldap') {
-        await saveLdapFullName(req.user.username, fullName, req.user.department);
+        await saveLdapFullName(req.user.username, fullName, department._id);
         const sessionId = req.user.sessionId || req.session?.sessionId;
         const ldapRole = await resolveLdapRole(req.user.username);
         const ldapUser = {
@@ -340,32 +351,36 @@ class AuthController {
           username: req.user.username,
           fullName,
           email: req.user.email || null,
-          department: req.user.department || null,
+          department: department.name,
           role: ldapRole,
         };
         const token = generateLdapToken({
           username: ldapUser.username,
           email: ldapUser.email,
           fullName,
-          department: ldapUser.department,
+          department: department.name,
           sessionId,
           role: ldapRole,
         });
         await commitAuthenticatedSession(req, buildSessionData(ldapUser, token, sessionId));
         setAuthCookies(res, { token, role: ldapRole });
-        return res.json({ success: true, message: 'نام با موفقیت ثبت شد' });
+        return res.json({ success: true, message: 'پروفایل با موفقیت تکمیل شد' });
       }
 
       const user = await User.findById(req.user.id);
       if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
-      user.fullName        = fullName;
+      user.fullName = fullName;
+      user.departmentId = department._id;
       user.mustSetFullName = false;
       await user.save();
 
-      if (req.session) req.session.fullName = fullName;
+      if (req.session) {
+        req.session.fullName = fullName;
+        req.session.departmentId = String(department._id);
+      }
 
-      return res.json({ success: true, message: 'نام با موفقیت ثبت شد' });
+      return res.json({ success: true, message: 'پروفایل با موفقیت تکمیل شد' });
     } catch (error) {
       if (error.status) return res.status(error.status).json({ message: error.message });
       next(error);

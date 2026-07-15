@@ -37,7 +37,7 @@ const ldapProfileMiddleware = async (req, res, next) => {
     return res.status(403).json({
       success: false,
       mustSetFullName: true,
-      message: 'لطفاً نام و نام خانوادگی فارسی خود را تکمیل کنید',
+      message: 'لطفاً نام و واحد سازمانی خود را تکمیل کنید',
     });
   } catch (error) {
     return next(error);

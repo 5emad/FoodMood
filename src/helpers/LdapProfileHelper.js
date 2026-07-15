@@ -26,7 +26,9 @@ async function findProfile(username) {
 
 async function needsProfileSetup(username) {
   const profile = await findProfile(username);
-  return !profile || !isValidPersianFullName(profile.fullName);
+  if (!profile || !isValidPersianFullName(profile.fullName)) return true;
+  // Require unit selection on first-time profile completion
+  return !profile.departmentId && !profile.department;
 }
 
 async function isProfileActive(username) {
@@ -34,7 +36,7 @@ async function isProfileActive(username) {
   return !profile || profile.status !== 'inactive';
 }
 
-async function saveFullName(username, fullName, department = null) {
+async function saveFullName(username, fullName, departmentId = null) {
   const ldapUsername = normalizeUsername(username);
   const name = String(fullName || '').trim();
   if (!ldapUsername || !isValidPersianFullName(name)) {
@@ -47,7 +49,17 @@ async function saveFullName(username, fullName, department = null) {
     fullName: name,
     status: 'active',
   };
-  if (department) update.department = String(department).trim();
+
+  if (departmentId) {
+    const dept = await Department.findById(departmentId).select('name').lean();
+    if (!dept) {
+      const error = new Error('واحد انتخاب‌شده معتبر نیست');
+      error.status = 400;
+      throw error;
+    }
+    update.departmentId = dept._id;
+    update.department = dept.name;
+  }
 
   return LdapProfile.findOneAndUpdate(
     { ldapUsername },

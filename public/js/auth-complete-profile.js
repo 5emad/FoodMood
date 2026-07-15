@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var text = 'کاربر عزیز، لطفاً نام و نام خانوادگی خود را به فارسی بنویسید';
+  var text = 'کاربر عزیز، لطفاً نام و واحد سازمانی خود را تکمیل کنید';
   var target = document.getElementById('typed');
   var index = 0;
 
@@ -15,6 +15,7 @@
 
   var form = document.getElementById('profileForm');
   var input = document.getElementById('fullName');
+  var deptSelect = document.getElementById('departmentId');
   var error = document.getElementById('error');
   var button = document.getElementById('submitBtn');
   var persianName = /^[\u0600-\u06FF\s\u200c]{3,80}$/;
@@ -36,11 +37,18 @@
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     var value = input.value.trim();
+    var departmentId = deptSelect ? String(deptSelect.value || '').trim() : '';
     clearError();
 
     if (!persianName.test(value) || value.split(/\s+/).filter(Boolean).length < 2) {
       showError('نام و نام خانوادگی را کامل و به فارسی وارد کنید.');
       input.focus();
+      return;
+    }
+
+    if (!departmentId) {
+      showError('لطفاً واحد سازمانی خود را انتخاب کنید.');
+      if (deptSelect) deptSelect.focus();
       return;
     }
 
@@ -52,10 +60,10 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName: value }),
+        body: JSON.stringify({ fullName: value, departmentId: departmentId }),
       });
       var data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.message || 'ثبت نام انجام نشد');
+      if (!response.ok || !data.success) throw new Error(data.message || 'ثبت پروفایل انجام نشد');
       var me = await fetch('/api/auth/me', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).catch(function () { return null; });
       var role = me && me.user && me.user.role;
       var path = (role === 'admin' || role === 'superadmin') ? '/admin/dashboard' : '/user/dashboard';

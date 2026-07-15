@@ -31,8 +31,14 @@ router.get('/complete-profile', authMiddleware, async (req, res, next) => {
         return res.redirect(target);
       }
     }
+    const Department = require('../models/Department');
+    const departments = await Department.find({})
+      .select('name')
+      .sort({ name: 1 })
+      .lean();
     return res.render('auth/complete-profile', {
       user: req.user,
+      departments,
       organizationName: (await getSettingsLean().catch(() => defaultSettings))?.organizationName || 'سامانه تغذیه',
     });
   } catch (error) {
