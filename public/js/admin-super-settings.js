@@ -18,7 +18,8 @@ async function loadSettings() {
   fillSystemSettingsForm();
   const priceToggleBtn = document.getElementById('priceToggleBtn');
   if (priceToggleBtn) {
-    priceToggleBtn.innerHTML = appSettings.showPricesToUsers
+    const pricesOn = appSettings.showPricesToUsers !== false && appSettings.showPricesToUsers !== 'false';
+    priceToggleBtn.innerHTML = pricesOn
       ? '<i class="fas fa-tags"></i> قیمت: قابل نمایش'
       : '<i class="fas fa-eye-slash"></i> قیمت: مخفی';
   }
@@ -143,7 +144,8 @@ function fillSystemSettingsForm() {
   byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#3D0F18';
   byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#5A1624';
   renderThemeOptions();
-  byId('set_showPricesToUsers').value = appSettings.showPricesToUsers === false ? 'false' : 'true';
+  const pricesOn = !(appSettings.showPricesToUsers === false || appSettings.showPricesToUsers === 'false' || appSettings.showPricesToUsers === 0 || appSettings.showPricesToUsers === '0');
+  byId('set_showPricesToUsers').value = pricesOn ? 'true' : 'false';
   byId('set_ldapEnabled').value = appSettings.ldapEnabled === true || appSettings.ldapEnabled === 'true' ? 'true' : 'false';
   byId('set_ldapUrl').value = appSettings.ldapUrl || '';
   byId('set_ldapSecurity').value = appSettings.ldapSecurity || 'ldaps';
@@ -196,7 +198,8 @@ async function saveSystemSettings(event) {
 }
 
 async function toggleUserPrices() {
-  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ showPricesToUsers: !appSettings.showPricesToUsers }) });
+  const pricesOn = !(appSettings.showPricesToUsers === false || appSettings.showPricesToUsers === 'false' || appSettings.showPricesToUsers === 0 || appSettings.showPricesToUsers === '0');
+  const data = await api('/api/admin/settings', { method: 'POST', body: JSON.stringify({ showPricesToUsers: !pricesOn }) });
   if (data.success) { appSettings = data.data; loadSettings(); }
   else notify(data.message || 'خطا', 'error');
 }

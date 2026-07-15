@@ -424,10 +424,13 @@ async function loadMenu() {
     return;
   }
   menuCache = data.data;
-  showPricesToUsers = data.data.settings?.showPricesToUsers !== false;
+  const pricesFlag = data.data.settings?.showPricesToUsers;
+  showPricesToUsers = !(pricesFlag === false || pricesFlag === 'false' || pricesFlag === 0 || pricesFlag === '0');
+  const statementFlag = data.data.settings?.showFinancialStatementToUsers;
+  const statementFlagOn = !(statementFlag === false || statementFlag === 'false' || statementFlag === 0 || statementFlag === '0');
   applyCapabilities({
     showPrices: showPricesToUsers,
-    showStatement: data.data.settings?.showFinancialStatementToUsers !== false,
+    showStatement: statementFlagOn,
   });
   defaultMenuItemCapacity = Number(data.data.settings?.defaultMenuItemCapacity ?? 20);
   syncStatementTabVisibility();

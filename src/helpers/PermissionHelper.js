@@ -1,5 +1,6 @@
 const { getReportsAccessForUser } = require('./ReportsAccessHelper');
 const { getSettingsLean } = require('../services/SettingsService');
+const { isEnabledFlag } = require('./SettingFlags');
 
 const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements'];
 const STATEMENT_DISABLED_MESSAGE = 'در حال حاضر در دسترس نیست';
@@ -48,8 +49,8 @@ async function getUserCapabilities() {
   const settings = await getSettingsLean();
   const organizationSharePercent = Math.min(100, Math.max(0, Number(settings.organizationSharePercent) || 0));
   return {
-    showPrices: settings.showPricesToUsers !== false,
-    showStatement: settings.showFinancialStatementToUsers !== false,
+    showPrices: isEnabledFlag(settings.showPricesToUsers, true),
+    showStatement: isEnabledFlag(settings.showFinancialStatementToUsers, true),
     organizationSharePercent,
     personalSharePercent: 100 - organizationSharePercent,
     canReserve: true,
@@ -58,7 +59,10 @@ async function getUserCapabilities() {
 }
 
 async function resolveShowPricesForRequest(req) {
-  if (isAdminPortalUser(req?.user)) return true;
+  // Admin food catalog (?includeInactive=true) always needs prices for management.
+  if (isAdminPortalUser(req?.user) && String(req.query?.includeInactive || '') === 'true') {
+    return true;
+  }
   const caps = await getUserCapabilities();
   return caps.showPrices;
 }

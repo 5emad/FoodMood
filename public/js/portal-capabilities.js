@@ -7,11 +7,15 @@
       || String(user?.fullName || '').toLowerCase() === 'superadmin';
   }
 
+  function flagOn(value) {
+    return !(value === false || value === 'false' || value === 0 || value === '0');
+  }
+
   function normalizeUserCapabilities(raw) {
     const caps = raw || {};
     return {
-      showPrices: caps.showPrices !== false && caps.showPricesToUsers !== false,
-      showStatement: caps.showStatement !== false && caps.showFinancialStatementToUsers !== false,
+      showPrices: flagOn(caps.showPrices) && flagOn(caps.showPricesToUsers),
+      showStatement: flagOn(caps.showStatement) && flagOn(caps.showFinancialStatementToUsers),
       organizationSharePercent: Number(caps.organizationSharePercent || 0),
       personalSharePercent: Number(caps.personalSharePercent ?? (100 - Number(caps.organizationSharePercent || 0))),
       canReserve: caps.canReserve !== false,

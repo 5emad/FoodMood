@@ -159,9 +159,7 @@ class OrderController {
       }
 
       const order = await Order.create(payload);
-      const showPrices = isAdminPortalUser(req.user)
-        ? true
-        : (await getUserCapabilities()).showPrices;
+      const showPrices = (await getUserCapabilities()).showPrices;
       res.status(201).json({
         success: true,
         message: 'سفارش ثبت شد',
@@ -216,9 +214,7 @@ class OrderController {
         }
       }
 
-      const showPrices = isAdminPortalUser(req.user)
-        ? true
-        : (await getUserCapabilities()).showPrices;
+      const showPrices = (await getUserCapabilities()).showPrices;
       res.json({ success: true, data: stripPricesFromOrder(decorateOrder(order), showPrices) });
     } catch (error) {
       next(error);
@@ -229,9 +225,7 @@ class OrderController {
     try {
       const filter = await buildOrderOwnerFilter(req.user);
       await finalizeExpiredOrders(filter);
-      const showPrices = isAdminPortalUser(req.user)
-        ? true
-        : (await getUserCapabilities()).showPrices;
+      const showPrices = (await getUserCapabilities()).showPrices;
       const baseQuery = () => Order.find(filter)
         .sort({ orderDate: -1 })
         .populate('items.foodId')

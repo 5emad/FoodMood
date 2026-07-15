@@ -48,7 +48,10 @@ class MenuController {
         .sort({ date: 1 })
         .lean();
       const settings = await getSettingsLean();
-      const capabilities = isAdminPortalUser(req.user)
+      // /api/menu/active → user portal (always respect showPrices setting)
+      // /api/menu/weeks/:weekId → admin week editor (keep prices for management)
+      const isAdminWeekEditor = Boolean(req.params.weekId) && isAdminPortalUser(req.user);
+      const capabilities = isAdminWeekEditor
         ? { showPrices: true, showStatement: true }
         : await getUserCapabilities();
 

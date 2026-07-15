@@ -1,4 +1,5 @@
 const AppSetting = require('../models/AppSetting');
+const { isEnabledFlag } = require('../helpers/SettingFlags');
 
 const defaultSettings = {
   key: 'default',
@@ -32,6 +33,8 @@ function publicSettings(settings) {
   delete raw.ldapCaCertPem;
   return {
     ...raw,
+    showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true),
+    showFinancialStatementToUsers: isEnabledFlag(raw.showFinancialStatementToUsers, true),
     hasLdapBindPassword: Boolean(storedEnc || process.env.LDAP_BIND_PASSWORD),
     ldapBindPasswordStored: Boolean(storedEnc),
     ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
@@ -47,8 +50,8 @@ function adminWorkspaceSettings(settings) {
   return {
     organizationName: raw.organizationName || 'سامانه تغذیه',
     defaultMenuItemCapacity: Number(raw.defaultMenuItemCapacity ?? 20),
-    showPricesToUsers: raw.showPricesToUsers !== false,
-    showFinancialStatementToUsers: raw.showFinancialStatementToUsers !== false,
+    showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true),
+    showFinancialStatementToUsers: isEnabledFlag(raw.showFinancialStatementToUsers, true),
     organizationSharePercent: Math.min(100, Math.max(0, Number(raw.organizationSharePercent) || 0)),
   };
 }
