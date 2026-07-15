@@ -17,7 +17,7 @@ const MenuItem = require('../models/MenuItem');
 const SecurityLog = require('../models/SecurityLog');
 const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
 const { testConnection: testLdapConn, validateConfig: validateLdapConfig, ldapConfig } = require('../helpers/LdapHelper');
-const { mergeLdapSettings, ldapFieldsFromBody } = require('../helpers/LdapSettingsHelper');
+const { mergeLdapSettings, ldapFieldsFromBody, parseBoolean } = require('../helpers/LdapSettingsHelper');
 const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
 const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
@@ -146,7 +146,9 @@ class AdminController {
   static async updateSettings(req, res, next) {
     try {
       const update = {};
-      if (req.body.showPricesToUsers !== undefined) update.showPricesToUsers = Boolean(req.body.showPricesToUsers);
+      if (req.body.showPricesToUsers !== undefined) {
+        update.showPricesToUsers = parseBoolean(req.body.showPricesToUsers);
+      }
       if (req.body.organizationName !== undefined) {
         update.organizationName = String(req.body.organizationName || '').trim() || defaultSettings.organizationName;
       }
@@ -917,7 +919,7 @@ class AdminController {
     try {
       const update = {};
       if (req.body.showFinancialStatementToUsers !== undefined) {
-        update.showFinancialStatementToUsers = Boolean(req.body.showFinancialStatementToUsers);
+        update.showFinancialStatementToUsers = parseBoolean(req.body.showFinancialStatementToUsers);
       }
       if (req.body.organizationSharePercent !== undefined) {
         update.organizationSharePercent = clampPercent(req.body.organizationSharePercent);

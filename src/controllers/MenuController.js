@@ -46,7 +46,7 @@ class MenuController {
         .populate('dayId')
         .sort({ date: 1 })
         .lean();
-      const settings = (await getOrCreateSettings()).toObject();
+      const settings = await getSettingsLean();
       const capabilities = isAdminPortalUser(req.user)
         ? { showPrices: true, showStatement: true }
         : await getUserCapabilities();

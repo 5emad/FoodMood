@@ -143,8 +143,8 @@ function fillSystemSettingsForm() {
   byId('set_themeGradientFrom').value = appSettings.themeGradientFrom || '#3D0F18';
   byId('set_themeGradientTo').value = appSettings.themeGradientTo || '#5A1624';
   renderThemeOptions();
-  byId('set_showPricesToUsers').value = String(Boolean(appSettings.showPricesToUsers));
-  byId('set_ldapEnabled').value = String(Boolean(appSettings.ldapEnabled));
+  byId('set_showPricesToUsers').value = appSettings.showPricesToUsers === false ? 'false' : 'true';
+  byId('set_ldapEnabled').value = appSettings.ldapEnabled === true || appSettings.ldapEnabled === 'true' ? 'true' : 'false';
   byId('set_ldapUrl').value = appSettings.ldapUrl || '';
   byId('set_ldapSecurity').value = appSettings.ldapSecurity || 'ldaps';
   byId('set_ldapBaseDn').value = appSettings.ldapBaseDn || '';
