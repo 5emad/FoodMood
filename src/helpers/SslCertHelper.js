@@ -58,25 +58,36 @@ async function saveCustomCertificate(certBuffer, keyBuffer) {
   fs.writeFileSync(CUSTOM_KEY, `${keyText}\n`, { mode: 0o640 });
 }
 
+function logSslEvent(level, message, detail) {
+  try {
+    const { writeSystemLog } = require('../services/SystemLogService');
+    writeSystemLog(level, 'server', message, {
+      event: 'ssl_apply',
+      code: 'SSL_APPLY',
+      detail: String(detail || '').slice(0, 2000),
+    });
+  } catch { /* logging must not break the flow */ }
+}
+
 async function applyCustomCertificate() {
   if (!fs.existsSync(APPLY_SCRIPT)) {
-    throw Object.assign(new Error('اسکریپت اعمال گواهی روی سرور یافت نشد'), { status: 500 });
+    throw Object.assign(new Error('اسکریپت اعمال گواهی روی سرور یافت نشد'), { status: 500, expose: true });
   }
   try {
     const { stdout, stderr } = await execFileAsync('sudo', ['-n', APPLY_SCRIPT], {
       timeout: 60000,
       maxBuffer: 1024 * 1024,
     });
-    return { stdout: stdout.trim(), stderr: stderr.trim() };
+    // Keep full output in server logs only — never return stdout/stderr to clients.
+    logSslEvent('info', 'گواهی SSL سفارشی اعمال شد', `${stdout}\n${stderr}`);
+    return { applied: true };
   } catch (error) {
-    const msg = error.stderr || error.message || 'اعمال گواهی ناموفق بود';
-    if (/sudo: a password is required/i.test(String(msg))) {
-      throw Object.assign(
-        new Error('دسترسی sudo برای اعمال گواهی تنظیم نشده. روی سرور: sudo bash /opt/food/deploy/apply-custom-ssl.sh'),
-        { status: 500 },
-      );
+    const raw = String(error.stderr || error.message || '');
+    logSslEvent('error', 'اعمال گواهی SSL ناموفق بود', raw);
+    if (/sudo: a password is required/i.test(raw)) {
+      throw Object.assign(new Error('دسترسی sudo برای اعمال گواهی تنظیم نشده است؛ راهنمای استقرار را ببینید'), { status: 503, expose: true });
     }
-    throw Object.assign(new Error(String(msg).trim() || 'اعمال گواهی ناموفق بود'), { status: 500 });
+    throw Object.assign(new Error('اعمال گواهی ناموفق بود؛ جزئیات در لاگ سیستم ثبت شد'), { status: 503, expose: true });
   }
 }
 

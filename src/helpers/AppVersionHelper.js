@@ -52,9 +52,10 @@ function refreshAppVersion() {
 }
 
 const { jsAsset } = require('./AssetHelper');
+const { safeJsonForHtml } = require('./ClientErrorHelper');
 
 function versionMiddleware(req, res, next) {
-  Object.assign(res.locals, getVersionViewModel(), { jsAsset });
+  Object.assign(res.locals, getVersionViewModel(), { jsAsset, safeJsonForHtml });
   next();
 }
 

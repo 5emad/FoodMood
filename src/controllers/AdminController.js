@@ -172,7 +172,9 @@ class AdminController {
       try {
         Object.assign(update, ldapFieldsFromBody(req.body));
       } catch (err) {
-        if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+        if (Number(err.status) > 0 && Number(err.status) < 500) {
+          return res.status(err.status).json({ success: false, message: err.message });
+        }
         throw err;
       }
 
@@ -322,15 +324,30 @@ class AdminController {
       const perPage = Number(req.query.perPage) || undefined;
       const level = String(req.query.level || '').toLowerCase();
       const { logs, pagination } = readLogsPaginated({ page, perPage, level });
+      const health = getHealthStatus();
+      const { looksTechnicalErrorMessage } = require('../helpers/ClientErrorHelper');
+      // Never return stack traces or disk paths to the browser.
+      const safeLogs = (logs || []).map((entry) => {
+        const rawDetail = entry.detail ? String(entry.detail).slice(0, 280) : '';
+        return {
+          ts: entry.ts,
+          level: entry.level,
+          category: entry.category,
+          event: entry.event,
+          code: entry.code,
+          message: entry.message,
+          count: entry.count,
+          detail: looksTechnicalErrorMessage(rawDetail) ? '' : rawDetail,
+        };
+      });
       res.json({
         success: true,
         data: {
-          health: getHealthStatus(),
+          health: { healthy: health.healthy, since: health.since || null },
           lifecycle: readLifecycleStats(),
-          logs,
+          logs: safeLogs,
           pagination,
-          logDir: process.env.LOG_DIR || '',
-          testMode: process.env.ALLOW_SYSTEM_TEST === 'true',
+          testMode: process.env.ALLOW_SYSTEM_TEST === 'true' && process.env.NODE_ENV !== 'production',
         },
       });
     } catch (error) {
@@ -971,7 +988,9 @@ class AdminController {
       });
       res.json({ success: true, data });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -1015,11 +1034,12 @@ class AdminController {
       res.setHeader('Content-Disposition', `attachment; filename="${filenameUser}"`);
       res.send(pdf);
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       return res.status(503).json({
         success: false,
         message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
-        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
       });
     }
   }
@@ -1073,7 +1093,9 @@ class AdminController {
         },
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -1106,16 +1128,12 @@ class AdminController {
       res.setHeader('Content-Disposition', `attachment; filename="food-report-${reportNumber}.pdf"`);
       res.send(pdf);
     } catch (error) {
-      if (error.status && error.expose) {
-        return res.status(error.status).json({ success: false, message: error.message });
-      }
-      if (error.status) {
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
       }
       return res.status(503).json({
         success: false,
         message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
-        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
       });
     }
   }
@@ -1145,7 +1163,9 @@ class AdminController {
         },
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -1182,16 +1202,12 @@ class AdminController {
       res.setHeader('Content-Disposition', `attachment; filename="supplier-report-${reportNumber}.pdf"`);
       res.send(pdf);
     } catch (error) {
-      if (error.status && error.expose) {
-        return res.status(error.status).json({ success: false, message: error.message });
-      }
-      if (error.status) {
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
       }
       return res.status(503).json({
         success: false,
         message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
-        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
       });
     }
   }
@@ -1239,7 +1255,9 @@ class AdminController {
         data: result,
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -1261,16 +1279,18 @@ class AdminController {
       }
 
       await saveCustomCertificate(certFile.buffer, keyFile.buffer);
-      const applied = await applyCustomCertificate();
+      await applyCustomCertificate();
       await refreshOriginPublicUrlCache();
 
       res.json({
         success: true,
         message: 'گواهی SSL نصب شد. Nginx و سرویس بروزرسانی شدند.',
-        data: { ...getSslStatus(), apply: applied },
+        data: getSslStatus(),
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }

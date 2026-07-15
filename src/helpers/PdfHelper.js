@@ -161,8 +161,17 @@ async function htmlToPdfBuffer(html) {
     return await fs.readFile(pdfPath);
   } catch (error) {
     if (error?.expose) throw error;
-    const detail = error?.stderr || error?.message || 'نامشخص';
-    const wrapped = new Error(`خطا در ساخت PDF: ${detail}`);
+    // Log full detail server-side; client only sees a fixed message.
+    try {
+      const { writeSystemLog } = require('../services/SystemLogService');
+      writeSystemLog('error', 'api', 'خطا در ساخت PDF', {
+        event: 'pdf_generation_failed',
+        code: 'PDF_FAIL',
+        detail: String(error?.stderr || error?.message || '').slice(0, 2000),
+        stack: error?.stack || '',
+      });
+    } catch { /* logging must not break the response */ }
+    const wrapped = new Error('خطا در ساخت PDF؛ لطفاً دوباره تلاش کنید');
     wrapped.status = 503;
     wrapped.expose = true;
     throw wrapped;

@@ -67,7 +67,7 @@ class AnnouncementController {
 
       return res.status(201).json({ success: true, message: 'اطلاعیه ثبت شد', data });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) return res.status(error.status).json({ message: error.message });
       next(error);
     }
   }
@@ -87,7 +87,7 @@ class AnnouncementController {
 
       return res.json({ success: true, message: 'اطلاعیه بروزرسانی شد', data });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) return res.status(error.status).json({ message: error.message });
       next(error);
     }
   }
@@ -97,7 +97,7 @@ class AnnouncementController {
       await AnnouncementService.deleteAnnouncement(req.params.id);
       return res.json({ success: true, message: 'اطلاعیه حذف شد' });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) return res.status(error.status).json({ message: error.message });
       next(error);
     }
   }

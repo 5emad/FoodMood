@@ -101,12 +101,11 @@ class AuthController {
         ],
       }).select('+password');
 
-      // Account lock check
+      // Account lock check — return the generic auth failure so probing a
+      // username cannot confirm the account exists (anti-enumeration).
       if (user?.isLocked) {
-        const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
-        return res.status(423).json({
-          message: `حساب کاربری به دلیل تلاش‌های ناموفق قفل شده است. ${minutesLeft} دقیقه دیگر تلاش کنید.`,
-        });
+        await writeSecurityLog(req, 'login_failed', user, 'Login attempt on locked account');
+        return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
       }
 
       const settings = await getSettingsLean();
@@ -229,26 +228,17 @@ class AuthController {
       }
 
       // ── Final auth failure handling ──────────────────────────────────────────
-      const ldapActive = LdapHelper.isEnabled(settings || {});
-
+      // Uniform message for every failure path so responses cannot be used to
+      // enumerate valid usernames, roles, or auth sources.
       if (!user) {
         await handleFailedLogin(user);
         await writeSecurityLog(req, 'login_failed', null, 'Unknown username login failure', { username: identifier });
-        if (ldapActive) {
-          return res.status(401).json({ message: 'نام کاربری یا رمز Active Directory اشتباه است' });
-        }
-        return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
+      } else if (!['admin', 'superadmin'].includes(user.role)) {
+        await writeSecurityLog(req, 'login_failed', user, 'Non-admin local login blocked');
+      } else {
+        await handleFailedLogin(user);
+        await writeSecurityLog(req, 'login_failed', user, 'Final login failure');
       }
-
-      if (user && !['admin', 'superadmin'].includes(user.role)) {
-        if (ldapActive) {
-          return res.status(401).json({ message: 'نام کاربری یا رمز Active Directory اشتباه است' });
-        }
-        return res.status(401).json({ message: 'ورود کاربران فقط از طریق Active Directory انجام می‌شود' });
-      }
-
-      await handleFailedLogin(user);
-      await writeSecurityLog(req, 'login_failed', user, 'Final login failure');
       return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
     } catch (error) {
       next(error);
@@ -382,7 +372,7 @@ class AuthController {
 
       return res.json({ success: true, message: 'پروفایل با موفقیت تکمیل شد' });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) return res.status(error.status).json({ message: error.message });
       next(error);
     }
   }

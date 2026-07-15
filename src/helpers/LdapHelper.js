@@ -190,30 +190,29 @@ function classifyConnectionError(err, cfg) {
   }
   if (msg.includes('ECONNRESET')) {
     const hint = cfg.security === 'ldaps'
-      ? 'احتمالا LDAPS روی پورت 636 این سرور فعال نیست یا TLS handshake توسط سرور قطع می‌شود.'
+      ? 'احتمالا LDAPS روی این سرور فعال نیست یا TLS handshake قطع می‌شود.'
       : 'احتمالا سرور اتصال غیر TLS را قطع می‌کند یا LDAP signing اجباری است.';
-    return { success: false, message: `${hint} (${cfg.url})`, status: 'connection_reset' };
+    return { success: false, message: hint, status: 'connection_reset' };
   }
-  if (msg.includes('ECONNREFUSED')) return { success: false, message: `سرور LDAP پاسخ نمی‌دهد (${cfg.url})`, status: 'refused' };
+  if (msg.includes('ECONNREFUSED')) {
+    return { success: false, message: 'سرور LDAP پاسخ نمی‌دهد', status: 'refused' };
+  }
   if (msg.includes('ETIMEDOUT') || lower.includes('timeout')) {
-    const { host, port } = parseLdapEndpoint(cfg.url);
     let hint = 'اتصال LDAP از سرور سامانه timeout شد.';
     if (cfg.security === 'ldaps') {
       hint += ' اگر فقط پورت 389 باز است، نوع اتصال را LDAP یا StartTLS انتخاب کنید.';
     } else if (cfg.security === 'ldap') {
-      hint += ' اگر DC فقط LDAPS دارد، نوع اتصال LDAPS و پورت 636 را امتحان کنید.';
+      hint += ' اگر DC فقط LDAPS دارد، نوع اتصال LDAPS را امتحان کنید.';
     } else {
-      hint += ' StartTLS را با ldap:// و پورت 389 تست کنید یا در صورت نیاز LDAPS.';
+      hint += ' StartTLS را با پورت 389 تست کنید یا در صورت نیاز LDAPS.';
     }
-    return {
-      success: false,
-      message: `${hint} (${host}:${port})`,
-      status: 'timeout',
-    };
+    return { success: false, message: hint, status: 'timeout' };
   }
   if (lower.includes('invalid credentials')) return { success: false, message: 'نام کاربری یا رمز Bind اشتباه است', status: 'auth_error' };
-  if (lower.includes('certificate') || msg.includes('SSL') || msg.includes('TLS')) return { success: false, message: `خطای SSL/TLS: ${msg}`, status: 'tls_error' };
-  return { success: false, message: msg, status: 'error' };
+  if (lower.includes('certificate') || msg.includes('SSL') || msg.includes('TLS')) {
+    return { success: false, message: 'خطای SSL/TLS در ارتباط با سرور LDAP', status: 'tls_error' };
+  }
+  return { success: false, message: 'اتصال به LDAP ناموفق بود', status: 'error' };
 }
 
 function createClient(cfg, settings = {}) {

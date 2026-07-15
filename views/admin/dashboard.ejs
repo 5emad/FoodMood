@@ -543,7 +543,7 @@
   </main>
 </div>
 
-<script type="application/json" id="admin-bootstrap"><%- JSON.stringify({
+<script type="application/json" id="admin-bootstrap"><%- safeJsonForHtml({
   currentUserRole: user && user.role ? user.role : '',
   isSuperadmin: !!isSuperadmin,
   currentUserId: user && user.id ? user.id : '',

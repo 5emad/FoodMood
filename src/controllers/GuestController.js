@@ -33,7 +33,9 @@ class GuestController {
         data: { ...guest.toObject(), guestTypeLabel: guestTypeLabel(guest.guestType) },
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -47,7 +49,9 @@ class GuestController {
         data: { ...guest.toObject(), guestTypeLabel: guestTypeLabel(guest.guestType) },
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -57,7 +61,9 @@ class GuestController {
       await deleteGuest(req.params.id);
       res.json({ success: true, message: 'مهمان حذف شد' });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -75,7 +81,9 @@ class GuestController {
         data: order,
       });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -85,7 +93,9 @@ class GuestController {
       const data = await getGuestWeekReservations(req.params.id, req.query.weekId);
       res.json({ success: true, data });
     } catch (error) {
-      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }

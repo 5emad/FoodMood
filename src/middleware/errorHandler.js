@@ -2,6 +2,7 @@ const { writeSystemLog } = require('../services/SystemLogService');
 const { markUnhealthy, isDatabaseError } = require('../helpers/HealthState');
 const { renderUnavailable, isSuperadminSession } = require('../helpers/UnavailableHelper');
 const { buildErrorLogEntry } = require('../helpers/SystemLogCatalog');
+const { looksTechnicalErrorMessage } = require('../helpers/ClientErrorHelper');
 
 function isAdminRequest(req) {
   const url = requestPath(req);
@@ -78,26 +79,28 @@ const errorHandler = (err, req, res, next) => {
     }
   }
 
+  // Client-safe message policy:
+  // - status < 500 + deliberate app error: expose message
+  // - status >= 500: fixed message (or deliberate non-technical expose)
+  // - NEVER return raw driver/path/stderr details
   let safeMessage;
-  if (err.status && status < 500) {
-    safeMessage = err.message;
-  } else if (err.expose) {
-    safeMessage = err.message;
+  if (status < 500 && (err.status || err.expose)) {
+    safeMessage = looksTechnicalErrorMessage(err.message)
+      ? 'درخواست نامعتبر است'
+      : err.message;
   } else if (isConflictError(err)) {
     safeMessage = 'ذخیره تنظیمات با تداخل انجام شد؛ لطفاً دوباره تلاش کنید';
   } else if (dbOutage) {
     safeMessage = 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد';
   } else if (isServerError) {
-    // Keep API errors actionable — do not masquerade every 500 as a portal outage.
-    safeMessage = isApiRequest
-      ? (err.message || 'خطای داخلی سرور')
-      : 'در حال حاضر سامانه تغذیه در دسترس نمی‌باشد';
+    safeMessage = (err.expose && err.message && !looksTechnicalErrorMessage(err.message))
+      ? err.message
+      : 'خطای داخلی سرور؛ لطفاً بعداً دوباره تلاش کنید';
   } else {
-    safeMessage = err.message || 'خطای داخلی سرور';
+    safeMessage = 'درخواست نامعتبر است';
   }
 
   if (wantsHtml(req)) {
-    if (isServerError && dbOutage) return renderUnavailable(req, res, 503);
     if (isServerError) return renderUnavailable(req, res, 503);
     return res.status(status).render('index', {
       user: req.user || null,
@@ -111,7 +114,6 @@ const errorHandler = (err, req, res, next) => {
       ? (dbOutage ? 'SERVICE_UNAVAILABLE' : 'SERVER_ERROR')
       : (isConflictError(err) ? 'CONFLICT' : 'REQUEST_ERROR'),
     message: safeMessage,
-    ...(process.env.NODE_ENV !== 'production' && isServerError && safeMessage !== err.message && { detail: err.message }),
   });
 };
 

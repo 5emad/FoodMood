@@ -135,7 +135,7 @@
 </div>
 
 <script src="<%= jsAsset('portal-capabilities') %>"></script>
-<script type="application/json" id="user-portal-bootstrap"><%- JSON.stringify({
+<script type="application/json" id="user-portal-bootstrap"><%- safeJsonForHtml({
   capabilities: typeof capabilities !== 'undefined' ? capabilities : null,
   portalSettings: typeof portalSettings !== 'undefined' ? portalSettings : {
     showFinancialStatementToUsers: true,

@@ -139,7 +139,8 @@ app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     if (isOriginAllowed(origin)) return cb(null, true);
-    cb(new Error('CORS policy violation'));
+    // Deny without throwing: no CORS headers are set, browser blocks the read.
+    cb(null, false);
   },
   credentials: true,
 }));
@@ -186,7 +187,8 @@ app.use(canonicalHostMiddleware);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.engine('ejs', (filePath, options, callback) => {
-  ejs.renderFile(filePath, { ...getVersionViewModel(), ...(options || {}) }, callback);
+  const { safeJsonForHtml } = require('./src/helpers/ClientErrorHelper');
+  ejs.renderFile(filePath, { ...getVersionViewModel(), safeJsonForHtml, ...(options || {}) }, callback);
 });
 app.use(versionMiddleware);
 app.use(healthGateMiddleware);
@@ -197,18 +199,19 @@ app.use('/api',             apiLimiter);
 app.get('/api/system/health', (req, res) => {
   const { getHealthStatus } = require('./src/helpers/HealthState');
   const health = getHealthStatus();
-  // Lifecycle counters are internal detail — only exposed in test mode.
-  // Superadmins see them via the authenticated /api/admin security endpoint.
-  const data = process.env.ALLOW_SYSTEM_TEST === 'true'
-    ? { ...health, lifecycle: readLifecycleStats() }
-    : health;
+  // Public health must not leak internals (DB host/port, driver errors).
+  // Full detail is available to superadmins via /api/admin/system/logs.
+  const publicHealth = { healthy: health.healthy, since: health.since || null };
+  const data = process.env.ALLOW_SYSTEM_TEST === 'true' && !isProduction
+    ? { ...publicHealth, lifecycle: readLifecycleStats() }
+    : publicHealth;
   res.status(health.healthy ? 200 : 503).json({
     success: health.healthy,
     data,
   });
 });
 
-if (process.env.ALLOW_SYSTEM_TEST === 'true') {
+if (process.env.ALLOW_SYSTEM_TEST === 'true' && !isProduction) {
   const authMiddleware = require('./src/middleware/authMiddleware');
   const roleMiddleware = require('./src/middleware/roleMiddleware');
   app.post('/api/system/test-disconnect-db', authMiddleware, roleMiddleware(['superadmin']), async (req, res) => {
@@ -243,7 +246,13 @@ if (process.env.ALLOW_SYSTEM_TEST === 'true') {
         seconds,
       });
     } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
+      writeSystemLog('error', 'database', 'خطا در تست قطعی دیتابیس', {
+        event: 'db_test_outage_failed',
+        code: 'DB_TEST_FAIL',
+        detail: err.message,
+        stack: err.stack || '',
+      });
+      res.status(500).json({ success: false, message: 'اجرای تست قطعی ناموفق بود' });
     }
   });
 }

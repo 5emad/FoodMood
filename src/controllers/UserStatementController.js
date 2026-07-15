@@ -14,7 +14,7 @@ class UserStatementController {
       const statement = await buildUserStatement(req.user, req.query, settings);
       return res.json({ success: true, data: statement });
     } catch (error) {
-      if (error.status) {
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
       }
       return next(error);

@@ -52,7 +52,10 @@ router.post('/settings/ssl-certificate', roleMiddleware(['superadmin']), (req, r
     { name: 'privateKey', maxCount: 1 },
   ])(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ success: false, message: err.message || 'خطا در آپلود فایل گواهی' });
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'حجم فایل گواهی بیش از حد مجاز است'
+        : 'خطا در آپلود فایل گواهی';
+      return res.status(400).json({ success: false, message });
     }
     next();
   });
@@ -99,7 +102,10 @@ router.get('/backup/export', roleMiddleware(['superadmin']), AdminController.exp
 router.post('/backup/restore', roleMiddleware(['superadmin']), backupRestoreLimiter, (req, res, next) => {
   backupUpload.single('backupFile')(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ success: false, message: err.message || 'خطا در آپلود فایل پشتیبان' });
+      let message = 'خطا در آپلود فایل پشتیبان';
+      if (err.code === 'LIMIT_FILE_SIZE') message = 'حجم فایل پشتیبان بیش از حد مجاز است';
+      else if (/fzbackup/i.test(String(err.message || ''))) message = err.message;
+      return res.status(400).json({ success: false, message });
     }
     next();
   });
