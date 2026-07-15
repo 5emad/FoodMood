@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const AdminController = require('../controllers/AdminController');
 const AnnouncementController = require('../controllers/AnnouncementController');
+const GuestController = require('../controllers/GuestController');
 const MenuController = require('../controllers/MenuController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
@@ -28,9 +29,16 @@ const sslUpload = multer({
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
 
 router.get('/dashboard', AdminController.dashboard);
+router.get('/finance-settings', AdminController.getFinanceSettings);
+router.put('/finance-settings', AdminController.updateFinanceSettings);
+router.get('/finance-statements', AdminController.getFinanceStatements);
+router.get('/finance-statements/months', AdminController.getFinanceMonths);
+router.get('/finance-statements/pdf', AdminController.getFinanceStatementPdf);
 router.get('/workspace-settings', AdminController.getWorkspaceSettings);
 router.get('/reports/access', AdminController.getReportsAccess);
 router.get('/reports/months', AdminController.getReportMonths);
+router.get('/reports/supplier', AdminController.getSupplierReport);
+router.get('/reports/supplier/pdf', AdminController.getSupplierReportPdf);
 router.get('/reports', AdminController.getReports);
 router.get('/reports/pdf', AdminController.getReportPdf);
 router.get('/settings', roleMiddleware(['superadmin']), AdminController.getSettings);
@@ -58,6 +66,13 @@ router.get('/users', AdminController.getUsers);
 router.post('/users', AdminController.createUser);
 router.put('/users/:id', AdminController.updateUser);
 router.delete('/users/:id', AdminController.deleteUser);
+
+router.get('/guests', GuestController.list);
+router.post('/guests', GuestController.create);
+router.put('/guests/:id', GuestController.update);
+router.delete('/guests/:id', GuestController.remove);
+router.post('/guests/:id/reserve', GuestController.reserve);
+router.get('/guests/:id/reservations', GuestController.reservations);
 
 router.get('/announcements', AnnouncementController.list);
 router.post('/announcements', AnnouncementController.create);

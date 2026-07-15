@@ -1,6 +1,7 @@
 const Food = require('../models/Food');
 const MenuItem = require('../models/MenuItem');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
+const { resolveShowPricesForRequest, stripPricesFromFood, stripPricesFromFoodList } = require('../helpers/PermissionHelper');
 
 function toBool(value, fallback = true) {
   if (value === undefined) return fallback;
@@ -32,15 +33,17 @@ class FoodController {
           Food.find(filter).sort({ category: 1, name: 1 }).skip(pageInfo.skip).limit(pageInfo.limit),
           Food.countDocuments(filter),
         ]);
+        const showPrices = await resolveShowPricesForRequest(req);
         return res.json({
           success: true,
-          data: foods,
+          data: stripPricesFromFoodList(foods, showPrices),
           pagination: paginationMeta({ ...pageInfo, total }),
         });
       }
 
       const foods = await Food.find(filter).sort({ category: 1, name: 1 });
-      res.json({ success: true, data: foods });
+      const showPrices = await resolveShowPricesForRequest(req);
+      res.json({ success: true, data: stripPricesFromFoodList(foods, showPrices) });
     } catch (error) {
       next(error);
     }
@@ -52,7 +55,8 @@ class FoodController {
       if (!food) {
         return res.status(404).json({ message: 'غذا یافت نشد' });
       }
-      res.json({ success: true, data: food });
+      const showPrices = await resolveShowPricesForRequest(req);
+      res.json({ success: true, data: stripPricesFromFood(food, showPrices) });
     } catch (error) {
       next(error);
     }
@@ -68,7 +72,8 @@ class FoodController {
         ],
       }).sort({ name: 1 });
 
-      res.json({ success: true, data: foods });
+      const showPrices = await resolveShowPricesForRequest(req);
+      res.json({ success: true, data: stripPricesFromFoodList(foods, showPrices) });
     } catch (error) {
       next(error);
     }

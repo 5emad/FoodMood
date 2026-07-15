@@ -35,15 +35,15 @@ function orderMealCount(order) {
   return order.quantity || order.items?.reduce((sum, item) => sum + (item.quantity || 1), 0) || 1;
 }
 
-function orderOwnerKey(order) {
-  if (order.ldapUsername) return `ldap:${order.ldapUsername}`;
-  return String(order.userId?._id || order.userId || '');
+function guestTypeLabel(type) {
+  return type === 'permanent' ? 'دائم' : 'موقت';
 }
 
-function isSuperadminReportUser(user) {
-  return String(user?.role || '').toLowerCase() === 'superadmin'
-    || String(user?.username || '').toLowerCase() === 'superadmin';
+function isGuestOrder(order) {
+  return Boolean(order.guestId);
 }
+
+const { isSuperadminReportUser } = require('../helpers/PermissionHelper');
 
 function normalizeReportDigits(value) {
   const map = {
@@ -175,6 +175,10 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
     })
     .populate('items.foodId', 'name')
     .populate({
+      path: 'guestId',
+      select: 'guestCode fullName guestType department status validUntil',
+    })
+    .populate({
       path: 'menuItemId',
       populate: [{ path: 'foodId', select: 'name' }, { path: 'dailyMenuId', select: 'date weekId' }],
     });
@@ -222,14 +226,32 @@ async function buildReport(rangeStartInput, rangeEndInput) {
   const byDayMap = new Map();
   const byFoodMap = new Map();
   const byDepartmentMap = new Map();
+  const byDayPrepMap = new Map();
 
   for (const order of orders) {
     const reportDate = reportDateOfOrder(order);
     const dayKey = formatJalaliDate(reportDate);
+    const mealCount = orderMealCount(order);
+    const foodName = orderFoodName(order);
+
     const dayRow = byDayMap.get(dayKey) || { date: reportDate, jalaliDate: dayKey, count: 0, totalPrice: 0 };
     dayRow.count += 1;
     dayRow.totalPrice += Number(order.totalPrice || 0);
     byDayMap.set(dayKey, dayRow);
+
+    const prepRow = byDayPrepMap.get(dayKey) || {
+      date: reportDate,
+      jalaliDate: dayKey,
+      foodCounts: new Map(),
+      totalMeals: 0,
+      userMeals: 0,
+      guestMeals: 0,
+    };
+    prepRow.totalMeals += mealCount;
+    if (isGuestOrder(order)) prepRow.guestMeals += mealCount;
+    else prepRow.userMeals += mealCount;
+    prepRow.foodCounts.set(foodName, (prepRow.foodCounts.get(foodName) || 0) + mealCount);
+    byDayPrepMap.set(dayKey, prepRow);
 
     const actor = orderUserDisplay(order);
     const department = actor.department;
@@ -277,6 +299,8 @@ async function buildReport(rangeStartInput, rangeEndInput) {
   }
 
   for (const order of orders) {
+    if (isGuestOrder(order)) continue;
+
     let row;
     let ownerKey;
     if (order.ldapUsername) {
@@ -321,13 +345,76 @@ async function buildReport(rangeStartInput, rangeEndInput) {
       return acc;
     }, {});
 
+  const byGuestMap = new Map();
+  for (const order of orders) {
+    if (!isGuestOrder(order)) continue;
+    const guest = order.guestId;
+    const guestKey = String(guest?._id || guest || order.guestId);
+    if (!guestKey) continue;
+    if (!byGuestMap.has(guestKey)) {
+      byGuestMap.set(guestKey, {
+        guestId: guest?._id || guest,
+        guestCode: guest?.guestCode || '-',
+        fullName: guest?.fullName || order.orderUserName || 'مهمان',
+        guestType: guest?.guestType || 'temporary',
+        guestTypeLabel: guestTypeLabel(guest?.guestType),
+        department: guest?.department || order.orderUserDepartment || 'مهمان',
+        total: 0,
+        totalPrice: 0,
+        days: reportDates.map((date) => ({ ...date, foods: [] })),
+      });
+    }
+    const row = byGuestMap.get(guestKey);
+    const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
+    const day = row.days.find((item) => item.jalaliDate === jalaliDate);
+    if (day) day.foods.push(orderFoodName(order));
+    row.total += orderMealCount(order);
+    row.totalPrice += Number(order.totalPrice || 0);
+  }
+  const byGuest = [...byGuestMap.values()].filter((item) => item.total > 0)
+    .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
+
+  const byDayPrep = reportDates.map((dateInfo) => {
+    const prep = byDayPrepMap.get(dateInfo.jalaliDate);
+    if (!prep) {
+      return {
+        date: dateInfo.date,
+        jalaliDate: dateInfo.jalaliDate,
+        foods: [],
+        totalMeals: 0,
+        userMeals: 0,
+        guestMeals: 0,
+      };
+    }
+    return {
+      date: prep.date,
+      jalaliDate: prep.jalaliDate,
+      totalMeals: prep.totalMeals,
+      userMeals: prep.userMeals,
+      guestMeals: prep.guestMeals,
+      foods: [...prep.foodCounts.entries()]
+        .map(([foodName, count]) => ({ foodName, count }))
+        .sort((a, b) => b.count - a.count || String(a.foodName).localeCompare(String(b.foodName), 'fa')),
+    };
+  });
+
+  const prepTotals = byDayPrep.reduce((acc, day) => {
+    acc.totalMeals += day.totalMeals;
+    acc.userMeals += day.userMeals;
+    acc.guestMeals += day.guestMeals;
+    return acc;
+  }, { totalMeals: 0, userMeals: 0, guestMeals: 0 });
+
   return {
     totals,
+    prepTotals,
     days: reportDates,
     byDay: [...byDayMap.values()].sort((a, b) => a.date - b.date),
+    byDayPrep,
     byFood: [...byFoodMap.values()].sort((a, b) => b.count - a.count).slice(0, 10),
     byDepartment: [...byDepartmentMap.values()].sort((a, b) => b.count - a.count),
     byUser,
+    byGuest,
     missingUsers,
     orders,
   };

@@ -3,6 +3,7 @@ const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
 const Order = require('../models/Order');
 const { defaultSettings, getOrCreateSettings, getSettingsLean } = require('../services/SettingsService');
+const { getUserCapabilities, stripPricesFromMenuPayload, isAdminPortalUser } = require('../helpers/PermissionHelper');
 
 async function attachMenuItems(dailyMenus, settings) {
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity);
@@ -46,17 +47,23 @@ class MenuController {
         .sort({ date: 1 })
         .lean();
       const settings = (await getOrCreateSettings()).toObject();
+      const capabilities = isAdminPortalUser(req.user)
+        ? { showPrices: true, showStatement: true }
+        : await getUserCapabilities();
 
-      res.json({
-        success: true,
-        data: {
+      const inner = {
           week,
           settings: {
-            showPricesToUsers: settings.showPricesToUsers,
+            showPricesToUsers: capabilities.showPrices,
+            showFinancialStatementToUsers: capabilities.showStatement !== false,
             defaultMenuItemCapacity: settings.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity,
           },
           days: await attachMenuItems(dailyMenus, settings),
-        },
+        };
+
+      res.json({
+        success: true,
+        data: stripPricesFromMenuPayload(inner, capabilities.showPrices),
       });
     } catch (error) {
       next(error);

@@ -7,6 +7,7 @@ const JS_DIR = path.join(ROOT, 'public/js');
 const CLIENT_FILES = [
   'app-base.js',
   'security.js',
+  'portal-capabilities.js',
   'auth-login.js',
   'auth-complete-profile.js',
   'admin-core.js',

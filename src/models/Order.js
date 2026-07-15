@@ -36,6 +36,12 @@ const orderSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
+  guestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Guest',
+    default: null,
+    index: true,
+  },
   orderUserName: {
     type: String,
     trim: true,

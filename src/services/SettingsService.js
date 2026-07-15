@@ -3,6 +3,8 @@ const AppSetting = require('../models/AppSetting');
 const defaultSettings = {
   key: 'default',
   showPricesToUsers: true,
+  showFinancialStatementToUsers: true,
+  organizationSharePercent: 50,
   organizationName: 'سامانه تغذیه',
   publicUrl: '',
   maxActiveReservations: 0,
@@ -46,6 +48,8 @@ function adminWorkspaceSettings(settings) {
     organizationName: raw.organizationName || 'سامانه تغذیه',
     defaultMenuItemCapacity: Number(raw.defaultMenuItemCapacity ?? 20),
     showPricesToUsers: raw.showPricesToUsers !== false,
+    showFinancialStatementToUsers: raw.showFinancialStatementToUsers !== false,
+    organizationSharePercent: Math.min(100, Math.max(0, Number(raw.organizationSharePercent) || 0)),
   };
 }
 

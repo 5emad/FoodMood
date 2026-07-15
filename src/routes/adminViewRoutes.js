@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
-const { getReportsAccessForUser } = require('../helpers/ReportsAccessHelper');
+const { getAdminCapabilities } = require('../helpers/PermissionHelper');
 const { getSettingsLean, adminWorkspaceSettings } = require('../services/SettingsService');
 
 const superadminOnly = roleMiddleware(['superadmin']);
@@ -14,19 +14,21 @@ router.get('/', authMiddleware, roleMiddleware(['admin', 'superadmin']), (req, r
 
 router.get('/dashboard', authMiddleware, roleMiddleware(['admin', 'superadmin']), async (req, res, next) => {
   try {
-    const isSuperadmin = req.user?.role === 'superadmin';
-    const [reportsAccess, settings] = await Promise.all([
-      getReportsAccessForUser(req.user),
+    const [capabilities, settings] = await Promise.all([
+      getAdminCapabilities(req.user),
       getSettingsLean(),
     ]);
     const tab = String(req.query.tab || '');
-    const validTabs = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'announcements'];
+    const validTabs = Object.entries(capabilities.tabs || {})
+      .filter(([, allowed]) => allowed)
+      .map(([name]) => name);
     const activePage = validTabs.includes(tab) ? tab : 'reports';
     res.render('admin/dashboard', {
       user: req.user,
-      isSuperadmin,
+      isSuperadmin: capabilities.isSuperadmin,
       activePage,
-      reportsAccess,
+      reportsAccess: capabilities.reportsAccess,
+      capabilities,
       workspaceSettings: adminWorkspaceSettings(settings),
     });
   } catch (error) {

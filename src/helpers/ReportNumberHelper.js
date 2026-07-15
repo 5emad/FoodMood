@@ -22,4 +22,24 @@ async function nextReportNumber() {
   return `${PREFIX}${String(counter.seq).padStart(PAD_LEN, '0')}`;
 }
 
-module.exports = { nextReportNumber };
+const SUPPLIER_COUNTER_ID = 'supplierReportNumber';
+const SUPPLIER_PREFIX = 'FSP-';
+const SUPPLIER_INITIAL_SEQ = 100000;
+
+async function nextSupplierReportNumber() {
+  await Counter.updateOne(
+    { _id: SUPPLIER_COUNTER_ID },
+    { $setOnInsert: { seq: SUPPLIER_INITIAL_SEQ } },
+    { upsert: true }
+  );
+
+  const counter = await Counter.findOneAndUpdate(
+    { _id: SUPPLIER_COUNTER_ID },
+    { $inc: { seq: 1 } },
+    { new: true }
+  );
+
+  return `${SUPPLIER_PREFIX}${String(counter.seq).padStart(PAD_LEN, '0')}`;
+}
+
+module.exports = { nextReportNumber, nextSupplierReportNumber };

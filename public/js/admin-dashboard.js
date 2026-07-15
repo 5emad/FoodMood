@@ -2,11 +2,18 @@
   'use strict';
   var bootEl = document.getElementById('admin-bootstrap');
   var boot = bootEl ? JSON.parse(bootEl.textContent || '{}') : {};
-  var currentUserRole = boot.currentUserRole || '';
-  var isSuperadmin = !!boot.isSuperadmin;
+  var Caps = window.PortalCapabilities;
+  var adminCapabilities = Caps
+    ? Caps.normalizeAdminCapabilities(boot.capabilities, {
+      isSuperadmin: !!boot.isSuperadmin,
+      role: boot.currentUserRole || '',
+      reportsAccess: boot.reportsAccess,
+    })
+    : (boot.capabilities || { isSuperadmin: !!boot.isSuperadmin, tabs: {}, features: {}, reportsAccess: boot.reportsAccess });
+  var isSuperadmin = !!adminCapabilities.isSuperadmin;
   var currentUserId = boot.currentUserId || '';
   var appSettings = boot.appSettings || {};
-  var reportsAccess = boot.reportsAccess || { allowed: true, pendingCount: 0, message: null };
+  var reportsAccess = adminCapabilities.reportsAccess || boot.reportsAccess || { allowed: true, pendingCount: 0, message: null };
 
 
 let foods = [];
@@ -15,7 +22,13 @@ let currentWeeklyData = null;
 let currentMonthlyData = null;
 let orderPagination = { page: 1, limit: 20, total: 0, totalPages: 1 };
 let currentSubTab = 'weekly';
-const VALID_ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'announcements'];
+let currentWeeklyReportTab = 'personnel';
+const VALID_ADMIN_TABS = Caps
+  ? Caps.allowedAdminTabs(adminCapabilities)
+  : (adminCapabilities?.tabs
+    ? Object.entries(adminCapabilities.tabs).filter(([, allowed]) => allowed).map(([name]) => name)
+    : ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements']);
+if (Caps) Caps.applyAdminSidebarTabs(adminCapabilities);
 
 function applyWorkspaceSettings() {
   const sidebarOrgEl = document.getElementById('sidebarOrgName');
@@ -105,6 +118,9 @@ function goToOrdersForConfirm() {
 }
 
 async function openAdminTab(tabName) {
+  if (!VALID_ADMIN_TABS.includes(tabName)) {
+    tabName = VALID_ADMIN_TABS[0] || 'orders';
+  }
   if (tabName === 'reports') {
     await refreshReportsAccess();
     if (!reportsAccess.allowed) {
@@ -113,12 +129,18 @@ async function openAdminTab(tabName) {
     }
   }
   activateSidebarTab(tabName);
+  document.body.classList.toggle('admin-guests-tab', tabName === 'guests');
   if (!document.getElementById(`tab-${tabName}`)) return;
   if (tabName === 'reports') loadWeeks().then(() => loadWeeklyReport());
   if (tabName === 'weeks') loadWeeksManager();
   if (tabName === 'users') loadUsers();
   if (tabName === 'departments') loadDepts();
   if (tabName === 'announcements') loadAnnouncementsAdmin();
+  if (tabName === 'guests') loadGuestsAdmin();
+  if (tabName === 'finance') {
+    await loadFinanceSettings();
+    await initFinanceStatementsPanel();
+  }
   if (tabName === 'orders') loadOrders();
   if (tabName === 'foods') loadFoods();
 }
@@ -156,17 +178,116 @@ function switchSubTab(tab) {
   const pane = document.getElementById(`sub-${tab}`);
   if (pane) pane.classList.add('active');
   updateReportControls();
-  if (tab === 'weekly') loadWeeklyReport();
+  if (tab === 'weekly') {
+    if (currentWeeklyReportTab === 'supplier') loadSupplierReport();
+    else loadWeeklyReport();
+  }
   if (tab === 'monthly') loadMonthlyBySelect();
+}
+
+function switchWeeklyReportTab(tab) {
+  currentWeeklyReportTab = tab === 'supplier' ? 'supplier' : 'personnel';
+  document.querySelectorAll('.weekly-report-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.weeklyReport === currentWeeklyReportTab);
+  });
+  const personnelPane = document.getElementById('weeklyPersonnelPane');
+  const supplierPane = document.getElementById('weeklySupplierPane');
+  if (personnelPane) personnelPane.hidden = currentWeeklyReportTab !== 'personnel';
+  if (supplierPane) supplierPane.hidden = currentWeeklyReportTab !== 'supplier';
+  updateReportControls();
+  if (currentWeeklyReportTab === 'supplier') loadSupplierReport();
+  else loadWeeklyReport();
 }
 
 function updateReportControls() {
   const weekSelect = document.getElementById('reportWeekSelect');
+  const pdfBtn = document.getElementById('pdfBtn');
   if (weekSelect) weekSelect.style.display = currentSubTab === 'weekly' ? '' : 'none';
+  if (pdfBtn) {
+    if (currentSubTab === 'weekly' && currentWeeklyReportTab === 'supplier') {
+      pdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> PDF تامین‌کننده';
+      pdfBtn.title = 'دانلود گزارش آماده‌سازی غذا (بدون امضا)';
+    } else {
+      pdfBtn.innerHTML = '<i class="fas fa-file-pdf"></i> دانلود PDF';
+      pdfBtn.title = '';
+    }
+  }
 }
 
 function onReportWeekChange() {
-  if (currentSubTab === 'weekly') loadWeeklyReport();
+  if (currentSubTab !== 'weekly') return;
+  if (currentWeeklyReportTab === 'supplier') loadSupplierReport();
+  else loadWeeklyReport();
+}
+
+async function loadSupplierReport() {
+  if (!reportsAccess.allowed) return;
+  const wrap = document.getElementById('supplierReportWrap');
+  if (!wrap) return;
+  const weekId = document.getElementById('reportWeekSelect')?.value;
+  const query = weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+  wrap.innerHTML = '<div style="padding:28px;text-align:center"><div class="spinner"></div></div>';
+  const data = await api(`/api/admin/reports/supplier?${query}`);
+  if (!data.success) {
+    wrap.innerHTML = `<div class="empty-state"><p>${esc(data.message || 'خطا در دریافت گزارش تامین‌کننده')}</p><p style="font-size:.8rem;color:var(--text-muted);margin-top:8px">اگر تازه به‌روزرسانی کرده‌اید، سرور را یک‌بار restart کنید.</p></div>`;
+    return;
+  }
+  renderSupplierReport(data.data);
+}
+
+function renderSupplierReport(report) {
+  const wrap = document.getElementById('supplierReportWrap');
+  if (!wrap) return;
+  const days = report.byDayPrep || [];
+  const totals = report.prepTotals || { totalMeals: 0, userMeals: 0, guestMeals: 0 };
+  const hasMeals = days.some((day) => (day.foods || []).length > 0);
+
+  if (!hasMeals) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-kitchen-set',
+      title: 'سفارش تاییدشده‌ای برای این هفته نیست',
+      desc: 'پس از تایید سفارش‌های پرسنل و مهمان، تعداد پرس‌ها اینجا نمایش داده می‌شود.',
+    });
+    return;
+  }
+
+  const summary = `
+    <div class="supplier-summary-grid no-print">
+      <div class="supplier-summary-card"><span class="supplier-summary-val">${Number(totals.totalMeals || 0).toLocaleString('fa-IR')}</span><span class="supplier-summary-label">جمع کل پرس</span></div>
+      <div class="supplier-summary-card"><span class="supplier-summary-val">${Number(totals.userMeals || 0).toLocaleString('fa-IR')}</span><span class="supplier-summary-label">پرسنل</span></div>
+      <div class="supplier-summary-card"><span class="supplier-summary-val">${Number(totals.guestMeals || 0).toLocaleString('fa-IR')}</span><span class="supplier-summary-label">مهمان</span></div>
+    </div>`;
+
+  const dayBlocks = days.map((day) => {
+    const foods = day.foods || [];
+    if (!foods.length) {
+      return `<div class="supplier-day-card is-empty">
+        <div class="supplier-day-head"><span>${esc(day.jalaliDate)}</span><span class="supplier-day-total">۰ پرس</span></div>
+        <div class="supplier-day-empty">بدون سفارش</div>
+      </div>`;
+    }
+    const rows = foods.map((food, index) => `
+      <tr>
+        <td>${(index + 1).toLocaleString('fa-IR')}</td>
+        <td class="col-name" style="text-align:right;font-weight:700">${esc(food.foodName)}</td>
+        <td class="col-total"><strong>${Number(food.count || 0).toLocaleString('fa-IR')}</strong></td>
+      </tr>`).join('');
+    return `<div class="supplier-day-card">
+      <div class="supplier-day-head">
+        <span><i class="fas fa-calendar-day"></i> ${esc(day.jalaliDate)}</span>
+        <span class="supplier-day-total">${Number(day.totalMeals || 0).toLocaleString('fa-IR')} پرس</span>
+      </div>
+      <div class="table-wrap" style="border:none;border-radius:0">
+        <table class="report-table">
+          <thead><tr><th>#</th><th style="text-align:right">نام غذا</th><th>تعداد پرس</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="supplier-day-split">پرسنل: ${Number(day.userMeals || 0).toLocaleString('fa-IR')} — مهمان: ${Number(day.guestMeals || 0).toLocaleString('fa-IR')}</div>
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = `${summary}<div class="supplier-days-grid">${dayBlocks}</div>`;
 }
 
 async function loadWeeklyReport() {
@@ -195,10 +316,10 @@ function groupReportUsersByDepartment(users) {
 
 function renderWeeklyTable(r) {
   const wrap = document.getElementById('weeklyReportWrap');
-  const isSuperadminReportUser = (u) =>
-    String(u?.role || '').toLowerCase() === 'superadmin'
-    || String(u?.username || '').toLowerCase() === 'superadmin'
-    || String(u?.fullName || '').toLowerCase() === 'superadmin';
+  const isSuperadminReportUser = (window.PortalCapabilities && window.PortalCapabilities.isSuperadminReportUser)
+    || ((u) => String(u?.role || '').toLowerCase() === 'superadmin'
+      || String(u?.username || '').toLowerCase() === 'superadmin'
+      || String(u?.fullName || '').toLowerCase() === 'superadmin');
   const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
   const reportDays = r.days || byUser[0]?.days || [];
   const dayHeaders = reportDays.map(d => `<th>${d.jalaliDate}</th>`).join('');
@@ -212,7 +333,8 @@ function renderWeeklyTable(r) {
       <td>${esc(u.department)}</td>
       ${reportDays.map(reportDay => {
         const day = (u.days || []).find(d => d.jalaliDate === reportDay.jalaliDate);
-        return `<td>${day?.foods?.length ? day.foods.map(esc).join('<br>') : '-'}</td>`;
+        if (!day?.foods?.length) return '<td class="report-day-cell">-</td>';
+        return `<td class="report-day-cell">${day.foods.map((food) => `<div class="report-food-item">${esc(food)}</div>`).join('')}</td>`;
       }).join('')}
       <td class="col-total"><strong>${Number(u.total || 0).toLocaleString('fa-IR')}</strong></td>
       <td class="col-price" title="${money(u.totalPrice || 0)}">${compactMoney(u.totalPrice || 0)}</td>
@@ -220,7 +342,8 @@ function renderWeeklyTable(r) {
     return header + userRows;
   }).join('');
   const missingTable = renderMissingUsersTable(r);
-  if (!rows && !missingTable) {
+  const guestTable = renderGuestWeeklyTable(r);
+  if (!rows && !missingTable && !guestTable) {
     wrap.innerHTML = '<div class="empty-state"><p>برای این هفته سفارشی ثبت نشده است.</p></div>';
     return;
   }
@@ -229,7 +352,43 @@ function renderWeeklyTable(r) {
       <thead><tr><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : '<div class="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>';
-  wrap.innerHTML = mainTable + missingTable;
+  wrap.innerHTML = mainTable + missingTable + guestTable;
+}
+
+function renderGuestWeeklyTable(r) {
+  const byGuest = r.byGuest || [];
+  const reportDays = r.days || byGuest[0]?.days || [];
+  if (!byGuest.length) return '';
+  const dayHeaders = reportDays.map((d) => `<th>${d.jalaliDate}</th>`).join('');
+  const colSpan = reportDays.length + 5;
+  const rows = byGuest.map((guest) => `
+    <tr>
+      <td><span class="guest-code-badge">${esc(guest.guestCode)}</span></td>
+      <td style="text-align:right;font-weight:700">${esc(guest.fullName)}</td>
+      <td>${esc(guest.guestTypeLabel || (guest.guestType === 'permanent' ? 'دائم' : 'موقت'))}</td>
+      ${reportDays.map((reportDay) => {
+        const day = (guest.days || []).find((d) => d.jalaliDate === reportDay.jalaliDate);
+        if (!day?.foods?.length) return '<td class="report-day-cell">-</td>';
+        return `<td class="report-day-cell">${day.foods.map((food) => `<div class="report-food-item">${esc(food)}</div>`).join('')}</td>`;
+      }).join('')}
+      <td class="col-total"><strong>${Number(guest.total || 0).toLocaleString('fa-IR')}</strong></td>
+      <td class="col-price" title="${money(guest.totalPrice || 0)}">${compactMoney(guest.totalPrice || 0)}</td>
+    </tr>`).join('');
+  return `
+  <div class="card mt-3">
+    <div class="card-header">
+      <div class="card-title"><i class="fas fa-user-tag" style="margin-left:8px;color:var(--primary)"></i> گزارش مهمان‌ها</div>
+      <span class="badge badge-primary">${byGuest.length.toLocaleString('fa-IR')} مهمان</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap report-table-scroll" style="border:none;border-radius:0;background:transparent">
+        <table class="report-table report-table-wide">
+          <thead><tr><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="${colSpan}" class="empty-cell">سفارش مهمان ثبت نشده</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
 }
 
 /* Separate table for users who did not place any order in the range */
@@ -269,22 +428,23 @@ function renderMissingUsersTable(r) {
 
 function renderDailyStats(r) {
   const grid = document.getElementById('dailyStatsGrid');
-  const byUser = r.byUser || [];
-  if (!byUser.length) { grid.innerHTML = ''; return; }
-  const dayMap = {};
-  byUser.forEach(u => {
-    u.days.forEach(d => {
-      if (!dayMap[d.jalaliDate]) dayMap[d.jalaliDate] = {};
-      d.foods.forEach(f => { dayMap[d.jalaliDate][f] = (dayMap[d.jalaliDate][f] || 0) + 1; });
-    });
-  });
-  grid.innerHTML = Object.entries(dayMap).map(([day, foodCounts]) => {
-    const total = Object.values(foodCounts).reduce((a, b) => a + b, 0);
-    const rows = Object.entries(foodCounts).map(([f, c]) => `<div class="dsc-row"><span>${esc(f)}</span><strong>${c}</strong></div>`).join('');
-    return `<div class="dsc">
-      <div class="dsc-head">${day}</div>
-      <div class="dsc-body">${rows || '<div style="color:#999;text-align:center;font-size:.8rem;padding:8px">بدون سفارش</div>'}</div>
-      <div class="dsc-total">جمع: ${total} پرس</div>
+  if (!grid) return;
+  const days = r.byDayPrep || [];
+  const hasMeals = days.some((day) => (day.foods || []).length > 0);
+  if (!hasMeals) { grid.innerHTML = ''; return; }
+
+  grid.innerHTML = days.map((day) => {
+    const foods = day.foods || [];
+    const rows = foods.map((food) =>
+      `<div class="dsc-row"><span class="dsc-food-name" title="${esc(food.foodName)}">${esc(food.foodName)}</span><strong class="dsc-food-count">${Number(food.count || 0).toLocaleString('fa-IR')}</strong></div>`
+    ).join('');
+    const total = Number(day.totalMeals || 0);
+    const splitNote = `<div class="dsc-split">پرسنل: ${Number(day.userMeals || 0).toLocaleString('fa-IR')} — مهمان: ${Number(day.guestMeals || 0).toLocaleString('fa-IR')}</div>`;
+    return `<div class="dsc${foods.length ? '' : ' is-empty'}">
+      <div class="dsc-head">${esc(day.jalaliDate)}</div>
+      <div class="dsc-body">${rows || '<div class="dsc-empty">بدون سفارش</div>'}</div>
+      <div class="dsc-total">جمع: ${total.toLocaleString('fa-IR')} پرس</div>
+      ${splitNote}
     </div>`;
   }).join('');
 }
@@ -318,10 +478,10 @@ async function loadMonthlyBySelect() {
 
 function renderMonthlyTable(r) {
   const wrap = document.getElementById('monthlyReportWrap');
-  const isSuperadminReportUser = (u) =>
-    String(u?.role || '').toLowerCase() === 'superadmin'
-    || String(u?.username || '').toLowerCase() === 'superadmin'
-    || String(u?.fullName || '').toLowerCase() === 'superadmin';
+  const isSuperadminReportUser = (window.PortalCapabilities && window.PortalCapabilities.isSuperadminReportUser)
+    || ((u) => String(u?.role || '').toLowerCase() === 'superadmin'
+      || String(u?.username || '').toLowerCase() === 'superadmin'
+      || String(u?.fullName || '').toLowerCase() === 'superadmin');
   const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
   const rows = byUser
     .map((u) => ({
@@ -342,6 +502,18 @@ function renderMonthlyTable(r) {
   }
   const totalCount = rows.reduce((s, u) => s + u.count, 0);
   const totalPrice = rows.reduce((s, u) => s + u.price, 0);
+  const guestRows = (r.byGuest || [])
+    .map((guest) => ({
+      code: guest.guestCode || '-',
+      name: guest.fullName || '-',
+      type: guest.guestTypeLabel || (guest.guestType === 'permanent' ? 'دائم' : 'موقت'),
+      count: Number(guest.total || 0),
+      price: Number(guest.totalPrice || 0),
+    }))
+    .filter((guest) => guest.count > 0 || guest.price > 0)
+    .sort((a, b) => b.count - a.count || b.price - a.price);
+  const guestTotalCount = guestRows.reduce((s, guest) => s + guest.count, 0);
+  const guestTotalPrice = guestRows.reduce((s, guest) => s + guest.price, 0);
   wrap.innerHTML = `<div class="table-wrap report-table-scroll">
     <table class="report-table">
       <thead><tr><th>#</th><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
@@ -353,7 +525,27 @@ function renderMonthlyTable(r) {
           <td class="col-price" title="${money(totalPrice)}">${compactMoney(totalPrice)}</td>
         </tr>
       </tbody>
-    </table></div>`;
+    </table></div>
+    ${guestRows.length ? `<div class="card mt-3">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-user-tag" style="margin-left:8px;color:var(--primary)"></i> گزارش ماهیانه مهمان‌ها</div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap report-table-scroll" style="border:none;border-radius:0;background:transparent">
+          <table class="report-table">
+            <thead><tr><th>#</th><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+            <tbody>
+              ${guestRows.map((guest, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td><span class="guest-code-badge">${esc(guest.code)}</span></td><td class="col-name" style="text-align:right;font-weight:700">${esc(guest.name)}</td><td>${esc(guest.type)}</td><td class="col-total">${guest.count.toLocaleString('fa-IR')}</td><td class="col-price" title="${money(guest.price)}">${compactMoney(guest.price)}</td></tr>`).join('')}
+              <tr class="report-total-row">
+                <td colspan="4" style="text-align:right">جمع کل مهمان</td>
+                <td class="col-total">${guestTotalCount.toLocaleString('fa-IR')}</td>
+                <td class="col-price" title="${money(guestTotalPrice)}">${compactMoney(guestTotalPrice)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>` : ''}`;
 }
 
 function showMonthlyReportPlaceholder() {
@@ -410,7 +602,13 @@ async function downloadPdf() {
       url += `jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`;
     } else {
       const weekId = document.getElementById('reportWeekSelect')?.value;
-      url += weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+      if (currentWeeklyReportTab === 'supplier') {
+        url = '/api/admin/reports/supplier/pdf?';
+        url += weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+      } else {
+        url = '/api/admin/reports/pdf?';
+        url += weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+      }
     }
     const res = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/pdf, application/json' } });
     if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
@@ -1266,13 +1464,616 @@ async function loadAnnouncementsAdmin() {
     </table>`;
 }
 
+/* ===== GUESTS ===== */
+const guestsMap = new Map();
+let guestsCache = [];
+let selectedGuestId = '';
+let guestReserveWeekId = '';
+
+function guestInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'م';
+  if (parts.length === 1) return parts[0].slice(0, 1);
+  return `${parts[0].slice(0, 1)}${parts[parts.length - 1].slice(0, 1)}`;
+}
+
+function updateGuestStats(items = []) {
+  const set = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = Number(value || 0).toLocaleString('fa-IR');
+  };
+  set('guestStatTotal', items.length);
+  set('guestStatPermanent', items.filter((g) => g.guestType === 'permanent').length);
+  set('guestStatTemporary', items.filter((g) => g.guestType === 'temporary').length);
+  set('guestStatActive', items.filter((g) => g.status === 'active').length);
+}
+
+function renderGuestsTable(items = []) {
+  const wrap = document.getElementById('guestsTableWrap');
+  if (!wrap) return;
+  if (!items.length) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-user-tag',
+      title: 'مهمانی ثبت نشده است',
+      desc: 'با دکمه «مهمان جدید» اولین مهمان را اضافه کنید.',
+    });
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="table guest-table">
+      <thead>
+        <tr>
+          <th>مهمان</th>
+          <th>کد</th>
+          <th>نوع</th>
+          <th>واحد</th>
+          <th>وضعیت</th>
+          <th style="text-align:center">عملیات</th>
+        </tr>
+      </thead>
+      <tbody>${items.map((guest) => `
+        <tr>
+          <td>
+            <div class="guest-row-name">
+              <span class="guest-row-avatar">${esc(guestInitials(guest.fullName))}</span>
+              <span>${esc(guest.fullName)}</span>
+            </div>
+          </td>
+          <td><span class="guest-code-pill">${esc(guest.guestCode)}</span></td>
+          <td><span class="guest-type-chip ${guest.guestType === 'permanent' ? 'permanent' : 'temporary'}">${guest.guestType === 'permanent' ? 'دائم' : 'موقت'}</span></td>
+          <td>${esc(guest.department || '—')}</td>
+          <td><span class="guest-status-chip ${guest.status === 'active' ? 'active' : 'inactive'}">${guest.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
+          <td>
+            <div class="guest-actions">
+              <button class="btn btn-primary btn-sm" onclick="openGuestReserve('${guest._id}')" title="رزرو هفتگی"><i class="fas fa-calendar-check"></i></button>
+              <button class="btn btn-outline btn-sm" onclick="editGuest('${guest._id}')" title="ویرایش"><i class="fas fa-pen"></i></button>
+              <button class="btn btn-danger btn-sm" onclick="deleteGuest('${guest._id}')" title="حذف"><i class="fas fa-trash"></i></button>
+            </div>
+          </td>
+        </tr>
+      `).join('')}</tbody>
+    </table>`;
+}
+
+function filterGuestsTable() {
+  const term = String(document.getElementById('guestSearchInput')?.value || '').trim().toLowerCase();
+  const type = document.getElementById('guestTypeFilter')?.value || '';
+  const status = document.getElementById('guestStatusFilter')?.value || '';
+  const filtered = guestsCache.filter((guest) => {
+    if (type && guest.guestType !== type) return false;
+    if (status && guest.status !== status) return false;
+    if (!term) return true;
+    const haystack = [
+      guest.fullName,
+      guest.guestCode,
+      guest.department,
+      guest.notes,
+    ].map((v) => String(v || '').toLowerCase()).join(' ');
+    return haystack.includes(term);
+  });
+  renderGuestsTable(filtered);
+}
+
+function toggleGuestValidUntil() {
+  const type = document.getElementById('guest_type')?.value || 'temporary';
+  const wrap = document.getElementById('guest_valid_wrap');
+  if (wrap) wrap.style.display = type === 'temporary' ? '' : 'none';
+}
+
+function openAddGuest() {
+  const overlay = document.getElementById('guestFormOverlay');
+  if (overlay) overlay.hidden = false;
+  document.getElementById('guestFormTitle').textContent = 'ثبت مهمان';
+  document.getElementById('editGuestId').value = '';
+  document.getElementById('guestForm').reset();
+  document.getElementById('guest_type').value = 'temporary';
+  document.getElementById('guest_status').value = 'active';
+  toggleGuestValidUntil();
+}
+
+function closeGuestForm() {
+  const overlay = document.getElementById('guestFormOverlay');
+  if (overlay) overlay.hidden = true;
+}
+
+function editGuest(id) {
+  const guest = guestsMap.get(String(id));
+  if (!guest) return;
+  const overlay = document.getElementById('guestFormOverlay');
+  if (overlay) overlay.hidden = false;
+  document.getElementById('guestFormTitle').textContent = 'ویرایش مهمان';
+  document.getElementById('editGuestId').value = guest._id;
+  document.getElementById('guest_fullName').value = guest.fullName || '';
+  document.getElementById('guest_type').value = guest.guestType || 'temporary';
+  document.getElementById('guest_department').value = guest.department || '';
+  document.getElementById('guest_status').value = guest.status || 'active';
+  document.getElementById('guest_notes').value = guest.notes || '';
+  document.getElementById('guest_validUntil').value = guest.validUntil
+    ? new Date(guest.validUntil).toLocaleDateString('fa-IR-u-ca-persian')
+    : '';
+  toggleGuestValidUntil();
+}
+
+async function saveGuest(event) {
+  event.preventDefault();
+  const id = document.getElementById('editGuestId').value;
+  const payload = {
+    fullName: document.getElementById('guest_fullName').value.trim(),
+    guestType: document.getElementById('guest_type').value,
+    department: document.getElementById('guest_department').value.trim(),
+    status: document.getElementById('guest_status').value,
+    notes: document.getElementById('guest_notes').value.trim(),
+    validUntil: document.getElementById('guest_type').value === 'temporary'
+      ? document.getElementById('guest_validUntil').value.trim() || null
+      : null,
+  };
+  const data = id
+    ? await api(`/api/admin/guests/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+    : await api('/api/admin/guests', { method: 'POST', body: JSON.stringify(payload) });
+  if (data.success) {
+    closeGuestForm();
+    loadGuestsAdmin();
+    notify(data.message || saveDoneMessage(!!id, 'مهمان'), 'success');
+  } else {
+    notify(data.message || 'خطا در ذخیره', 'error');
+  }
+}
+
+async function deleteGuest(id) {
+  const guest = guestsMap.get(String(id));
+  if (!(await confirmAction({
+    title: 'حذف مهمان؟',
+    text: guest ? `«${guest.fullName}» (کد ${guest.guestCode}) حذف می‌شود.` : 'این مهمان حذف می‌شود.',
+    confirmText: 'حذف',
+    icon: 'warning',
+  }))) return;
+  const data = await api(`/api/admin/guests/${id}`, { method: 'DELETE' });
+  if (data.success) {
+    if (selectedGuestId === String(id)) closeGuestReservePanel();
+    loadGuestsAdmin();
+    notify(data.message || 'مهمان حذف شد.');
+  } else {
+    notify(data.message || 'خطا در حذف', 'error');
+  }
+}
+
+function closeGuestReservePanel() {
+  selectedGuestId = '';
+  const panel = document.getElementById('guestReservePanel');
+  const overlay = document.getElementById('guestReserveOverlay');
+  if (panel) {
+    panel.classList.remove('is-open');
+    panel.setAttribute('aria-hidden', 'true');
+  }
+  if (overlay) overlay.hidden = true;
+  document.body.classList.remove('guest-drawer-open');
+}
+
+async function openGuestReserve(id) {
+  const guest = guestsMap.get(String(id));
+  if (!guest) return;
+  selectedGuestId = String(id);
+  const panel = document.getElementById('guestReservePanel');
+  const overlay = document.getElementById('guestReserveOverlay');
+  document.getElementById('guestReserveName').textContent = guest.fullName || '—';
+  document.getElementById('guestReserveCode').textContent = `کد: ${guest.guestCode || '—'}`;
+  if (!weeks.length) await loadWeeks();
+  const sel = document.getElementById('guestReserveWeekSelect');
+  if (sel) {
+    sel.innerHTML = weeks.map((w) => `<option value="${w._id}">${esc(weekSelectLabel(w))}</option>`).join('');
+    const active = weeks.find((w) => w.isActive);
+    if (active) sel.value = active._id;
+  }
+  if (overlay) overlay.hidden = false;
+  if (panel) {
+    panel.classList.add('is-open');
+    panel.setAttribute('aria-hidden', 'false');
+  }
+  document.body.classList.add('guest-drawer-open');
+  await loadGuestReserveMenu();
+}
+
+async function loadGuestReserveMenu() {
+  const wrap = document.getElementById('guestReserveMenuWrap');
+  if (!wrap || !selectedGuestId) return;
+  const weekId = document.getElementById('guestReserveWeekSelect')?.value;
+  if (!weekId) {
+    wrap.innerHTML = '<div class="text-muted" style="font-size:.82rem">هفته را انتخاب کنید</div>';
+    return;
+  }
+  guestReserveWeekId = weekId;
+  wrap.innerHTML = '<div style="padding:16px;text-align:center"><div class="spinner"></div></div>';
+  const [menuData, reserveData] = await Promise.all([
+    api(`/api/menu/weeks/${encodeURIComponent(weekId)}`),
+    api(`/api/admin/guests/${encodeURIComponent(selectedGuestId)}/reservations?weekId=${encodeURIComponent(weekId)}`),
+  ]);
+  if (!menuData.success) {
+    wrap.innerHTML = '<div class="text-muted">منوی این هفته در دسترس نیست</div>';
+    return;
+  }
+  const days = menuData.data?.days || [];
+  const orders = reserveData.success ? (reserveData.data?.orders || []) : [];
+  const reservedByDay = new Map();
+  orders.forEach((order) => {
+    const dayKey = order.menuItemId?.dailyMenuId?.date || order.orderDate;
+    const jalali = dayKey ? new Date(dayKey).toLocaleDateString('fa-IR-u-ca-persian') : '';
+    reservedByDay.set(jalali, order);
+  });
+  wrap.innerHTML = days.map((day) => {
+    const jalali = day.date ? new Date(day.date).toLocaleDateString('fa-IR-u-ca-persian') : '';
+    const reserved = reservedByDay.get(jalali);
+    if (reserved) {
+      const food = reserved.menuItemId?.foodId?.name || reserved.items?.map((i) => i.foodId?.name).filter(Boolean).join('، ') || 'رزرو شده';
+      return `<div class="guest-day-card"><div class="guest-day-title">${jalali}</div><div class="guest-day-reserved"><i class="fas fa-check-circle"></i> ${esc(food)}</div></div>`;
+    }
+    const items = (day.items || []).filter((item) => item.isAvailable && item.foodId?.isAvailable !== false);
+    if (!items.length) {
+      return `<div class="guest-day-card"><div class="guest-day-title">${jalali}</div><div class="text-muted" style="font-size:.8rem">غذایی در منو نیست</div></div>`;
+    }
+    const buttons = items.map((item) => {
+      const full = Number(item.reservedCount || 0) >= Number(item.effectiveCapacity || 0) && Number(item.effectiveCapacity || 0) > 0;
+      const foodName = item.foodId?.name || 'غذا';
+      const price = item.price ?? item.customPrice ?? item.foodId?.price ?? 0;
+      return `<button type="button" class="guest-food-btn" ${full ? 'disabled' : ''} onclick="reserveGuestFood('${item._id}')">
+        <span>${esc(foodName)}</span>
+        <span>${full ? 'تکمیل' : money(price)}</span>
+      </button>`;
+    }).join('');
+    return `<div class="guest-day-card"><div class="guest-day-title">${jalali}</div><div class="guest-food-actions">${buttons}</div></div>`;
+  }).join('') || '<div class="text-muted" style="font-size:.82rem">روزی در منو نیست</div>';
+}
+
+async function reserveGuestFood(menuItemId) {
+  if (!selectedGuestId || !menuItemId) return;
+  const data = await api(`/api/admin/guests/${encodeURIComponent(selectedGuestId)}/reserve`, {
+    method: 'POST',
+    body: JSON.stringify({ menuItemId }),
+  });
+  if (data.success) {
+    notify(data.message || 'رزرو ثبت شد', 'success');
+    loadGuestReserveMenu();
+  } else {
+    notify(data.message || 'خطا در رزرو', 'error');
+  }
+}
+
+async function loadGuestsAdmin() {
+  const data = await api('/api/admin/guests');
+  guestsCache = data.success ? data.data : [];
+  guestsMap.clear();
+  guestsCache.forEach((guest) => guestsMap.set(String(guest._id), guest));
+  updateGuestStats(guestsCache);
+  filterGuestsTable();
+}
+
+function updateFinancePreview() {
+  const orgInput = document.getElementById('financeOrgPercent');
+  const orgPreview = document.getElementById('financeOrgPreview');
+  const personalPreview = document.getElementById('financePersonalPreview');
+  if (!orgInput || !orgPreview || !personalPreview) return;
+  const org = Math.min(100, Math.max(0, Number(orgInput.value) || 0));
+  const personal = 100 - org;
+  orgPreview.textContent = `${org.toLocaleString('fa-IR')}٪`;
+  personalPreview.textContent = `${personal.toLocaleString('fa-IR')}٪`;
+}
+
+async function loadFinanceSettings() {
+  const showEl = document.getElementById('financeShowToUsers');
+  const orgEl = document.getElementById('financeOrgPercent');
+  if (!showEl || !orgEl) return;
+
+  const data = await api('/api/admin/finance-settings');
+  if (!data.success || !data.data) {
+    notify(data.message || 'خطا در بارگذاری تنظیمات مالی', 'error');
+    return;
+  }
+
+  showEl.checked = data.data.showFinancialStatementToUsers !== false;
+  orgEl.value = String(data.data.organizationSharePercent ?? appSettings.organizationSharePercent ?? 50);
+  updateFinancePreview();
+}
+
+async function saveFinanceSettings() {
+  const btn = document.getElementById('financeSaveBtn');
+  const showEl = document.getElementById('financeShowToUsers');
+  const orgEl = document.getElementById('financeOrgPercent');
+  if (!showEl || !orgEl) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال ذخیره...';
+  }
+
+  const data = await api('/api/admin/finance-settings', {
+    method: 'PUT',
+    body: JSON.stringify({
+      showFinancialStatementToUsers: showEl.checked,
+      organizationSharePercent: Number(orgEl.value) || 0,
+    }),
+  });
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> ذخیره تنظیمات مالی';
+  }
+
+  if (data.success) {
+    appSettings.showFinancialStatementToUsers = data.data.showFinancialStatementToUsers;
+    appSettings.organizationSharePercent = data.data.organizationSharePercent;
+    updateFinancePreview();
+    notify(data.message || 'تنظیمات مالی ذخیره شد.');
+    await loadFinanceStatements();
+  } else {
+    notify(data.message || 'خطا در ذخیره تنظیمات', 'error');
+  }
+}
+
+document.getElementById('financeOrgPercent')?.addEventListener('input', updateFinancePreview);
+
+let financeSubTab = 'weekly';
+let financeWeeksCache = [];
+let financeMonthsCache = [];
+let financeStatementsCache = [];
+
+function updateFinanceReportControls() {
+  const weekSelect = document.getElementById('financeWeekSelect');
+  const monthSelect = document.getElementById('financeMonthSelect');
+  if (weekSelect) weekSelect.style.display = financeSubTab === 'weekly' ? '' : 'none';
+  if (monthSelect) monthSelect.style.display = financeSubTab === 'monthly' ? '' : 'none';
+}
+
+function switchFinanceSubTab(tab) {
+  financeSubTab = tab;
+  document.querySelectorAll('[data-finance-sub]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.financeSub === tab);
+  });
+  updateFinanceReportControls();
+  loadFinanceStatements();
+}
+
+async function buildFinanceWeekOptions() {
+  const sel = document.getElementById('financeWeekSelect');
+  if (!sel) return;
+  if (!weeks.length) {
+    const data = await api('/api/admin/weeks?noSync=true');
+    weeks = data.success ? data.data : [];
+  }
+  financeWeeksCache = weeks;
+  if (!financeWeeksCache.length) {
+    sel.innerHTML = '<option value="">هفته‌ای یافت نشد</option>';
+    return;
+  }
+  sel.innerHTML = financeWeeksCache.map((week) => {
+    const prefix = week.isActive ? 'فعال - ' : '';
+    return `<option value="${week._id}">${prefix}${weekSelectLabel(week)}</option>`;
+  }).join('');
+  if (!sel.value && financeWeeksCache[0]) sel.value = String(financeWeeksCache[0]._id);
+}
+
+async function buildFinanceMonthOptions() {
+  const sel = document.getElementById('financeMonthSelect');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">در حال بارگذاری ماه‌ها...</option>';
+  const data = await api('/api/admin/finance-statements/months');
+  financeMonthsCache = data.success ? data.data : [];
+  if (!financeMonthsCache.length) {
+    sel.innerHTML = '<option value="">ماهی با سفارش تاییدشده نیست</option>';
+    return;
+  }
+  sel.innerHTML = financeMonthsCache.map((month) => (
+    `<option value="${month.from}|${month.to}">${esc(month.label)}</option>`
+  )).join('');
+  if (!sel.value && financeMonthsCache[0]) sel.value = `${financeMonthsCache[0].from}|${financeMonthsCache[0].to}`;
+}
+
+function renderFinanceTotals(summary = {}, split = {}) {
+  const bar = document.getElementById('financeTotalsBar');
+  if (!bar) return;
+  if (!summary.userCount && !summary.mealCount) {
+    bar.innerHTML = '';
+    return;
+  }
+  bar.innerHTML = `
+    <div class="mini-card">
+      <div class="stat-label">کاربران</div>
+      <div class="stat-value">${Number(summary.userCount || 0).toLocaleString('fa-IR')}</div>
+    </div>
+    <div class="mini-card">
+      <div class="stat-label">مهمان</div>
+      <div class="stat-value">${Number(summary.guestCount || 0).toLocaleString('fa-IR')}</div>
+    </div>
+    <div class="mini-card">
+      <div class="stat-label">وعده</div>
+      <div class="stat-value">${Number(summary.mealCount || 0).toLocaleString('fa-IR')}</div>
+    </div>
+    <div class="mini-card">
+      <div class="stat-label">جمع کل</div>
+      <div class="stat-value">${compactMoney(summary.grossTotal)}</div>
+    </div>
+    <div class="mini-card">
+      <div class="stat-label">سهم سازمان (${Number(split.organizationSharePercent || 0).toLocaleString('fa-IR')}٪)</div>
+      <div class="stat-value">${compactMoney(summary.organizationAmount)}</div>
+    </div>
+    <div class="mini-card">
+      <div class="stat-label">سهم شخص (${Number(split.personalSharePercent || 0).toLocaleString('fa-IR')}٪)</div>
+      <div class="stat-value">${compactMoney(summary.personalAmount)}</div>
+    </div>`;
+  bar.classList.toggle('has-split-cards', true);
+}
+
+function renderFinanceStatementsTable(data) {
+  const wrap = document.getElementById('financeStatementsWrap');
+  if (!wrap) return;
+  const users = data.users || [];
+  financeStatementsCache = users;
+  if (!users.length) {
+    wrap.innerHTML = renderEmptyState({
+      icon: 'fa-file-invoice-dollar',
+      title: 'صورتحسابی برای این بازه ثبت نشده',
+      desc: 'پس از تایید سفارش‌های کاربران و مهمان‌ها، صورتحساب‌ها در این بخش نمایش داده می‌شوند.',
+    });
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table class="table statement-table">
+      <thead>
+        <tr>
+          <th>شماره صورتحساب</th>
+          <th>نام</th>
+          <th>نوع</th>
+          <th>واحد</th>
+          <th>وعده</th>
+          <th>مبلغ کل</th>
+          <th>پرداختی سازمان</th>
+          <th>پرداختی شخص</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>${users.map((user) => {
+        const isGuest = user.kind === 'guest';
+        const typeLabel = isGuest
+          ? `مهمان ${esc(user.guestTypeLabel || '')}`.trim()
+          : 'پرسنل';
+        const typeClass = isGuest ? 'guest-type-chip temporary' : 'guest-status-chip active';
+        const nameExtra = isGuest && user.guestCode
+          ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:2px">کد: <span class="guest-code-badge">${esc(user.guestCode)}</span></div>`
+          : '';
+        return `
+        <tr>
+          <td class="statement-number-col">${esc(user.statementNumber || '—')}</td>
+          <td style="font-weight:800">${esc(user.fullName || '-')}${nameExtra}</td>
+          <td><span class="${typeClass}">${typeLabel}</span></td>
+          <td>${esc(user.department || '-')}</td>
+          <td>${Number(user.mealCount || 0).toLocaleString('fa-IR')}</td>
+          <td>${money(user.grossTotal)}</td>
+          <td class="statement-org-col">${money(user.organizationAmount)}</td>
+          <td class="statement-personal-col">${money(user.personalAmount)}</td>
+          ${tableActionsHtml(`<button type="button" class="btn btn-outline btn-sm" data-fkey="${esc(user.userKey)}" onclick="downloadFinancePdf(this.getAttribute('data-fkey'), this)" title="دانلود PDF"><i class="fas fa-file-pdf"></i></button>`)}
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+function financeStatementsQuery() {
+  if (financeSubTab === 'monthly') {
+    const val = document.getElementById('financeMonthSelect')?.value || '';
+    const [from, to] = val.split('|');
+    if (!from || !to) return '';
+    return `jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`;
+  }
+  const weekId = document.getElementById('financeWeekSelect')?.value;
+  return weekId ? `weekId=${encodeURIComponent(weekId)}` : 'type=week';
+}
+
+async function loadFinanceStatements() {
+  const wrap = document.getElementById('financeStatementsWrap');
+  const totals = document.getElementById('financeTotalsBar');
+  if (wrap) wrap.innerHTML = '<div style="padding:32px;text-align:center"><div class="spinner"></div></div>';
+  if (totals) totals.innerHTML = '';
+
+  const query = financeStatementsQuery();
+  if (!query) {
+    if (wrap) wrap.innerHTML = renderEmptyState({ icon: 'fa-calendar', title: 'بازه را انتخاب کنید' });
+    return;
+  }
+
+  const data = await api(`/api/admin/finance-statements?${query}`);
+  if (!data.success || !data.data) {
+    const message = String(data.message || '').includes('پایگاه داده')
+      ? 'اتصال به پایگاه داده برقرار نیست. چند لحظه بعد دوباره تلاش کنید.'
+      : (data.message || 'خطا در دریافت صورتحساب‌ها');
+    if (wrap) wrap.innerHTML = `<div class="alert alert-danger">${esc(message)}</div>`;
+    return;
+  }
+  renderFinanceTotals(data.data.summary, data.data.split);
+  renderFinanceStatementsTable(data.data);
+}
+
+async function initFinanceStatementsPanel() {
+  updateFinanceReportControls();
+  await Promise.all([buildFinanceWeekOptions(), buildFinanceMonthOptions()]);
+  await loadFinanceStatements();
+}
+
+async function downloadFinancePdf(userKey = '', triggerBtn = null) {
+  const btn = triggerBtn || (!userKey ? document.getElementById('financePdfAllBtn') : null);
+  const query = financeStatementsQuery();
+  if (!query) {
+    notify('ابتدا بازه صورتحساب را انتخاب کنید', 'warning', 'PDF');
+    return;
+  }
+  const prevHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>';
+  }
+  try {
+    let url = `/api/admin/finance-statements/pdf?${query}`;
+    if (userKey) url += `&userKey=${encodeURIComponent(userKey)}`;
+    const res = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/pdf, application/json' } });
+    if (res.status === 401) { window.location.replace('/login?expired=1'); return; }
+    const contentType = res.headers.get('Content-Type') || '';
+    if (!res.ok) {
+      let msg = 'خطا در ساخت PDF';
+      if (contentType.includes('application/json')) {
+        const err = await res.json().catch(() => ({}));
+        msg = err.message || msg;
+      }
+      notify(msg, 'error', 'PDF');
+      return;
+    }
+    if (!contentType.includes('application/pdf') && contentType.includes('application/json')) {
+      const err = await res.json().catch(() => ({}));
+      notify(err.message || 'خروجی PDF دریافت نشد', 'error', 'PDF');
+      return;
+    }
+    const blob = await res.blob();
+    if (!blob || blob.size < 100) {
+      notify('فایل PDF خالی یا نامعتبر است', 'error', 'PDF');
+      return;
+    }
+    const dispo = res.headers.get('Content-Disposition') || '';
+    const match = dispo.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `finance-${Date.now()}.pdf`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    notify(userKey ? 'PDF صورتحساب دانلود شد' : 'PDF همه صورتحساب‌ها دانلود شد', 'success', 'PDF');
+  } catch (error) {
+    notify(error?.message || 'خطا در دانلود PDF', 'error', 'PDF');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = prevHtml || '<i class="fas fa-file-pdf"></i> PDF همه';
+    }
+  }
+}
+
+document.getElementById('financeSubWeekly')?.addEventListener('click', () => switchFinanceSubTab('weekly'));
+document.getElementById('financeSubMonthly')?.addEventListener('click', () => switchFinanceSubTab('monthly'));
+document.getElementById('financeWeekSelect')?.addEventListener('change', loadFinanceStatements);
+document.getElementById('financeMonthSelect')?.addEventListener('change', loadFinanceStatements);
+
 /* ===== INIT ===== */
 applyWorkspaceSettings();
+if (document.getElementById('financeOrgPercent')) {
+  const orgEl = document.getElementById('financeOrgPercent');
+  const showEl = document.getElementById('financeShowToUsers');
+  orgEl.value = String(appSettings.organizationSharePercent ?? 50);
+  if (showEl) showEl.checked = appSettings.showFinancialStatementToUsers !== false;
+  updateFinancePreview();
+}
 applyReportsAccessUi();
 const urlTab = new URLSearchParams(window.location.search).get('tab');
 const bootTab = boot.activePage;
 let initialTab = VALID_ADMIN_TABS.includes(urlTab) ? urlTab : (VALID_ADMIN_TABS.includes(bootTab) ? bootTab : 'reports');
 if (!reportsAccess.allowed && initialTab === 'reports') initialTab = 'orders';
+document.body.classList.toggle('admin-guests-tab', initialTab === 'guests');
 openAdminTab(initialTab);
 refreshReportsAccess();
 showMonthlyReportPlaceholder();
@@ -1281,6 +2082,7 @@ buildMonthOptions();
 Object.assign(window, {
   goToOrdersForConfirm,
   switchSubTab,
+  switchWeeklyReportTab,
   onReportWeekChange,
   downloadPdf,
   loadMonthlyBySelect,
@@ -1298,6 +2100,8 @@ Object.assign(window, {
   closeAnnouncementForm,
   toggleAnnouncementDepts,
   saveAnnouncement,
+  saveFinanceSettings,
+  downloadFinancePdf,
   saveFoodEdit,
   toggleWeekEditor,
   activateWeek,
@@ -1313,6 +2117,17 @@ Object.assign(window, {
   deleteDept,
   editAnnouncement,
   deleteAnnouncement,
+  openAddGuest,
+  closeGuestForm,
+  toggleGuestValidUntil,
+  saveGuest,
+  editGuest,
+  deleteGuest,
+  openGuestReserve,
+  closeGuestReservePanel,
+  loadGuestReserveMenu,
+  reserveGuestFood,
+  filterGuestsTable,
   goToOrdersPage,
   goToFoodsPage,
   goToUsersPage,

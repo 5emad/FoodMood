@@ -27,11 +27,14 @@ const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSett
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
-const { nextReportNumber } = require('../helpers/ReportNumberHelper');
+const { nextReportNumber, nextSupplierReportNumber } = require('../helpers/ReportNumberHelper');
 const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/ReportsAccessHelper');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
 const { renderReportHtml } = require('../views/ReportPdfView');
-const { refreshPublicUrlCache, normalizePublicUrl } = require('../helpers/AppUrlHelper');
+const { renderSupplierReportHtml } = require('../views/SupplierReportPdfView');
+const { clampPercent } = require('../services/UserStatementService');
+const { buildAdminFinanceReport, buildAdminFinancePdfPayload } = require('../services/AdminFinanceService');
+const { renderFinanceStatementHtml } = require('../views/FinanceStatementPdfView');
 const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper');
 const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
 
@@ -898,6 +901,124 @@ class AdminController {
     }
   }
 
+  static async getFinanceSettings(req, res, next) {
+    try {
+      const settings = await getSettingsLean();
+      const organizationSharePercent = clampPercent(settings.organizationSharePercent);
+      res.json({
+        success: true,
+        data: {
+          showFinancialStatementToUsers: settings.showFinancialStatementToUsers !== false,
+          organizationSharePercent,
+          personalSharePercent: 100 - organizationSharePercent,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateFinanceSettings(req, res, next) {
+    try {
+      const update = {};
+      if (req.body.showFinancialStatementToUsers !== undefined) {
+        update.showFinancialStatementToUsers = Boolean(req.body.showFinancialStatementToUsers);
+      }
+      if (req.body.organizationSharePercent !== undefined) {
+        update.organizationSharePercent = clampPercent(req.body.organizationSharePercent);
+      }
+
+      await getOrCreateSettings();
+      const settings = await AppSetting.findOneAndUpdate(
+        { key: 'default' },
+        { $set: update },
+        { new: true },
+      );
+
+      const organizationSharePercent = clampPercent(settings.organizationSharePercent);
+      res.json({
+        success: true,
+        message: 'تنظیمات مالی ذخیره شد',
+        data: {
+          showFinancialStatementToUsers: settings.showFinancialStatementToUsers !== false,
+          organizationSharePercent,
+          personalSharePercent: 100 - organizationSharePercent,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getFinanceStatements(req, res, next) {
+    try {
+      const settings = await getSettingsLean();
+      const { type: reportType, range, title } = await resolveReportRange(req.query);
+      const data = await buildAdminFinanceReport(range.start, range.end, settings, req.query, {
+        type: reportType,
+        title,
+        range: {
+          start: range.start,
+          end: range.end,
+          jalaliStart: formatJalaliDate(range.start),
+          jalaliEnd: formatJalaliDate(range.end),
+        },
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      next(error);
+    }
+  }
+
+  static async getFinanceMonths(req, res, next) {
+    try {
+      const months = await getAvailableReportMonths();
+      res.json({ success: true, data: months });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getFinanceStatementPdf(req, res, next) {
+    try {
+      const settings = await getSettingsLean();
+      const { type: reportType, range, title } = await resolveReportRange(req.query);
+      const payload = await buildAdminFinancePdfPayload(
+        range.start,
+        range.end,
+        settings,
+        req.query,
+        {
+          type: reportType,
+          title,
+          range: {
+            start: range.start,
+            end: range.end,
+            jalaliStart: formatJalaliDate(range.start),
+            jalaliEnd: formatJalaliDate(range.end),
+          },
+        },
+        { userKey: req.query.userKey || req.query.userId || '' },
+      );
+
+      const pdf = await htmlToPdfBuffer(renderFinanceStatementHtml(payload));
+      const filenameUser = payload.singleUser && payload.selectedUser
+        ? `finance-${payload.selectedUser.statementNumber}.pdf`
+        : `finance-${payload.reportNumber}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filenameUser}"`);
+      res.send(pdf);
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      return res.status(503).json({
+        success: false,
+        message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
+        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
+      });
+    }
+  }
+
   static async getWorkspaceSettings(req, res, next) {
     try {
       const settings = await getOrCreateSettings();
@@ -978,6 +1099,82 @@ class AdminController {
       const pdf = await htmlToPdfBuffer(renderReportHtml(payload));
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="food-report-${reportNumber}.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      if (error.status && error.expose) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+      return res.status(503).json({
+        success: false,
+        message: 'خطا در ساخت PDF — لطفاً دوباره تلاش کنید',
+        ...(process.env.NODE_ENV !== 'production' && { detail: error.message }),
+      });
+    }
+  }
+
+  static async getSupplierReport(req, res, next) {
+    try {
+      await assertReportsAccess(req.user);
+      const { range, title } = await resolveReportRange({
+        ...req.query,
+        type: 'week',
+      });
+      const report = await buildReport(range.start, range.end);
+
+      res.json({
+        success: true,
+        data: {
+          type: 'supplier',
+          title: `گزارش آماده‌سازی غذا — ${title}`,
+          range: {
+            start: range.start,
+            end: range.end,
+            jalaliStart: formatJalaliDate(range.start),
+            jalaliEnd: formatJalaliDate(range.end),
+          },
+          byDayPrep: report.byDayPrep,
+          prepTotals: report.prepTotals,
+        },
+      });
+    } catch (error) {
+      if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+      next(error);
+    }
+  }
+
+  static async getSupplierReportPdf(req, res, next) {
+    try {
+      await assertReportsAccess(req.user);
+      const { range, title } = await resolveReportRange({
+        ...req.query,
+        type: 'week',
+      });
+      const [report, settings, reportNumber] = await Promise.all([
+        buildReport(range.start, range.end),
+        getSettingsLean(),
+        nextSupplierReportNumber(),
+      ]);
+      const payload = {
+        type: 'supplier',
+        title: `گزارش آماده‌سازی غذا — ${title}`,
+        reportNumber,
+        organizationName: settings?.organizationName || 'سامانه تغذیه سازمانی',
+        range: {
+          start: range.start,
+          end: range.end,
+          jalaliStart: formatJalaliDate(range.start),
+          jalaliEnd: formatJalaliDate(range.end),
+        },
+        byDayPrep: report.byDayPrep,
+        prepTotals: report.prepTotals,
+      };
+
+      const pdf = await htmlToPdfBuffer(renderSupplierReportHtml(payload));
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="supplier-report-${reportNumber}.pdf"`);
       res.send(pdf);
     } catch (error) {
       if (error.status && error.expose) {

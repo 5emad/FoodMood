@@ -67,6 +67,9 @@
     <button class="tab-button" data-tab="orders">
       <i class="fas fa-receipt"></i> سفارش‌های من
     </button>
+    <button class="tab-button" data-tab="statement" id="statementTabBtn">
+      <i class="fas fa-file-invoice-dollar"></i> صورتحساب
+    </button>
   </div>
 
   <!-- Menu Tab -->
@@ -79,6 +82,26 @@
   <!-- Orders Tab -->
   <section id="tab-orders" class="tab-panel">
     <div class="table-wrap" id="ordersWrap">
+      <div style="padding:40px;text-align:center"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+  <!-- Statement Tab -->
+  <section id="tab-statement" class="tab-panel">
+    <div class="section-header" style="margin-bottom:18px">
+      <div>
+        <div class="section-title">صورتحساب مالی</div>
+        <div class="section-sub" id="statementSubtitle">صورت حساب ارسال شده به حسابداری</div>
+      </div>
+    </div>
+    <div class="statement-controls">
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" data-stmt-sub="weekly" id="stmtSubWeekly"><i class="fas fa-calendar-week"></i> هفتگی</button>
+        <button class="sub-tab-btn" data-stmt-sub="monthly" id="stmtSubMonthly"><i class="fas fa-calendar"></i> ماهیانه</button>
+      </div>
+    </div>
+    <div class="statement-split-banner" id="statementSplitBanner"></div>
+    <div class="table-wrap" id="statementTableWrap">
       <div style="padding:40px;text-align:center"><div class="spinner"></div></div>
     </div>
   </section>
@@ -111,12 +134,59 @@
   </div>
 </div>
 
+<script src="<%= jsAsset('portal-capabilities') %>"></script>
+<script type="application/json" id="user-portal-bootstrap"><%- JSON.stringify({
+  capabilities: typeof capabilities !== 'undefined' ? capabilities : null,
+  portalSettings: typeof portalSettings !== 'undefined' ? portalSettings : {
+    showFinancialStatementToUsers: true,
+    organizationSharePercent: 50,
+    personalSharePercent: 50,
+    showPricesToUsers: true,
+  }
+}) %></script>
+
 <script>
+const userPortalBoot = (() => {
+  const el = document.getElementById('user-portal-bootstrap');
+  try { return el ? JSON.parse(el.textContent || '{}') : {}; } catch { return {}; }
+})();
+
+function resolveCapabilities() {
+  const Caps = window.PortalCapabilities;
+  const raw = Object.assign({}, userPortalBoot.portalSettings || {}, userPortalBoot.capabilities || {});
+  return Caps ? Caps.normalizeUserCapabilities(raw) : {
+    showPrices: raw.showPrices !== false && raw.showPricesToUsers !== false,
+    showStatement: raw.showStatement !== false && raw.showFinancialStatementToUsers !== false,
+    organizationSharePercent: Number(raw.organizationSharePercent || 50),
+    personalSharePercent: Number(raw.personalSharePercent || 50),
+    statementDisabledMessage: 'در حال حاضر در دسترس نیست',
+  };
+}
+
+let caps = resolveCapabilities();
 let ordersCache = [];
 let menuCache = null;
-let showPricesToUsers = true;
+let showPricesToUsers = caps.showPrices;
+let showFinancialStatementToUsers = caps.showStatement;
 let defaultMenuItemCapacity = 20;
+let statementSubTab = 'weekly';
+let statementSplitConfig = {
+  organizationSharePercent: Number(caps.organizationSharePercent || 50),
+  personalSharePercent: Number(caps.personalSharePercent || 50),
+};
 const pendingMenuItems = new Set();
+
+function applyCapabilities(next) {
+  caps = Object.assign({}, caps, next || {});
+  showPricesToUsers = caps.showPrices !== false;
+  showFinancialStatementToUsers = caps.showStatement !== false;
+  statementSplitConfig = {
+    organizationSharePercent: Number(caps.organizationSharePercent || 0),
+    personalSharePercent: Number(caps.personalSharePercent || 0),
+  };
+  if (window.PortalCapabilities) window.PortalCapabilities.applyUserPortalTabs(caps);
+  else syncStatementTabVisibility();
+}
 
 function api(url, options = {}) {
   return fetch(url, {
@@ -355,7 +425,12 @@ async function loadMenu() {
   }
   menuCache = data.data;
   showPricesToUsers = data.data.settings?.showPricesToUsers !== false;
+  applyCapabilities({
+    showPrices: showPricesToUsers,
+    showStatement: data.data.settings?.showFinancialStatementToUsers !== false,
+  });
   defaultMenuItemCapacity = Number(data.data.settings?.defaultMenuItemCapacity ?? 20);
+  syncStatementTabVisibility();
   document.getElementById('weekTitle').textContent = data.data.week.name || `${jdate(data.data.week.startDate)} تا ${jdate(data.data.week.endDate)}`;
   renderMenu();
 }
@@ -454,6 +529,161 @@ async function cancelOrder(orderId) {
   loadMyOrders();
 }
 
+function syncStatementTabVisibility() {
+  const btn = document.getElementById('statementTabBtn');
+  if (btn) btn.hidden = !showFinancialStatementToUsers;
+}
+
+function renderStatementUnavailable() {
+  const controls = document.querySelector('.statement-controls');
+  const banner = document.getElementById('statementSplitBanner');
+  const wrap = document.getElementById('statementTableWrap');
+  if (controls) controls.style.display = 'none';
+  if (banner) banner.style.display = 'none';
+  if (wrap) {
+    wrap.innerHTML = `<div class="orders-empty statement-unavailable">
+      <i class="fas fa-lock"></i>
+      <p style="font-weight:800;font-size:1.05rem">در حال حاضر در دسترس نیست</p>
+      <p style="color:var(--text-muted);margin-top:8px">بخش صورتحساب مالی توسط مدیریت غیرفعال شده است.</p>
+    </div>`;
+  }
+}
+
+function renderStatementEnabledUi() {
+  const controls = document.querySelector('.statement-controls');
+  const banner = document.getElementById('statementSplitBanner');
+  if (controls) controls.style.display = '';
+  if (banner) banner.style.display = '';
+}
+
+function isStatementDisabledResponse(data) {
+  return Boolean(data?.disabled)
+    || data?.data?.showFinancialStatementToUsers === false
+    || String(data?.message || '').includes('در دسترس نیست')
+    || String(data?.message || '').includes('غیرفعال');
+}
+
+function isDbConnectionMessage(message) {
+  const text = String(message || '');
+  return text.includes('پایگاه داده') || text.includes('SERVICE_UNAVAILABLE');
+}
+
+async function refreshStatementConfig() {
+  try {
+    const data = await api('/api/user/statement/config');
+    if (data.success && data.data) {
+      applyCapabilities({
+        showPrices: data.data.showPrices !== false && data.data.showPricesToUsers !== false,
+        showStatement: data.data.showStatement !== false && data.data.showFinancialStatementToUsers !== false,
+        organizationSharePercent: Number(data.data.organizationSharePercent || 0),
+        personalSharePercent: Number(data.data.personalSharePercent || 0),
+        statementDisabledMessage: data.data.statementDisabledMessage,
+      });
+    }
+  } catch {
+    // Keep server-rendered defaults when config API is temporarily unavailable.
+  }
+  syncStatementTabVisibility();
+  return showFinancialStatementToUsers;
+}
+
+async function loadStatementConfig() {
+  await refreshStatementConfig();
+  if (showFinancialStatementToUsers) renderStatementSplitBanner();
+}
+
+function renderStatementSplitBanner() {
+  const banner = document.getElementById('statementSplitBanner');
+  if (!banner) return;
+  banner.innerHTML = `
+    <i class="fas fa-percent"></i>
+    سهم سازمان: <strong>${statementSplitConfig.organizationSharePercent.toLocaleString('fa-IR')}٪</strong>
+    — سهم شخص: <strong>${statementSplitConfig.personalSharePercent.toLocaleString('fa-IR')}٪</strong>
+    <span class="statement-range">فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند</span>`;
+}
+
+function switchStatementSubTab(tab) {
+  statementSubTab = tab;
+  document.querySelectorAll('[data-stmt-sub]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.stmtSub === tab);
+  });
+  loadUserStatementList();
+}
+
+function renderStatementList(statements) {
+  const wrap = document.getElementById('statementTableWrap');
+  const periodLabel = statementSubTab === 'monthly' ? 'ماه' : 'هفته';
+  if (!statements.length) {
+    wrap.innerHTML = `<div class="orders-empty"><i class="fas fa-file-invoice"></i><p>صورتحساب ${periodLabel}ی ثبت‌شده‌ای وجود ندارد.</p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table class="table statement-table">
+      <thead>
+        <tr>
+          <th>شماره صورتحساب</th>
+          <th>بازه</th>
+          <th>تعداد وعده</th>
+          <th>مبلغ کل</th>
+          <th>سهم سازمان</th>
+          <th>سهم شخص</th>
+        </tr>
+      </thead>
+      <tbody>${statements.map((stmt) => {
+        const summary = stmt.summary || {};
+        const rangeText = stmt.title || `${stmt.range?.jalaliStart || ''} تا ${stmt.range?.jalaliEnd || ''}`;
+        const activeBadge = stmt.isActive ? ' <span class="badge badge-primary" style="font-size:.7rem">فعال</span>' : '';
+        return `
+        <tr>
+          <td class="statement-number-col">${esc(stmt.statementNumber || '—')}</td>
+          <td style="font-weight:700;white-space:nowrap">${esc(rangeText)}${activeBadge}</td>
+          <td>${Number(summary.mealCount || 0).toLocaleString('fa-IR')}</td>
+          <td>${money(summary.grossTotal)}</td>
+          <td class="statement-org-col">${money(summary.organizationAmount)}</td>
+          <td class="statement-personal-col">${money(summary.personalAmount)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+async function loadUserStatementList() {
+  const enabled = await refreshStatementConfig();
+  if (!enabled) {
+    renderStatementUnavailable();
+    return;
+  }
+  renderStatementEnabledUi();
+  renderStatementSplitBanner();
+  const wrap = document.getElementById('statementTableWrap');
+  if (wrap) wrap.innerHTML = '<div style="padding:40px;text-align:center"><div class="spinner"></div></div>';
+
+  const type = statementSubTab === 'monthly' ? 'month' : 'week';
+  const data = await api(`/api/user/statement/list?type=${type}`);
+  if (isStatementDisabledResponse(data)) {
+    applyCapabilities({ showStatement: false });
+    renderStatementUnavailable();
+    return;
+  }
+  if (!data.success) {
+    if (wrap) {
+      const message = isDbConnectionMessage(data.message)
+        ? 'در حال حاضر در دسترس نیست'
+        : (data.message || 'خطا در دریافت صورتحساب');
+      wrap.innerHTML = `<div class="orders-empty"><i class="fas fa-circle-exclamation"></i><p>${esc(message)}</p></div>`;
+    }
+    return;
+  }
+  renderStatementList(data.data || []);
+}
+
+async function initStatementTab() {
+  await loadUserStatementList();
+}
+
+document.getElementById('stmtSubWeekly')?.addEventListener('click', () => switchStatementSubTab('weekly'));
+document.getElementById('stmtSubMonthly')?.addEventListener('click', () => switchStatementSubTab('monthly'));
+
 document.querySelectorAll('.tab-button').forEach(button => {
   button.addEventListener('click', () => {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
@@ -461,10 +691,13 @@ document.querySelectorAll('.tab-button').forEach(button => {
     button.classList.add('active');
     document.getElementById(`tab-${button.dataset.tab}`).classList.add('active');
     if (button.dataset.tab === 'orders') loadMyOrders();
+    if (button.dataset.tab === 'statement') initStatementTab();
   });
 });
 
 loadMe();
+applyCapabilities(caps);
+loadStatementConfig();
 loadAnnouncements();
 loadMenu();
 </script>

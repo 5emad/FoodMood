@@ -6,15 +6,30 @@ const { promisify } = require('util');
 const { getReportFontCss, copyFontsToDir } = require('./ReportFontHelper');
 
 const execFileAsync = promisify(execFile);
+const IS_WIN = process.platform === 'win32';
 
 const SYSTEM_CHROME_PATHS = [
   process.env.CHROME_BIN,
+  process.env.EDGE_BIN,
+  // Windows
+  process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
+  process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+  // Linux
   '/usr/bin/google-chrome-stable',
   '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/snap/bin/chromium',
 ].filter(Boolean);
 
 function bundledChromePath() {
   const installDir = process.env.FOOD_INSTALL_DIR || path.join(process.cwd());
+  if (IS_WIN) {
+    return path.join(installDir, '.cache', 'chrome-win64', 'chrome.exe');
+  }
   return path.join(installDir, '.cache', 'chrome-linux64', 'chrome');
 }
 
@@ -23,17 +38,26 @@ function isSnapBinary(binaryPath) {
 }
 
 async function isUsableChromeBinary(candidate) {
-  if (!candidate || isSnapBinary(candidate)) return false;
+  if (!candidate || (!IS_WIN && isSnapBinary(candidate))) return false;
   try {
     await fs.access(candidate);
-    const realPath = await fs.realpath(candidate);
-    if (isSnapBinary(realPath)) return false;
-    const head = await fs.readFile(realPath, { encoding: 'utf8' }).catch(() => '');
-    if (head.startsWith('#!') && /snap/i.test(head)) return false;
+    if (!IS_WIN) {
+      const realPath = await fs.realpath(candidate);
+      if (isSnapBinary(realPath)) return false;
+      const head = await fs.readFile(realPath, { encoding: 'utf8' }).catch(() => '');
+      if (head.startsWith('#!') && /snap/i.test(head)) return false;
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+function chromeMissingMessage() {
+  if (IS_WIN) {
+    return 'مرورگر PDF یافت نشد. Chrome یا Edge را نصب کنید، یا CHROME_BIN را به مسیر chrome.exe تنظیم کنید.';
+  }
+  return 'مرورگر PDF نصب نیست — روی سرور: curl -fsSL .../deploy/update.sh | sudo bash';
 }
 
 async function findChrome() {
@@ -44,7 +68,7 @@ async function findChrome() {
   for (const candidate of candidates) {
     if (await isUsableChromeBinary(candidate)) return candidate;
   }
-  const error = new Error('مرورگر PDF نصب نیست — روی سرور: curl -fsSL .../deploy/update.sh | sudo bash');
+  const error = new Error(chromeMissingMessage());
   error.status = 503;
   error.expose = true;
   throw error;
@@ -78,15 +102,28 @@ function buildChromeEnv(runtimeRoot) {
   delete env.SNAP_INSTANCE_NAME;
   delete env.SNAP_USER_DATA;
   delete env.SNAP_REAL_HOME;
-  return {
+
+  const next = {
     ...env,
     HOME: runtimeRoot,
     XDG_CONFIG_HOME: path.join(runtimeRoot, 'config'),
     XDG_CACHE_HOME: path.join(runtimeRoot, 'cache'),
     XDG_RUNTIME_DIR: runtimeDir,
     TMPDIR: process.env.TMPDIR || os.tmpdir(),
-    PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
   };
+
+  if (!IS_WIN) {
+    next.PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+  }
+  return next;
+}
+
+function toFileUrl(filePath) {
+  const normalized = path.resolve(filePath).replace(/\\/g, '/');
+  if (IS_WIN) {
+    return `file:///${normalized}`;
+  }
+  return `file://${normalized}`;
 }
 
 async function htmlToPdfBuffer(html) {
@@ -102,7 +139,7 @@ async function htmlToPdfBuffer(html) {
     const fontCss = getReportFontCss({ relativePrefix: fontPrefix });
     const htmlWithFonts = injectLocalFonts(html, fontCss);
     await fs.writeFile(htmlPath, htmlWithFonts, 'utf8');
-    const fileUrl = `file://${htmlPath.replace(/\\/g, '/')}`;
+    const fileUrl = toFileUrl(htmlPath);
 
     await execFileAsync(chromePath, [
       '--headless=new',
@@ -118,10 +155,12 @@ async function htmlToPdfBuffer(html) {
     ], {
       timeout: 90000,
       env: buildChromeEnv(runtimeRoot),
+      windowsHide: true,
     });
 
     return await fs.readFile(pdfPath);
   } catch (error) {
+    if (error?.expose) throw error;
     const detail = error?.stderr || error?.message || 'نامشخص';
     const wrapped = new Error(`خطا در ساخت PDF: ${detail}`);
     wrapped.status = 503;

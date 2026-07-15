@@ -3,6 +3,7 @@ const Food = require('../models/Food');
 const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const { finalizeExpiredOrders, isCancelable, decorateOrder } = require('../helpers/OrderStatusHelper');
+const { getUserCapabilities, stripPricesFromOrder, isAdminPortalUser } = require('../helpers/PermissionHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
 const {
   orderOwnerFilter,
@@ -97,6 +98,10 @@ async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
   };
 }
 
+function orderListResponse(orders, showPrices) {
+  return orders.map((order) => stripPricesFromOrder(decorateOrder(order), showPrices));
+}
+
 class OrderController {
   static async create(req, res, next) {
     try {
@@ -153,11 +158,14 @@ class OrderController {
       }
 
       const order = await Order.create(payload);
+      const showPrices = isAdminPortalUser(req.user)
+        ? true
+        : (await getUserCapabilities()).showPrices;
       res.status(201).json({
         success: true,
         message: 'سفارش ثبت شد',
         orderId: order._id,
-        data: decorateOrder(order),
+        data: stripPricesFromOrder(decorateOrder(order), showPrices),
       });
     } catch (error) {
       next(error);
@@ -199,7 +207,7 @@ class OrderController {
         return res.status(404).json({ message: 'سفارش یافت نشد' });
       }
 
-      if (!['admin', 'superadmin'].includes(req.user.role)) {
+      if (!isAdminPortalUser(req.user)) {
         const ownerFilter = await buildOrderOwnerFilter(req.user);
         const owned = await Order.findOne({ _id: order._id, ...ownerFilter }).select('_id').lean();
         if (!owned) {
@@ -207,7 +215,10 @@ class OrderController {
         }
       }
 
-      res.json({ success: true, data: decorateOrder(order) });
+      const showPrices = isAdminPortalUser(req.user)
+        ? true
+        : (await getUserCapabilities()).showPrices;
+      res.json({ success: true, data: stripPricesFromOrder(decorateOrder(order), showPrices) });
     } catch (error) {
       next(error);
     }
@@ -217,6 +228,9 @@ class OrderController {
     try {
       const filter = await buildOrderOwnerFilter(req.user);
       await finalizeExpiredOrders(filter);
+      const showPrices = isAdminPortalUser(req.user)
+        ? true
+        : (await getUserCapabilities()).showPrices;
       const baseQuery = () => Order.find(filter)
         .sort({ orderDate: -1 })
         .populate('items.foodId')
@@ -235,13 +249,13 @@ class OrderController {
         ]);
         return res.json({
           success: true,
-          data: orders.map(decorateOrder),
+          data: orderListResponse(orders, showPrices),
           pagination: paginationMeta({ ...pageInfo, total }),
         });
       }
 
       const orders = await baseQuery();
-      res.json({ success: true, data: orders.map(decorateOrder) });
+      res.json({ success: true, data: orderListResponse(orders, showPrices) });
     } catch (error) {
       next(error);
     }

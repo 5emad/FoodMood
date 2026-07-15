@@ -10,6 +10,16 @@ const appSettingSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  showFinancialStatementToUsers: {
+    type: Boolean,
+    default: true,
+  },
+  organizationSharePercent: {
+    type: Number,
+    default: 50,
+    min: 0,
+    max: 100,
+  },
   organizationName: {
     type: String,
     default: 'سامانه تغذیه',
