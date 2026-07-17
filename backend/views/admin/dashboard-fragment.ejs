@@ -1,0 +1,501 @@
+    <!-- ===== REPORTS ===== -->
+    <section id="tab-reports" class="tab-pane<%= activePage === 'reports' ? ' active' : '' %>">
+      <div id="reportsGateBanner" class="reports-gate-banner" hidden>
+        <div class="reports-gate-icon"><i class="fas fa-lock"></i></div>
+        <div>
+          <div class="reports-gate-title">دسترسی به گزارش‌ها قفل است</div>
+          <div class="reports-gate-text" id="reportsGateText">ابتدا همه سفارش‌های در انتظار تایید را در بخش سفارش‌ها تایید کنید.</div>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="goToOrdersForConfirm()">
+          <i class="fas fa-clipboard-check"></i> رفتن به سفارش‌ها
+        </button>
+      </div>
+      <div id="reportsContent">
+      <div class="section-header no-print">
+        <div>
+          <div class="section-title">گزارش‌ها</div>
+          <div class="section-sub">گزارش هفتگی و ماهیانه سفارشات</div>
+        </div>
+        <div class="report-controls" id="reportActions">
+          <div class="sub-tabs">
+            <button class="sub-tab-btn active" data-sub="weekly" onclick="switchSubTab('weekly')"><i class="fas fa-calendar-week"></i> هفتگی</button>
+            <button class="sub-tab-btn" data-sub="monthly" onclick="switchSubTab('monthly')"><i class="fas fa-calendar"></i> ماهیانه</button>
+          </div>
+          <select class="form-control" id="reportWeekSelect" style="width:240px" onchange="onReportWeekChange()"></select>
+          <button class="btn btn-primary btn-sm" onclick="downloadPdf()" id="pdfBtn">
+            <i class="fas fa-file-pdf"></i> دانلود PDF
+          </button>
+        </div>
+      </div>
+
+      <div id="sub-weekly" class="sub-pane active">
+        <div class="weekly-report-tabs no-print">
+          <button type="button" class="weekly-report-tab active" data-weekly-report="personnel" onclick="switchWeeklyReportTab('personnel')">
+            <i class="fas fa-users"></i> گزارش پرسنلی
+          </button>
+          <button type="button" class="weekly-report-tab" data-weekly-report="supplier" onclick="switchWeeklyReportTab('supplier')">
+            <i class="fas fa-kitchen-set"></i> گزارش تامین‌کننده
+          </button>
+        </div>
+
+        <div id="weeklyPersonnelPane">
+          <div class="print-title" id="printTitleWeekly"></div>
+          <div id="weeklyReportWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+          <div class="daily-stats-grid" id="dailyStatsGrid"></div>
+        </div>
+
+        <div id="weeklySupplierPane" hidden>
+          <div class="supplier-report-head no-print">
+            <div>
+              <div class="section-title" style="margin:0">گزارش تامین‌کننده</div>
+              <div class="section-sub">تعداد پرس هر غذا در هر روز هفته (پرسنل + مهمان)</div>
+            </div>
+          </div>
+          <div id="supplierReportWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+
+      <div id="sub-monthly" class="sub-pane">
+        <div class="print-title" id="printTitleMonthly"></div>
+        <div class="section-header no-print" style="margin-top:0;padding-top:0">
+          <div><div class="section-title">گزارش ماهیانه</div><div class="section-sub">انتخاب ماه شمسی</div></div>
+          <div class="d-flex gap-2" style="flex-wrap:wrap;align-items:center">
+            <select class="form-control" id="monthSelect" style="width:200px" onchange="loadMonthlyBySelect()">
+              <option value="">— ماه را انتخاب کنید —</option>
+            </select>
+          </div>
+        </div>
+        <div id="monthlyReportWrap"></div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ===== WEEKS MANAGEMENT ===== -->
+    <section id="tab-weeks" class="tab-pane<%= activePage === 'weeks' ? ' active' : '' %>">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مدیریت هفته‌ها</div>
+          <div class="section-sub">برای هر هفته منو تعریف کنید، هفته را فعال یا غیرفعال کنید.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="createCurrentWeek()">
+          <i class="fas fa-sync-alt"></i> ساخت هفته جاری
+        </button>
+      </div>
+      <div id="weeksListWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== ORDERS ===== -->
+    <section id="tab-orders" class="tab-pane<%= activePage === 'orders' ? ' active' : '' %>">
+      <div class="section-header">
+        <div><div class="section-title">سفارش‌ها</div><div class="section-sub">پس از بررسی، همه سفارش‌های در انتظار را تایید کنید تا گزارش‌ها باز شود.</div></div>
+        <div class="order-toolbar">
+          <div class="search-group">
+            <i class="fas fa-search search-group-icon"></i>
+            <input id="orderSearchInput" type="number" min="100" placeholder="کد سفارش" onkeydown="if(event.key==='Enter') searchOrders()">
+            <button type="button" class="search-clear" onclick="clearOrderSearch()" title="پاک کردن جستجو"><i class="fas fa-times"></i></button>
+            <button type="button" class="search-go" onclick="searchOrders()">جستجو</button>
+          </div>
+          <button class="btn btn-success btn-confirm-week" onclick="confirmAllOrders(this)">
+            <i class="fas fa-check-double"></i> تایید همه سفارش‌های در انتظار
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap" id="ordersWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== USERS MANAGEMENT ===== -->
+    <section id="tab-users" class="tab-pane<%= activePage === 'users' ? ' active' : '' %>">
+      <div class="section-header">
+        <div><div class="section-title">مدیریت کاربران</div><div class="section-sub">افزودن، ویرایش و غیرفعال‌سازی کاربران سامانه</div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddUser()"><i class="fas fa-user-plus"></i> کاربر جدید</button>
+      </div>
+      <div id="userFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="userFormTitle">افزودن کاربر</div>
+          <button class="btn-icon" onclick="closeUserForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="userForm" onsubmit="saveUser(event)" autocomplete="off">
+            <input type="hidden" id="editUserId" value="">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+              <div class="form-group">
+                <label class="form-label">نام کاربری *</label>
+                <input class="form-control" name="username" id="uf_username" required placeholder="مثال: 09121234567">
+              </div>
+              <div class="form-group">
+                <label class="form-label">نام کامل (فارسی) *</label>
+                <input class="form-control" name="fullName" id="uf_fullName" required placeholder="علی احمدی">
+              </div>
+              <div class="form-group">
+                <label class="form-label">رمز عبور</label>
+                <input class="form-control" name="password" id="uf_password" type="password" placeholder="در ویرایش خالی = بدون تغییر" autocomplete="new-password">
+              </div>
+              <div class="form-group">
+                <label class="form-label">ایمیل</label>
+                <input class="form-control" name="email" id="uf_email" type="email" dir="ltr">
+              </div>
+              <div class="form-group">
+                <label class="form-label">موبایل</label>
+                <input class="form-control" name="phone" id="uf_phone" dir="ltr" placeholder="09121234567">
+              </div>
+              <div class="form-group">
+                <label class="form-label">واحد</label>
+                <select class="form-control" name="departmentId" id="uf_dept"><option value="">بدون واحد</option></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">نقش</label>
+                <select class="form-control" name="role" id="uf_role">
+                  <option value="user">کاربر عادی</option>
+                  <option value="admin">مدیر</option>
+                  <% if (isSuperadmin) { %><option value="superadmin">سوپر ادمین</option><% } %>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">وضعیت</label>
+                <select class="form-control" name="status" id="uf_status">
+                  <option value="active">فعال</option>
+                  <option value="inactive">غیرفعال</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+              <button class="btn btn-outline" type="button" onclick="closeUserForm()">انصراف</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="usersTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== DEPARTMENTS ===== -->
+    <section id="tab-departments" class="tab-pane<%= activePage === 'departments' ? ' active' : '' %>">
+      <div class="section-header">
+        <div><div class="section-title">مدیریت واحدهای سازمانی</div><div class="section-sub">افزودن، ویرایش و حذف واحدهای سازمان</div></div>
+        <button class="btn btn-primary btn-sm" onclick="openAddDept()"><i class="fas fa-plus"></i> واحد جدید</button>
+      </div>
+      <div id="deptFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="deptFormTitle">افزودن واحد</div>
+          <button class="btn-icon" onclick="closeDeptForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="deptForm" onsubmit="saveDept(event)">
+            <input type="hidden" id="editDeptId" value="">
+            <div style="display:flex;gap:12px;align-items:flex-end">
+              <div class="form-group" style="flex:1;margin:0">
+                <label class="form-label">نام واحد *</label>
+                <input class="form-control" id="df_name" required placeholder="مثال: واحد مالی">
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+                <button class="btn btn-outline" type="button" onclick="closeDeptForm()">انصراف</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="deptsTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== GUESTS ===== -->
+    <section id="tab-guests" class="tab-pane<%= activePage === 'guests' ? ' active' : '' %>">
+      <div class="guest-hub">
+        <div class="guest-stats" id="guestStatsRow">
+          <div class="guest-stat-card">
+            <div class="guest-stat-icon total"><i class="fas fa-users"></i></div>
+            <div><div class="guest-stat-val" id="guestStatTotal">۰</div><div class="guest-stat-label">کل مهمان‌ها</div></div>
+          </div>
+          <div class="guest-stat-card">
+            <div class="guest-stat-icon permanent"><i class="fas fa-id-card"></i></div>
+            <div><div class="guest-stat-val" id="guestStatPermanent">۰</div><div class="guest-stat-label">دائم</div></div>
+          </div>
+          <div class="guest-stat-card">
+            <div class="guest-stat-icon temporary"><i class="fas fa-clock"></i></div>
+            <div><div class="guest-stat-val" id="guestStatTemporary">۰</div><div class="guest-stat-label">موقت</div></div>
+          </div>
+          <div class="guest-stat-card">
+            <div class="guest-stat-icon active"><i class="fas fa-circle-check"></i></div>
+            <div><div class="guest-stat-val" id="guestStatActive">۰</div><div class="guest-stat-label">فعال</div></div>
+          </div>
+        </div>
+
+        <div class="card guest-main-card">
+          <div class="guest-card-head">
+            <div>
+              <div class="guest-card-title"><i class="fas fa-user-tag"></i> مدیریت مهمان‌ها</div>
+              <div class="guest-card-sub">ثبت مهمان با کد یکتا و رزرو هفتگی غذا از منوی فعال</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openAddGuest()"><i class="fas fa-plus"></i> مهمان جدید</button>
+          </div>
+
+          <div class="guest-toolbar">
+            <div class="search-group guest-search">
+              <i class="fas fa-search search-group-icon"></i>
+              <input id="guestSearchInput" type="text" placeholder="جستجو نام، کد یا واحد..." oninput="filterGuestsTable()">
+            </div>
+            <select class="form-control guest-filter" id="guestTypeFilter" onchange="filterGuestsTable()">
+              <option value="">همه انواع</option>
+              <option value="permanent">دائم</option>
+              <option value="temporary">موقت</option>
+            </select>
+            <select class="form-control guest-filter" id="guestStatusFilter" onchange="filterGuestsTable()">
+              <option value="">همه وضعیت‌ها</option>
+              <option value="active">فعال</option>
+              <option value="inactive">غیرفعال</option>
+            </select>
+          </div>
+
+          <div id="guestsTableWrap" class="guest-table-wrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+
+      <div id="guestFormOverlay" class="guest-form-overlay" hidden>
+        <div class="guest-form-modal card">
+          <div class="card-header">
+            <div class="card-title" id="guestFormTitle">ثبت مهمان</div>
+            <button class="btn-icon" type="button" onclick="closeGuestForm()"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="card-body">
+            <form id="guestForm" onsubmit="saveGuest(event)">
+              <input type="hidden" id="editGuestId" value="">
+              <div class="guest-form-grid">
+                <div class="form-group">
+                  <label class="form-label">نام مهمان *</label>
+                  <input class="form-control" id="guest_fullName" required maxlength="120" placeholder="نام و نام خانوادگی">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">نوع مهمان</label>
+                  <select class="form-control" id="guest_type" onchange="toggleGuestValidUntil()">
+                    <option value="temporary">موقت</option>
+                    <option value="permanent">دائم</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">واحد / بخش میزبان</label>
+                  <input class="form-control" id="guest_department" maxlength="120" placeholder="مثال: پشتیبانی">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">وضعیت</label>
+                  <select class="form-control" id="guest_status">
+                    <option value="active">فعال</option>
+                    <option value="inactive">غیرفعال</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" id="guest_valid_wrap">
+                <label class="form-label">اعتبار تا (شمسی — برای مهمان موقت)</label>
+                <input class="form-control" id="guest_validUntil" data-jdp data-jdp-only-date placeholder="مثال: ۱۴۰۴/۰۵/۳۰">
+              </div>
+              <div class="form-group">
+                <label class="form-label">یادداشت</label>
+                <textarea class="form-control" id="guest_notes" rows="2" maxlength="500" placeholder="توضیح اختیاری"></textarea>
+              </div>
+              <div class="guest-form-actions">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+                <button class="btn btn-outline" type="button" onclick="closeGuestForm()">انصراف</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div id="guestReserveOverlay" class="guest-drawer-overlay" hidden onclick="closeGuestReservePanel()"></div>
+      <aside class="guest-drawer" id="guestReservePanel" aria-hidden="true">
+        <div class="guest-drawer-header">
+          <div>
+            <div class="guest-drawer-title"><i class="fas fa-calendar-check"></i> رزرو هفتگی</div>
+            <div class="guest-reserve-name" id="guestReserveName">—</div>
+            <div class="guest-reserve-code" id="guestReserveCode">کد: —</div>
+          </div>
+          <button class="btn-icon guest-drawer-close" type="button" onclick="closeGuestReservePanel()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="guest-drawer-body">
+          <div class="form-group">
+            <label class="form-label">هفته</label>
+            <select class="form-control" id="guestReserveWeekSelect" onchange="loadGuestReserveMenu()"></select>
+          </div>
+          <div id="guestReserveMenuWrap"><div class="text-muted" style="font-size:.82rem">هفته را انتخاب کنید</div></div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ===== ANNOUNCEMENTS ===== -->
+    <section id="tab-announcements" class="tab-pane<%= activePage === 'announcements' ? ' active' : '' %>">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مدیریت اطلاعیه‌ها</div>
+          <div class="section-sub">ارسال پیام به همه کاربران یا واحدهای مشخص</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openAddAnnouncement()"><i class="fas fa-plus"></i> اطلاعیه جدید</button>
+      </div>
+      <div id="announcementFormWrap" class="card" style="display:none;margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title" id="announcementFormTitle">ثبت اطلاعیه</div>
+          <button class="btn-icon" onclick="closeAnnouncementForm()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="announcementForm" onsubmit="saveAnnouncement(event)">
+            <input type="hidden" id="editAnnouncementId" value="">
+            <div class="form-group">
+              <label class="form-label">عنوان *</label>
+              <input class="form-control" id="ann_title" required maxlength="120" placeholder="مثال: تعطیلی سلف سرویس">
+            </div>
+            <div class="form-group">
+              <label class="form-label">متن اطلاعیه *</label>
+              <textarea class="form-control" id="ann_body" required rows="4" maxlength="2000" placeholder="متن پیام برای کاربران"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div class="form-group">
+                <label class="form-label">مخاطب</label>
+                <select class="form-control" id="ann_audience" onchange="toggleAnnouncementDepts()">
+                  <option value="all">همه کاربران سامانه</option>
+                  <option value="department">واحد مشخص</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">وضعیت</label>
+                <select class="form-control" id="ann_active">
+                  <option value="1">فعال (نمایش به کاربران)</option>
+                  <option value="0">غیرفعال</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" id="ann_depts_wrap" style="display:none">
+              <label class="form-label">واحدهای هدف *</label>
+              <select class="form-control" id="ann_departments" multiple size="5"></select>
+              <div class="text-muted" style="font-size:.75rem;margin-top:6px">برای انتخاب چند واحد، Ctrl را نگه دارید</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">تاریخ انقضا (شمسی — اختیاری)</label>
+              <input class="form-control" id="ann_expires" data-jdp data-jdp-only-date placeholder="مثال: ۱۴۰۴/۰۴/۲۰">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px">
+              <button class="btn btn-primary" type="submit"><i class="fas fa-save"></i> ذخیره</button>
+              <button class="btn btn-outline" type="button" onclick="closeAnnouncementForm()">انصراف</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap" id="announcementsTableWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+    </section>
+
+    <!-- ===== FINANCE ===== -->
+    <section id="tab-finance" class="tab-pane<%= activePage === 'finance' ? ' active' : '' %>">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مالی و حسابداری</div>
+          <div class="section-sub">تنظیم سهم پرداخت و صدور صورتحساب کاربران</div>
+        </div>
+      </div>
+
+      <div class="finance-layout">
+        <aside class="finance-sidebar card">
+          <div class="card-header">
+            <div class="card-title"><i class="fas fa-sliders"></i> تنظیمات سهم</div>
+          </div>
+          <div class="card-body">
+            <label class="finance-toggle">
+              <input type="checkbox" id="financeShowToUsers" checked>
+              <span class="finance-toggle-ui"></span>
+              <span class="finance-toggle-text">نمایش صورتحساب در پرتال کاربران</span>
+            </label>
+
+            <div class="finance-percent-block">
+              <label class="form-label" for="financeOrgPercent">سهم سازمان</label>
+              <div class="finance-percent-row">
+                <input class="form-control" id="financeOrgPercent" type="number" min="0" max="100" step="1" value="50">
+                <span class="finance-percent-suffix">٪</span>
+              </div>
+              <div class="finance-split-chips">
+                <span class="finance-chip org">سازمان: <strong id="financeOrgPreview">۵۰٪</strong></span>
+                <span class="finance-chip personal">شخص: <strong id="financePersonalPreview">۵۰٪</strong></span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-w100" type="button" id="financeSaveBtn" onclick="saveFinanceSettings()">
+              <i class="fas fa-save"></i> ذخیره تنظیمات
+            </button>
+
+            <p class="finance-sidebar-note">
+              <i class="fas fa-circle-info"></i>
+              فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند.
+            </p>
+          </div>
+        </aside>
+
+        <div class="finance-main card">
+          <div class="finance-toolbar">
+            <div class="finance-toolbar-title">
+              <i class="fas fa-file-invoice-dollar"></i>
+              <span>صورتحساب کاربران</span>
+            </div>
+            <div class="finance-toolbar-actions report-controls">
+              <div class="sub-tabs">
+                <button class="sub-tab-btn active" data-finance-sub="weekly" id="financeSubWeekly" type="button"><i class="fas fa-calendar-week"></i> هفتگی</button>
+                <button class="sub-tab-btn" data-finance-sub="monthly" id="financeSubMonthly" type="button"><i class="fas fa-calendar"></i> ماهیانه</button>
+              </div>
+              <select class="form-control" id="financeWeekSelect"></select>
+              <select class="form-control" id="financeMonthSelect" style="display:none"></select>
+              <button class="btn btn-primary btn-sm" type="button" id="financePdfAllBtn" onclick="downloadFinancePdf()">
+                <i class="fas fa-file-pdf"></i> PDF همه
+              </button>
+            </div>
+          </div>
+
+          <div class="report-grid finance-summary-grid" id="financeTotalsBar"></div>
+
+          <div class="table-wrap finance-table-wrap" id="financeStatementsWrap">
+            <div style="padding:32px;text-align:center"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FOODS ===== -->
+    <section id="tab-foods" class="tab-pane<%= activePage === 'foods' ? ' active' : '' %>">
+      <div class="section-header">
+        <div><div class="section-title">غذاها</div><div class="section-sub">تعریف غذاهای قابل استفاده در منوی هفته</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">افزودن غذای جدید</div></div>
+        <div class="card-body">
+          <form id="foodForm" class="inline-form">
+            <input class="form-control" name="name" placeholder="نام غذا" required>
+            <input class="form-control" name="price" type="number" placeholder="قیمت (تومان)" required>
+            <select class="form-control" name="category">
+              <option value="lunch">ناهار</option>
+              <option value="breakfast">صبحانه</option>
+              <option value="dinner">شام</option>
+              <option value="snack">میان وعده</option>
+            </select>
+            <button class="btn btn-primary" type="submit"><i class="fas fa-plus"></i> افزودن</button>
+          </form>
+        </div>
+      </div>
+      <div id="foodEditWrap" class="card" style="display:none;margin-bottom:14px">
+        <div class="card-header">
+          <div class="card-title">ویرایش غذا</div>
+          <button class="btn-icon" onclick="document.getElementById('foodEditWrap').style.display='none'"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body">
+          <form id="foodEditForm" class="inline-form" onsubmit="saveFoodEdit(event)">
+            <input type="hidden" id="editFoodId">
+            <input class="form-control" id="ef_name" placeholder="نام غذا" required>
+            <input class="form-control" id="ef_price" type="number" placeholder="قیمت" required>
+            <select class="form-control" id="ef_category">
+              <option value="lunch">ناهار</option><option value="breakfast">صبحانه</option>
+              <option value="dinner">شام</option><option value="snack">میان وعده</option>
+            </select>
+            <button class="btn btn-success" type="submit"><i class="fas fa-save"></i></button>
+          </form>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="foodsTable">
+          <thead><tr><th>نام</th><th>دسته</th><th>قیمت</th><th>عملیات</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="foodsPagination"></div>
+      </div>
+    </section>

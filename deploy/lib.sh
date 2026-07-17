@@ -704,14 +704,14 @@ reset_superadmin_credentials() {
   fi
   log_info "Resetting superadmin credentials for '${username}'..."
   local output
-  if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js reset-credentials $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
+  if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node backend/scripts/super-admin.js reset-credentials $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
     log_ok "Superadmin credentials updated"
     echo "$output" | sed 's/^/  /'
     return 0
   fi
   if echo "$output" | grep -qi 'reset-credentials'; then
     log_warn "reset-credentials not in script yet — trying create..."
-    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
+    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node backend/scripts/super-admin.js create $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
       log_ok "Superadmin created"
       echo "$output" | sed 's/^/  /'
       return 0

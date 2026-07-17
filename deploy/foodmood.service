@@ -13,7 +13,7 @@ WorkingDirectory=/opt/food
 Environment=NODE_ENV=production
 EnvironmentFile=/opt/food/.env
 ExecStartPre=/opt/food/deploy/wait-for-mongo.sh
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node backend/server.js
 Restart=always
 RestartSec=5
 StartLimitInterval=300

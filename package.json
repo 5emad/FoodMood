@@ -1,17 +1,19 @@
 {
   "name": "food-ordering-system",
-  "version": "1.6.10",
+  "version": "1.7.0",
   "description": "سیستم رزرو و سفارش غذا",
-  "main": "server.js",
+  "main": "backend/server.js",
   "scripts": {
-    "start": "node server.js",
-    "stop": "node scripts/stop-server.js",
+    "start": "node backend/server.js",
+    "stop": "node backend/scripts/stop-server.js",
     "restart": "npm run stop && npm start",
-    "dev": "nodemon server.js",
-    "vendor:sync": "node scripts/sync-vendor.js",
-    "build:client": "node scripts/build-client-js.js",
-    "postinstall": "node scripts/sync-vendor.js",
-    "test:outage": "node scripts/test-db-outage.js"
+    "dev": "nodemon backend/server.js",
+    "vendor:sync": "node backend/scripts/sync-vendor.js",
+    "build:client": "node backend/scripts/build-client-js.js",
+    "build:spa": "cd frontend && npm install && npm run build",
+    "build": "npm run build:client && npm run build:spa",
+    "postinstall": "node backend/scripts/sync-vendor.js",
+    "test:outage": "node backend/scripts/test-db-outage.js"
   },
   "keywords": [
     "food",

@@ -1,0 +1,72 @@
+        <div class="ph-badge"><i class="fas fa-shield-halved"></i> سوپر ادمین</div>
+        <div class="ph-title">مرکز امنیت و لاگ‌های سیستمی</div>
+        <div class="ph-sub">ورود، قفل حساب، رخدادهای امنیتی و چرخه عمر سرور</div>
+      </div>
+      <i class="fas fa-shield-halved ph-icon"></i>
+    </div>
+
+    <section class="super-page-section">
+      <div class="section-header">
+        <div>
+          <div class="section-title">مرکز امنیت</div>
+          <div class="section-sub">لاگ ورود، تلاش‌های ناموفق، حساب‌های قفل‌شده و عملیات آنلاک</div>
+        </div>
+        <div class="d-flex gap-2" style="flex-wrap:wrap">
+          <button class="btn btn-warning btn-sm" onclick="resetOwnSuperToken()"><i class="fas fa-key"></i> تغییر توکن من</button>
+          <button class="btn btn-outline btn-sm" onclick="loadSecurityCenter()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="securityStats">
+        <div class="stat-card"><div class="stat-icon red"><i class="fas fa-lock"></i></div><div><div class="stat-value" id="lockedCount">0</div><div class="stat-label">حساب قفل‌شده</div></div></div>
+        <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-triangle-exclamation"></i></div><div><div class="stat-value" id="failedCount">0</div><div class="stat-label">تلاش ناموفق ۲۴ ساعت</div></div></div>
+        <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-bell"></i></div><div><div class="stat-value" id="securityUnreadCount">0</div><div class="stat-label">رخداد مهم اخیر</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">کاربران قفل‌شده</div></div>
+        <div class="card-body"><div class="table-wrap" id="lockedUsersWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">تلاش‌های ناموفق پرتکرار</div></div>
+        <div class="card-body">
+          <div class="table-wrap" id="failedSummaryWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+          <div id="failedSummaryPagination" class="d-flex gap-2" style="flex-wrap:wrap;justify-content:center;margin-top:14px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">آخرین لاگ‌های امنیتی</div></div>
+        <div class="card-body">
+          <div class="table-wrap" id="securityLogsWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+          <div id="securityLogsPagination" class="d-flex gap-2" style="flex-wrap:wrap;justify-content:center;margin-top:14px"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-server" style="margin-left:8px;color:var(--primary)"></i> لاگ‌های سیستمی</div>
+          <span id="systemHealthBadge" class="badge badge-success">سالم</span>
+        </div>
+        <div class="card-body">
+          <p class="section-sub" style="margin-bottom:12px">استارت/استاپ سرور، قطع و وصل دیتابیس — فقط سوپر ادمین. کاربران عادی صفحه «در دسترس نیست» می‌بینند.</p>
+          <div class="stat-grid" id="lifecycleStats" style="margin-bottom:16px">
+            <div class="stat-card"><div class="stat-icon green"><i class="fas fa-play"></i></div><div><div class="stat-value" id="lcServerStarts">0</div><div class="stat-label">استارت سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-stop"></i></div><div><div class="stat-value" id="lcServerStops">0</div><div class="stat-label">استاپ سرور</div></div></div>
+            <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-database"></i></div><div><div class="stat-value" id="lcDbConnects">0</div><div class="stat-label">اتصال دیتابیس</div></div></div>
+            <div class="stat-card"><div class="stat-icon red"><i class="fas fa-plug-circle-xmark"></i></div><div><div class="stat-value" id="lcDbDisconnects">0</div><div class="stat-label">قطع دیتابیس</div></div></div>
+          </div>
+          <div id="systemTestWrap" style="display:none;margin-bottom:14px">
+            <button class="btn btn-warning btn-sm" onclick="runDbOutageTest(this)"><i class="fas fa-vial"></i> تست قطعی دیتابیس (۳۰ ثانیه)</button>
+            <span class="text-muted" style="font-size:.8rem;margin-right:10px">فقط حالت تست — صفحه «در دسترس نیست» را در تب ناشناس بررسی کنید</span>
+          </div>
+          <div class="d-flex gap-2" style="flex-wrap:wrap;margin-bottom:12px;align-items:center">
+            <select class="form-control" id="systemLogLevelFilter" style="width:160px" onchange="systemLogLevelFilterChanged()">
+              <option value="">همه سطوح</option>
+              <option value="error">فقط خطا</option>
+              <option value="warn">فقط هشدار</option>
+              <option value="info">فقط اطلاع</option>
+            </select>
+            <button class="btn btn-outline btn-sm" onclick="loadSystemLogs()"><i class="fas fa-rotate"></i> بروزرسانی</button>
+          </div>

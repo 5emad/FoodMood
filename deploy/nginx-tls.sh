@@ -139,9 +139,9 @@ fix_install_permissions() {
   local install_dir="$1"
   [[ -d "$install_dir" ]] || return 0
   chmod 755 "$install_dir" 2>/dev/null || true
-  if [[ -d "${install_dir}/public" ]]; then
-    find "${install_dir}/public" -type d -exec chmod a+rx {} + 2>/dev/null || true
-    find "${install_dir}/public" -type f -exec chmod a+r {} + 2>/dev/null || true
+  if [[ -d "${install_dir}/backend/public" ]]; then
+    find "${install_dir}/backend/public" -type d -exec chmod a+rx {} + 2>/dev/null || true
+    find "${install_dir}/backend/public" -type f -exec chmod a+r {} + 2>/dev/null || true
   fi
 }
 

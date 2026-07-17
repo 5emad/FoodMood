@@ -282,9 +282,9 @@ apply_update() {
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
 
   log_info "Building minified client JS bundles..."
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build:client" || log_warn "build:client failed — non-minified JS will be served if newer"
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build" || log_warn "build failed — non-minified JS / SPA may be stale"
 
-  chmod -R a+rX "${INSTALL_DIR}/public" 2>/dev/null || true
+  chmod -R a+rX "${INSTALL_DIR}/backend/public" 2>/dev/null || true
 
   migrate_systemd_service
 

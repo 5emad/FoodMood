@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizePublicUrl } = require('./AppUrlHelper');
 
-const ENV_PATH = process.env.ENV_FILE || path.join(__dirname, '../../.env');
+const ENV_PATH = process.env.ENV_FILE || path.join(__dirname, '../../../.env');
 
 function readEnvFile(filePath = ENV_PATH) {
   if (!fs.existsSync(filePath)) return '';

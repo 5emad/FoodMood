@@ -478,7 +478,7 @@ resolve_project_source() {
   if [[ -n "$script_path" && -f "$script_path" ]]; then
     local candidate
     candidate="$(cd "$(dirname "$script_path")/.." 2>/dev/null && pwd || true)"
-    if [[ -n "$candidate" && -f "$candidate/package.json" && -f "$candidate/server.js" ]]; then
+    if [[ -n "$candidate" && -f "$candidate/package.json" && -f "$candidate/backend/server.js" ]]; then
       PROJECT_DIR="$candidate"
       log_ok "Using local project source: ${PROJECT_DIR}"
       step_complete
@@ -843,7 +843,7 @@ deploy_application() {
     "$PROJECT_DIR/" "$INSTALL_DIR/"
   chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
   chmod 755 "$INSTALL_DIR"
-  chmod -R a+rX "${INSTALL_DIR}/public" 2>/dev/null || true
+  chmod -R a+rX "${INSTALL_DIR}/backend/public" 2>/dev/null || true
   chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
   log_ok "Application deployed to ${INSTALL_DIR}."
   step_complete
@@ -1023,13 +1023,13 @@ install_npm_deps() {
     exit 1
   fi
   log_busy "Building minified client JS bundles..."
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build:client" || log_warn "build:client failed — non-minified JS will be served if newer"
-  if [[ ! -f "${INSTALL_DIR}/public/css/enterprise-theme.css" \
-     || ! -f "${INSTALL_DIR}/public/vendor/fontawesome/css/all.min.css" \
-     || ! -f "${INSTALL_DIR}/public/vendor/vazirmatn/vazirmatn.css" \
-     || ! -f "${INSTALL_DIR}/public/vendor/vazirmatn/Vazirmatn-Regular.woff2" \
-     || ! -f "${INSTALL_DIR}/public/vendor/fontawesome/webfonts/fa-solid-900.woff2" ]]; then
-    log_err "Required static assets are missing under ${INSTALL_DIR}/public/"
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build" || log_warn "build failed — non-minified JS / SPA may be stale"
+  if [[ ! -f "${INSTALL_DIR}/backend/public/css/enterprise-theme.css" \
+     || ! -f "${INSTALL_DIR}/backend/public/vendor/fontawesome/css/all.min.css" \
+     || ! -f "${INSTALL_DIR}/backend/public/vendor/vazirmatn/vazirmatn.css" \
+     || ! -f "${INSTALL_DIR}/backend/public/vendor/vazirmatn/Vazirmatn-Regular.woff2" \
+     || ! -f "${INSTALL_DIR}/backend/public/vendor/fontawesome/webfonts/fa-solid-900.woff2" ]]; then
+    log_err "Required static assets are missing under ${INSTALL_DIR}/backend/public/"
     log_err "Run: sudo -u ${APP_USER} bash -c 'cd ${INSTALL_DIR} && npm run vendor:sync'"
     exit 1
   fi
@@ -1146,7 +1146,7 @@ create_superadmin_account() {
   fi
 
   for attempt in 1 2 3; do
-    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)"; then
+    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node backend/scripts/super-admin.js create $(printf '%q' "$SUPERADMIN_USER") $(printf '%q' "$SUPERADMIN_PASS")" 2>&1)"; then
       SUPERADMIN_CREDS_OUTPUT="$output"
       log_ok "Superadmin '${SUPERADMIN_USER}' created — credentials shown at the end."
       step_complete

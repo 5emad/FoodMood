@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const PACKAGE_PATH = path.join(__dirname, '../../package.json');
+const PACKAGE_PATH = path.join(__dirname, '../../../package.json');
 const PUBLIC_JS_DIR = path.join(__dirname, '../../public/js');
 
 let cachedVersion = null;

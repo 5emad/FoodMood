@@ -274,6 +274,10 @@ if (process.env.ALLOW_SYSTEM_TEST === 'true' && !isProduction) {
 app.get('/api/auth/csrf', (req, res) => {
   res.json({ success: true, csrfToken: ensureCsrfToken(req) });
 });
+
+const appConfigRoutes = require('./src/routes/appConfigRoutes');
+app.use('/api/app', appConfigRoutes);
+
 app.use('/api', csrfMiddleware);
 
 app.use('/api/auth/login', ensureDbMiddleware);
@@ -286,7 +290,14 @@ app.use('/api/menu',          menuRoutes);
 app.use('/api/user',          ensureDbMiddleware, userApiRoutes);
 app.use('/api/announcements', announcementRoutes);
 
-// ── View routes (add no-cache to all rendered pages) ─────────────────────────
+const spaMiddleware = require('./src/middleware/spaMiddleware');
+app.use(spaMiddleware);
+app.use(express.static(path.join(publicDir, 'spa'), {
+  maxAge: isProduction ? '7d' : 0,
+  setHeaders: staticHeaders,
+}));
+
+// ── Legacy EJS view routes (fallback when SPA build is missing) ───────────────
 app.use('/',       noCache, viewRoutes);
 app.use('/user',   noCache, userRoutes);
 app.use('/admin',  noCache, ensureDbMiddleware, adminViewRoutes);

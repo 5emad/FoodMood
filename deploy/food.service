@@ -10,7 +10,7 @@ Group=foodapp
 WorkingDirectory=/opt/food
 Environment=NODE_ENV=production
 EnvironmentFile=/opt/food/.env
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node backend/server.js
 Restart=always
 RestartSec=5
 StandardOutput=journal
