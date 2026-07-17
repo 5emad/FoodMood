@@ -14,6 +14,7 @@
   <script src="<%= jsAsset('security') %>" defer></script>
 </head>
 <body class="admin-body">
+<div id="toast-container"></div>
 
 <!-- Sidebar -->
 <%- include('partials/sidebar', { activePage: typeof activePage !== 'undefined' ? activePage : 'reports', isSuperadmin, sidebarMode: 'dashboard' }) %>
@@ -552,6 +553,7 @@
   capabilities: typeof capabilities !== 'undefined' ? capabilities : null,
   activePage: typeof activePage !== 'undefined' ? activePage : 'reports'
 }) %></script>
+<script src="<%= jsAsset('app-toast') %>"></script>
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
 <script src="/vendor/jalalidatepicker/jalalidatepicker.min.js"></script>
 <script src="<%= jsAsset('portal-capabilities') %>"></script>

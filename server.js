@@ -1,4 +1,6 @@
 require('dotenv').config();
+const cluster = require('cluster');
+const os        = require('os');
 const express    = require('express');
 const session    = require('express-session');
 const helmet     = require('helmet');
@@ -75,8 +77,11 @@ app.set('trust proxy', 1);
 
 const publicDir = path.join(__dirname, 'public');
 const staticCache = isProduction ? '7d' : 0;
-const staticHeaders = (res) => {
+const staticHeaders = (res, filePath) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (isProduction && filePath && /\.(js|css|woff2?)$/i.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+  }
 };
 
 // Static assets first — never blocked by session/health middleware
@@ -120,6 +125,15 @@ app.use(helmet({
   xssFilter:    true,
   referrerPolicy: { policy: 'same-origin' },
 }));
+
+if (isProduction) {
+  try {
+    const compression = require('compression');
+    app.use(compression({ threshold: 1024, level: 6 }));
+  } catch {
+    console.warn('compression package not installed; responses are uncompressed');
+  }
+}
 
 // Plain-HTTP installs: clear any browser HSTS cache and drop HTTPS-only headers.
 if (!trustTls) {
@@ -447,12 +461,27 @@ process.on('uncaughtException', (err) => {
   });
 });
 
-bootstrap().catch((err) => {
-  writeSystemLog('error', 'server', msgBootstrapError(err.message), {
-    event: 'bootstrap_error',
-    stack: err.stack,
-    detail: err.message,
+function startServer() {
+  bootstrap().catch((err) => {
+    writeSystemLog('error', 'server', msgBootstrapError(err.message), {
+      event: 'bootstrap_error',
+      stack: err.stack,
+      detail: err.message,
+    });
+    console.error('خطا در راه‌اندازی سرور:', err);
+    process.exit(1);
   });
-  console.error('خطا در راه‌اندازی سرور:', err);
-  process.exit(1);
-});
+}
+
+const clusterWorkers = Math.max(0, Number(process.env.CLUSTER_WORKERS || 0));
+if (clusterWorkers > 1 && cluster.isPrimary) {
+  const count = Math.min(clusterWorkers, os.cpus().length);
+  console.log(`Cluster master ${process.pid} — starting ${count} workers`);
+  for (let i = 0; i < count; i += 1) cluster.fork();
+  cluster.on('exit', (worker) => {
+    console.warn(`Worker ${worker.process.pid} exited; spawning replacement`);
+    cluster.fork();
+  });
+} else {
+  startServer();
+}

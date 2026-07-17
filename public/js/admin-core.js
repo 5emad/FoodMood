@@ -73,15 +73,13 @@
     heightAuto: false,
   });
 
-  function notify(message, icon, title) {
+  function notify(message, icon) {
     icon = icon || 'success';
-    return dialog.fire({
-      icon: icon,
-      title: title || (icon === 'success' ? 'انجام شد' : 'خطا'),
-      text: message,
-      timer: icon === 'success' ? 2200 : undefined,
-      timerProgressBar: icon === 'success',
-    });
+    var typeMap = { success: 'success', error: 'error', warning: 'warning', info: 'info', question: 'info' };
+    var type = typeMap[icon] || 'info';
+    if (window.AppToast) return window.AppToast.show(message, type);
+    window.alert(message);
+    return Promise.resolve();
   }
 
   function showSuperToken(token) {

@@ -134,7 +134,8 @@
   </div>
 </div>
 
-<script src="<%= jsAsset('portal-capabilities') %>"></script>
+  <script src="<%= jsAsset('app-toast') %>"></script>
+  <script src="<%= jsAsset('portal-capabilities') %>"></script>
 <script type="application/json" id="user-portal-bootstrap"><%- safeJsonForHtml({
   capabilities: typeof capabilities !== 'undefined' ? capabilities : null,
   portalSettings: typeof portalSettings !== 'undefined' ? portalSettings : {
@@ -200,21 +201,7 @@ function api(url, options = {}) {
 }
 
 function toast(message, type = 'success') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-  const icons = { success: 'check-circle', error: 'exclamation-circle', warning: 'triangle-exclamation', info: 'circle-info' };
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<i class="fas fa-${icons[type] || icons.success}"></i><span>${esc(message)}</span>`;
-  container.appendChild(el);
-  requestAnimationFrame(() => {
-    el.style.animation = 'slideInToast .4s cubic-bezier(.175,.885,.32,1.275) forwards';
-  });
-  const duration = type === 'error' ? 4200 : 3200;
-  setTimeout(() => {
-    el.style.animation = 'fadeOut .4s forwards';
-    setTimeout(() => el.remove(), 400);
-  }, duration);
+  if (window.AppToast) return window.AppToast.show(message, type);
 }
 
 function money(value) { return Number(value || 0).toLocaleString('fa-IR') + ' تومان'; }

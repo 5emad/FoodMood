@@ -13,6 +13,7 @@
   <script src="<%= jsAsset('security') %>" defer></script>
 </head>
 <body class="admin-body">
+<div id="toast-container"></div>
 
 <%- include('partials/sidebar', { activePage: 'super-backup', isSuperadmin: true, sidebarMode: 'external' }) %>
 
@@ -84,6 +85,7 @@
   </main>
 </div>
 
+<script src="<%= jsAsset('app-toast') %>"></script>
 <script src="/vendor/sweetalert2/sweetalert2.min.js"></script>
 <script src="<%= jsAsset('admin-core') %>"></script>
 <script src="<%= jsAsset('admin-super-backup') %>" defer></script>

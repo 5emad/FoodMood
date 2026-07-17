@@ -11,6 +11,7 @@
     <%- include('partials/app-base-meta') %>
     <script src="<%= jsAsset('app-base') %>" defer></script>
     <script src="<%= jsAsset('security') %>" defer></script>
+    <script src="<%= jsAsset('app-toast') %>"></script>
 </head>
 <body>
 
@@ -98,13 +99,8 @@
             .replace(/'/g, '&#039;');
     }
 
-    function showToast(msg, type='success') {
-        const c = document.getElementById('toast-container');
-        const t = document.createElement('div');
-        t.className = `toast ${type}`;
-        t.innerHTML = `<i class="fas fa-${type==='success'?'check-circle':'exclamation-circle'}"></i><span>${esc(msg)}</span>`;
-        c.appendChild(t);
-        setTimeout(() => { t.style.animation='fadeOut .4s forwards'; setTimeout(()=>t.remove(),400); }, 3000);
+    function showToast(msg, type) {
+        if (window.AppToast) window.AppToast.show(msg, type || 'success');
     }
 
     async function loadFoods(cat='') {

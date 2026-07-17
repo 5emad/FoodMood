@@ -113,6 +113,13 @@ server {
 
     client_max_body_size 25M;
 
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;

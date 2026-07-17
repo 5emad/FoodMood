@@ -59,7 +59,7 @@ const loginLimiter = createLimiter({
 
 const apiLimiter = createLimiter({
   windowMs: 60 * 1000,
-  max:      200,
+  max:      Number(process.env.API_RATE_LIMIT_MAX || 400),
   message:  { success: false, message: 'درخواست‌های زیادی ارسال کردید. لطفاً کمی صبر کنید.' },
 });
 
