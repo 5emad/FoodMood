@@ -1,5 +1,6 @@
 const AppSetting = require('../models/AppSetting');
 const { isEnabledFlag } = require('../helpers/SettingFlags');
+const { defaultPortalSlider, normalizePortalSliderConfig } = require('../helpers/PortalSliderDefaults');
 
 const defaultSettings = {
   key: 'default',
@@ -23,6 +24,7 @@ const defaultSettings = {
   ldapBaseDn: '',
   ldapBindDn: '',
   ldapUserFilter: '(sAMAccountName={{username}})',
+  portalSlider: defaultPortalSlider,
 };
 
 function publicSettings(settings) {
@@ -39,6 +41,7 @@ function publicSettings(settings) {
     ldapBindPasswordStored: Boolean(storedEnc),
     ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
     hasLdapCaCert: Boolean(caPem || raw.ldapCaCertPath),
+    portalSlider: normalizePortalSliderConfig(raw.portalSlider),
   };
 }
 

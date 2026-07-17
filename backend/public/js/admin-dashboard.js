@@ -94,19 +94,29 @@ function applyReportsAccessUi() {
 
 function updateAdminTabUrl(tabName) {
   if (!VALID_ADMIN_TABS.includes(tabName)) return;
-  const url = new URL(window.location.href);
-  if (tabName === 'reports') url.searchParams.delete('tab');
-  else url.searchParams.set('tab', tabName);
-  window.history.replaceState({ adminTab: tabName }, '', url.pathname + url.search);
+  if (typeof window.__adminNavigate === 'function') {
+    window.__adminNavigate(tabName);
+    return;
+  }
+  const path = tabName === 'reports' ? '/admin/reports' : `/admin/${tabName}`;
+  window.history.replaceState({ adminTab: tabName }, '', path);
+}
+
+function tabFromLocation() {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  if (parts[0] === 'admin' && VALID_ADMIN_TABS.includes(parts[1])) return parts[1];
+  const legacyTab = new URLSearchParams(window.location.search).get('tab');
+  if (VALID_ADMIN_TABS.includes(legacyTab)) return legacyTab;
+  return null;
 }
 
 function activateSidebarTab(tabName) {
-  const link = document.querySelector(`.sidebar-link[data-tab="${tabName}"]`);
   const pane = document.getElementById(`tab-${tabName}`);
-  if (!link || !pane) return;
+  if (!pane) return;
+  const link = document.querySelector(`.sidebar-link[data-tab="${tabName}"]`);
   document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  link.classList.add('active');
+  if (link) link.classList.add('active');
   pane.classList.add('active');
   updateAdminTabUrl(tabName);
 }
@@ -2069,9 +2079,9 @@ if (document.getElementById('financeOrgPercent')) {
   updateFinancePreview();
 }
 applyReportsAccessUi();
-const urlTab = new URLSearchParams(window.location.search).get('tab');
+const pathTab = tabFromLocation();
 const bootTab = boot.activePage;
-let initialTab = VALID_ADMIN_TABS.includes(urlTab) ? urlTab : (VALID_ADMIN_TABS.includes(bootTab) ? bootTab : 'reports');
+let initialTab = pathTab || (VALID_ADMIN_TABS.includes(bootTab) ? bootTab : 'reports');
 if (!reportsAccess.allowed && initialTab === 'reports') initialTab = 'orders';
 document.body.classList.toggle('admin-guests-tab', initialTab === 'guests');
 openAdminTab(initialTab);
@@ -2080,6 +2090,7 @@ showMonthlyReportPlaceholder();
 buildMonthOptions();
 
 Object.assign(window, {
+  openAdminTab,
   goToOrdersForConfirm,
   switchSubTab,
   switchWeeklyReportTab,

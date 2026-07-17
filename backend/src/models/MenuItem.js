@@ -24,6 +24,12 @@ const menuItemSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  /** شمارنده اتمیک رزروهای فعال (برای جلوگیری از race ظرفیت) */
+  reservedCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

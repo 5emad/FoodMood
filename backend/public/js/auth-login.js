@@ -70,7 +70,7 @@
     }
     var role = user && user.role;
     window.location.href = (role === 'admin' || role === 'superadmin')
-      ? appPath('/admin/dashboard')
+      ? appPath('/admin/reports')
       : appPath('/user/dashboard');
   }
 
@@ -135,7 +135,7 @@
           }
           var verifyData = await verifyRes.json();
           if (verifyData.success) {
-            window.location.href = appPath('/admin/dashboard');
+            window.location.href = appPath('/admin/reports');
             return;
           }
           showAlert(verifyData.message || 'توکن وارد شده معتبر نیست.');

@@ -1,4 +1,7 @@
 require('dotenv').config();
+// هفته شمسی و محاسبات تاریخ به وقت ایران وابسته است
+if (!process.env.TZ) process.env.TZ = 'Asia/Tehran';
+
 const cluster = require('cluster');
 const os        = require('os');
 const express    = require('express');
@@ -168,6 +171,10 @@ app.get('/css/theme-vars.css', ThemeController.variables);
 
 // ── MongoDB operator injection prevention ────────────────────────────────────
 app.use(mongoSanitize);
+
+// ── WAF (firewtwall) — کانفیگ استاندارد، بعد از parse برای body/query ─────────
+const { createAppWaf } = require('./src/middleware/wafMiddleware');
+app.use(...createAppWaf());
 
 // ── Static files ─────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -352,6 +359,27 @@ async function runPostConnectTasks() {
   }
 
   await ensureCurrentWeek();
+  const { dedupeWeeks } = require('./src/services/WeekService');
+  await dedupeWeeks().catch(() => {});
+  const { syncAllMenuItemReservedCounts } = require('./src/helpers/ReservationHelper');
+  await syncAllMenuItemReservedCounts().catch(() => {});
+  // پر کردن dailyMenuId برای سفارش‌های قدیمی (ایندکس یک‌روزه)
+  try {
+    const Order = require('./src/models/Order');
+    const MenuItem = require('./src/models/MenuItem');
+    const orphan = await Order.find({
+      menuItemId: { $ne: null },
+      $or: [{ dailyMenuId: null }, { dailyMenuId: { $exists: false } }],
+    }).select('_id menuItemId').lean();
+    for (const row of orphan) {
+      const item = await MenuItem.findById(row.menuItemId).select('dailyMenuId').lean();
+      if (item?.dailyMenuId) {
+        await Order.updateOne({ _id: row._id }, { $set: { dailyMenuId: item.dailyMenuId } });
+      }
+    }
+  } catch {
+    /* ignore backfill errors */
+  }
   await ensureOrderNumbers();
   await finalizeExpiredOrders();
 
@@ -484,7 +512,10 @@ function startServer() {
   });
 }
 
-const clusterWorkers = Math.max(0, Number(process.env.CLUSTER_WORKERS || 0));
+const clusterWorkersRaw = String(process.env.CLUSTER_WORKERS || '0').trim().toLowerCase();
+const clusterWorkers = clusterWorkersRaw === 'auto'
+  ? os.cpus().length
+  : Math.max(0, Number(clusterWorkersRaw) || 0);
 if (clusterWorkers > 1 && cluster.isPrimary) {
   const count = Math.min(clusterWorkers, os.cpus().length);
   console.log(`Cluster master ${process.pid} — starting ${count} workers`);

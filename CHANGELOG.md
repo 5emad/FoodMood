@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-17
+
+### Added
+- Docker as default update path (`update.sh`) with data-preserving migration from bare metal
+- Built-in WAF (`firewtwall`) with safe client errors and ObjectId compatibility for Mongo IDs
+- Admin React panels for foods/users/orders/reports and superadmin security/settings/backup
+
+### Fixed
+- Admin edit/delete actions failing when WAF scrubbed `weekId` / ObjectIds from requests
+- SweetAlert confirm dialogs not receiving clicks in admin panel
+- Stable admin sidebar layout (no remount jump between tabs)
+
+### Changed
+- `update.sh` defaults to Docker (`--bare-metal` for emergency only)
+- SPA admin shell uses nested routes with shared `AdminLayout`
+
 ## [1.2.2] - 2026-07-13
 
 ### Added

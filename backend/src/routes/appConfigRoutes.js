@@ -9,6 +9,7 @@ const router = express.Router();
 
 router.get('/public', AppConfigController.publicConfig);
 router.get('/user/bootstrap', authMiddleware, ldapProfileMiddleware, ensureDbMiddleware, AppConfigController.userBootstrap);
+router.get('/user/portal-slider', authMiddleware, ldapProfileMiddleware, ensureDbMiddleware, AppConfigController.getPortalSlider);
 router.get('/user/complete-profile-meta', authMiddleware, AppConfigController.completeProfileMeta);
 router.get('/admin/bootstrap', authMiddleware, roleMiddleware(['admin', 'superadmin']), ensureDbMiddleware, AppConfigController.adminBootstrap);
 router.get('/admin/dashboard-markup', authMiddleware, roleMiddleware(['admin', 'superadmin']), ensureDbMiddleware, AppConfigController.adminDashboardMarkup);

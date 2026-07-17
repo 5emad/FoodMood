@@ -16,6 +16,22 @@ npm start
 
 پیش‌فرض: `http://localhost:3000`
 
+## استقرار با Docker (پرفورمنس + آپ‌تایم)
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build
+# مقیاس: docker compose --env-file .env.docker up -d --scale app=2
+```
+
+مهاجرت از نصب قبلی بدون از دست رفتن داده:
+
+```bash
+sudo bash /opt/food/deploy/migrate-to-docker.sh
+```
+
+جزئیات: [deploy/DOCKER.md](./deploy/DOCKER.md)
+
 ## نصب پروداکشن لینوکس
 
 نصب با **یک فایل** و **بدون هیچ سوالی** انجام می‌شود — Node.js، MongoDB، Nginx، فایروال و هاردنینگ همه خودکار:
@@ -50,6 +66,14 @@ bash deploy/make-package.sh
 راهنمای کامل، گزینه‌های Nginx/HTTPS و نصب دستی در [RAHNAMA.md](./RAHNAMA.md#نصب-سریع-روی-لینوکس).
 
 ## نسخه‌بندی و به‌روزرسانی
+
+آپدیت پیش‌فرض کل سامانه را روی **Docker** می‌برد (فرانت، بک، Mongo، WAF) و داده را حفظ می‌کند:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
+```
+
+فقط حالت قدیمی بدون Docker: `sudo bash /opt/food/deploy/update.sh --bare-metal`
 
 نسخه‌ها با [Semantic Versioning](https://semver.org/) و تگ‌های گیت (`v1.1.0`) منتشر می‌شوند.
 

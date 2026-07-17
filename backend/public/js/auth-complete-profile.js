@@ -66,7 +66,7 @@
       if (!response.ok || !data.success) throw new Error(data.message || 'ثبت پروفایل انجام نشد');
       var me = await fetch('/api/auth/me', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).catch(function () { return null; });
       var role = me && me.user && me.user.role;
-      var path = (role === 'admin' || role === 'superadmin') ? '/admin/dashboard' : '/user/dashboard';
+      var path = (role === 'admin' || role === 'superadmin') ? '/admin/reports' : '/user/dashboard';
       var next = (window.FoodMood && window.FoodMood.appPath)
         ? window.FoodMood.appPath(path)
         : path;

@@ -27,7 +27,7 @@ router.get('/complete-profile', authMiddleware, async (req, res, next) => {
     } else {
       const user = await User.findById(req.user.id).select('mustSetFullName role').lean();
       if (!user?.mustSetFullName) {
-        const target = ['admin', 'superadmin'].includes(user?.role) ? '/admin/dashboard' : '/user/dashboard';
+        const target = ['admin', 'superadmin'].includes(user?.role) ? '/admin/reports' : '/user/dashboard';
         return res.redirect(target);
       }
     }

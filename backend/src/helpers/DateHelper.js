@@ -22,6 +22,7 @@ function addDays(date, days) {
 
 function getCurrentPersianParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+    timeZone: 'Asia/Tehran',
     year: 'numeric',
     month: 'numeric',
     day: 'numeric',
@@ -80,14 +81,29 @@ function jalaliToGregorian(jy, jm, jd) {
 
 function parseJalaliDate(value) {
   if (!value) return null;
-  const normalized = normalizeDigits(value).trim().replace(/-/g, '/');
+  // حذف کاراکترهای جهت‌نما و جداکننده‌های محلی که toLocaleDateString ممکن است اضافه کند
+  const normalized = normalizeDigits(value)
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+    .trim()
+    .replace(/[-.]/g, '/')
+    .replace(/\s+/g, '');
   const match = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
   if (!match) return null;
   return startOfDay(jalaliToGregorian(match[1], match[2], match[3]));
 }
 
+/** پایان همان روز شمسی (۲۳:۵۹:۵۹.۹۹۹) — برای انقضا / مهلت */
+function endOfJalaliDay(value) {
+  const parsed = parseJalaliDate(value);
+  if (!parsed) return null;
+  const end = new Date(parsed);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
 function formatJalaliDate(date) {
   return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+    timeZone: 'Asia/Tehran',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -96,6 +112,7 @@ function formatJalaliDate(date) {
 
 function formatJalaliMonth(date) {
   return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+    timeZone: 'Asia/Tehran',
     year: 'numeric',
     month: 'long',
   }).format(new Date(date));
@@ -114,9 +131,13 @@ function getPersianWeekRange(date = new Date()) {
   return { start, end };
 }
 
+/** شماره هفته از ابتدای سال شمسی (۱ فروردین) */
 function getPersianWeekNumber(date = new Date()) {
-  const yearStart = new Date(date.getFullYear(), 0, 1);
-  return Math.max(1, Math.ceil(((startOfDay(date) - yearStart) / MS_PER_DAY + 1) / 7));
+  const parts = getCurrentPersianParts(date);
+  const yearStart = startOfDay(jalaliToGregorian(parts.year, 1, 1));
+  const current = startOfDay(date);
+  const weekStart = getPersianWeekStart(current);
+  return Math.max(1, Math.floor((weekStart - yearStart) / MS_PER_DAY / 7) + 1);
 }
 
 function getPersianMonthRange(date = new Date()) {
@@ -153,6 +174,7 @@ module.exports = {
   formatJalaliDate,
   formatJalaliMonth,
   parseJalaliDate,
+  endOfJalaliDay,
   getPersianWeekRange,
   getPersianWeekStart,
   getPersianWeekNumber,

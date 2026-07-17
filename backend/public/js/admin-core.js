@@ -20,18 +20,50 @@
       : '/login?expired=1';
   }
 
+  var csrfPromise = null;
+
+  function resetCsrf() {
+    csrfPromise = null;
+  }
+
+  function getCsrfToken() {
+    if (!csrfPromise) {
+      csrfPromise = fetch('/api/auth/csrf', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) { return (d && d.csrfToken) ? d.csrfToken : ''; })
+        .catch(function () { return ''; });
+    }
+    return csrfPromise;
+  }
+
   function api(url, options) {
     options = options || {};
+    var method = String(options.method || 'GET').toUpperCase();
+    var needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
     var headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
-    return fetch(url, Object.assign({}, options, { credentials: 'same-origin', headers: headers }))
-      .then(async function (r) {
-        if (r.status === 401) {
-          window.location.replace(loginUrl());
-          throw new Error('401');
-        }
-        var text = await r.text();
-        try { return JSON.parse(text); } catch (_e) { return { success: false, message: text || ('HTTP ' + r.status) }; }
-      });
+
+    var run = function () {
+      return fetch(url, Object.assign({}, options, { credentials: 'same-origin', headers: headers }))
+        .then(async function (r) {
+          if (r.status === 403 && needsCsrf) resetCsrf();
+          if (r.status === 401) {
+            window.location.replace(loginUrl());
+            throw new Error('401');
+          }
+          var text = await r.text();
+          try { return JSON.parse(text); } catch (_e) { return { success: false, message: text || ('HTTP ' + r.status) }; }
+        });
+    };
+
+    if (!needsCsrf) return run();
+    return getCsrfToken().then(function (token) {
+      if (token) headers['X-CSRF-Token'] = token;
+      return run();
+    });
   }
 
   function esc(value) {

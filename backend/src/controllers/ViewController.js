@@ -34,13 +34,13 @@ async function getActiveSessionRedirect(session) {
   if (!session?.token || session.authSource === 'ldap') {
     if (!session?.token) return null;
     const role = session.userRole || 'user';
-    return ['admin', 'superadmin'].includes(role) ? '/admin/dashboard' : '/user/dashboard';
+    return ['admin', 'superadmin'].includes(role) ? '/admin/reports' : '/user/dashboard';
   }
 
   if (!session.userId) return null;
   const user = await User.findById(session.userId).select('status role').lean();
   if (!user || user.status !== 'active') return null;
-  return ['admin', 'superadmin'].includes(user.role) ? '/admin/dashboard' : '/user/dashboard';
+  return ['admin', 'superadmin'].includes(user.role) ? '/admin/reports' : '/user/dashboard';
 }
 
 async function redirectTo(req, res, path) {
@@ -152,7 +152,7 @@ class ViewController {
         fullName: user.fullName,
       });
 
-      return redirectTo(req, res, '/admin/dashboard');
+      return redirectTo(req, res, '/admin/reports');
     } catch (error) {
       return next(error);
     }

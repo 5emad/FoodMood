@@ -66,6 +66,43 @@ async function ensureOrderNumbers() {
   );
 }
 
+/**
+ * لغو همه سفارش‌های فعال یک یا چند آیتم منو
+ * (مثلاً وقتی غذا از منوی روز حذف/عوض می‌شود)
+ */
+async function cancelOrdersForMenuItems(menuItemIds = []) {
+  const ids = (Array.isArray(menuItemIds) ? menuItemIds : [menuItemIds])
+    .filter(Boolean)
+    .map((id) => id);
+  if (!ids.length) return { cancelledCount: 0 };
+
+  const active = await Order.find({
+    menuItemId: { $in: ids },
+    status: { $ne: 'cancelled' },
+  }).select('_id menuItemId quantity status').lean();
+
+  const result = await Order.updateMany(
+    {
+      menuItemId: { $in: ids },
+      status: { $ne: 'cancelled' },
+    },
+    {
+      $set: {
+        status: 'cancelled',
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  const { syncMenuItemReservedCount } = require('./ReservationHelper');
+  const uniqueMenuIds = [...new Set(active.map((o) => String(o.menuItemId)).filter(Boolean))];
+  for (const id of uniqueMenuIds) {
+    await syncMenuItemReservedCount(id).catch(() => {});
+  }
+
+  return { cancelledCount: Number(result.modifiedCount || 0) };
+}
+
 module.exports = {
   CANCEL_WINDOW_MINUTES,
   getCancelDeadline,
@@ -73,4 +110,5 @@ module.exports = {
   finalizeExpiredOrders,
   ensureOrderNumbers,
   decorateOrder,
+  cancelOrdersForMenuItems,
 };

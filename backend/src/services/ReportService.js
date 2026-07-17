@@ -55,6 +55,7 @@ function normalizeReportDigits(value) {
 
 function getJalaliYearMonth(date) {
   const parts = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+    timeZone: 'Asia/Tehran',
     year: 'numeric',
     month: 'numeric',
   }).formatToParts(new Date(date));
@@ -64,12 +65,19 @@ function getJalaliYearMonth(date) {
 
 function jalaliMonthRangeValue(year, month) {
   const monthText = String(month).padStart(2, '0');
-  const lastDay = month <= 6 ? 31 : (month <= 11 ? 30 : 29);
+  const start = parseJalaliDate(`${year}/${month}/01`);
+  let lastDay = month <= 6 ? 31 : (month <= 11 ? 30 : 29);
+  if (start) {
+    const { end } = getPersianMonthRange(start);
+    const endNorm = normalizeReportDigits(formatJalaliDate(end)).replace(/-/g, '/');
+    const dayPart = endNorm.split('/')[2];
+    if (dayPart) lastDay = Number(dayPart);
+  }
   return {
     key: `${year}-${monthText}`,
     label: `${persianMonthNames[month - 1]} ${year}`,
     from: `${year}/${monthText}/01`,
-    to: `${year}/${monthText}/${lastDay}`,
+    to: `${year}/${monthText}/${String(lastDay).padStart(2, '0')}`,
   };
 }
 

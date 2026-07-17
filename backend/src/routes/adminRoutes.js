@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const AdminController = require('../controllers/AdminController');
 const AnnouncementController = require('../controllers/AnnouncementController');
 const GuestController = require('../controllers/GuestController');
@@ -24,6 +25,20 @@ const backupUpload = multer({
 const sslUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+const portalSlideDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'portal-slides');
+fs.mkdirSync(portalSlideDir, { recursive: true });
+
+const {
+  createImageDiskUpload,
+  assertUploadedImageMagic,
+} = require('../helpers/ImageUploadHelper');
+
+const portalSlideUpload = createImageDiskUpload({
+  destDir: portalSlideDir,
+  maxSizeMb: 5,
+  filenamePrefix: 'slide',
 });
 
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
@@ -60,10 +75,22 @@ router.post('/settings/ssl-certificate', roleMiddleware(['superadmin']), (req, r
     next();
   });
 }, AdminController.uploadSslCertificate);
+router.post('/settings/portal-slide-image', roleMiddleware(['superadmin']), (req, res, next) => {
+  portalSlideUpload.single('image')(req, res, (err) => {
+    if (err) {
+      const message = err.code === 'LIMIT_FILE_SIZE'
+        ? 'حجم تصویر بیش از حد مجاز است'
+        : (err.message || 'خطا در آپلود تصویر');
+      return res.status(400).json({ success: false, message });
+    }
+    next();
+  });
+}, assertUploadedImageMagic, AdminController.uploadPortalSlideImage);
 router.get('/system/logs', roleMiddleware(['superadmin']), AdminController.getSystemLogs);
 router.get('/security/summary', roleMiddleware(['superadmin']), AdminController.getSecuritySummary);
 router.post('/security/users/:id/unlock', roleMiddleware(['superadmin']), AdminController.unlockUser);
 router.post('/security/super-token/reset', roleMiddleware(['superadmin']), AdminController.resetOwnSuperToken);
+router.post('/security/logs/purge', roleMiddleware(['superadmin']), AdminController.purgeLogs);
 
 router.get('/users', AdminController.getUsers);
 router.post('/users', AdminController.createUser);

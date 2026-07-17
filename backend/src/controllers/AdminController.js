@@ -18,11 +18,12 @@ const SecurityLog = require('../models/SecurityLog');
 const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
 const { testConnection: testLdapConn, validateConfig: validateLdapConfig, ldapConfig } = require('../helpers/LdapHelper');
 const { mergeLdapSettings, ldapFieldsFromBody, parseBoolean } = require('../helpers/LdapSettingsHelper');
-const { startOfDay, formatJalaliDate } = require('../helpers/DateHelper');
+const { startOfDay, formatJalaliDate, parseJalaliDate, endOfJalaliDay } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
 const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
 const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, updateAppSettings, getSettingsLean } = require('../services/SettingsService');
+const { portalSliderFromBody, normalizePortalSliderConfig } = require('../helpers/PortalSliderDefaults');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
@@ -62,6 +63,23 @@ function passwordPolicyError(role) {
 function meetsPasswordPolicy(password, role) {
   const isSuper = role === 'superadmin';
   return validatePasswordPolicy(password, { minLength: isSuper ? 12 : 8, requireSymbol: isSuper });
+}
+
+/** قبول ISO یا رشته شمسی YYYY/MM/DD */
+function resolveWeekBoundary(value, { endOfDay = false } = {}) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return endOfDay
+      ? (() => { const d = new Date(value); d.setHours(23, 59, 59, 999); return d; })()
+      : startOfDay(value);
+  }
+  const asJalali = endOfDay ? endOfJalaliDay(value) : parseJalaliDate(value);
+  if (asJalali) return asJalali;
+  const asDate = new Date(value);
+  if (Number.isNaN(asDate.getTime())) return null;
+  return endOfDay
+    ? (() => { const d = new Date(asDate); d.setHours(23, 59, 59, 999); return d; })()
+    : startOfDay(asDate);
 }
 
 const ROLE_RANK = { user: 0, admin: 1, superadmin: 2 };
@@ -176,6 +194,11 @@ class AdminController {
           return res.status(err.status).json({ success: false, message: err.message });
         }
         throw err;
+      }
+
+      const portalSlider = portalSliderFromBody(req.body);
+      if (portalSlider) {
+        update.portalSlider = portalSlider;
       }
 
       if (update.ldapEnabled) {
@@ -357,6 +380,7 @@ class AdminController {
 
   static async getSecuritySummary(req, res, next) {
     try {
+      const { decryptSecurityLogDoc, decryptField } = require('../helpers/LogCryptoHelper');
       const failedPage = Math.max(1, parseInt(req.query.failedPage, 10) || 1);
       const failedLimit = Math.min(50, Math.max(5, parseInt(req.query.failedLimit, 10) || 15));
       const logsPage = Math.max(1, parseInt(req.query.logsPage, 10) || 1);
@@ -401,22 +425,58 @@ class AdminController {
         .sort({ createdAt: -1 })
         .skip((logsPage - 1) * logsLimit)
         .limit(logsLimit)
+        .select('type username role ip message createdAt')
         .lean();
 
       const unreadSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const unreadCount = await SecurityLog.countDocuments({
-        type: { $in: ['account_locked', 'super_token_failed', 'login_failed'] },
+        type: { $in: ['account_locked', 'super_token_failed', 'login_failed', 'waf_blocked'] },
         createdAt: { $gte: unreadSince },
+      });
+
+      const wafSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const wafBlocked24h = await SecurityLog.countDocuments({
+        type: 'waf_blocked',
+        createdAt: { $gte: wafSince },
+      });
+      const wafRecentRaw = await SecurityLog.find({ type: 'waf_blocked' })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .select('type username role ip message metadata createdAt')
+        .lean();
+      const wafRecent = wafRecentRaw.map((entry) => {
+        const doc = decryptSecurityLogDoc(entry);
+        return {
+          createdAt: doc.createdAt,
+          ip: doc.ip || '-',
+          message: doc.message || '',
+          rule: doc.metadata?.rule || '',
+          path: doc.metadata?.path || '',
+          method: doc.metadata?.method || '',
+          severity: doc.metadata?.severity || '',
+          matched: doc.metadata?.matched || '',
+          engine: doc.metadata?.engine || 'firewtwall',
+        };
       });
 
       res.json({
         success: true,
         data: {
           lockedUsers,
-          recentLogs,
-          failedSummary: failedAgg.filter((item) => item._id),
+          recentLogs: recentLogs.map((entry) => decryptSecurityLogDoc(entry)),
+          failedSummary: failedAgg
+            .filter((item) => item._id)
+            .map((item) => ({ ...item, ip: decryptField(item.ip) })),
           failedAttemptsTotal,
           unreadCount,
+          waf: {
+            enabled: true,
+            engine: 'firewtwall',
+            mode: 'reject',
+            profile: 'standard',
+            blocked24h: wafBlocked24h,
+            recent: wafRecent,
+          },
           failedPagination: {
             page: failedPage,
             limit: failedLimit,
@@ -445,6 +505,43 @@ class AdminController {
       await user.save();
       await writeSecurityLog(req, 'account_unlocked', user, 'Account unlocked by superadmin', { actorId: req.user.id });
       res.json({ success: true, message: 'قفل حساب کاربر برداشته شد' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async purgeLogs(req, res, next) {
+    try {
+      if (req.user?.role !== 'superadmin') {
+        return res.status(403).json({ success: false, message: 'فقط سوپر ادمین می‌تواند لاگ‌ها را پاک کند' });
+      }
+      const confirmed = req.body?.confirm === true || String(req.body?.confirm || '').toLowerCase() === 'true';
+      if (!confirmed) {
+        return res.status(400).json({ success: false, message: 'تایید حذف لاگ‌ها الزامی است' });
+      }
+
+      const deletedSecurity = await SecurityLog.deleteMany({});
+      const { clearAllLogs } = require('../services/SystemLogService');
+      clearAllLogs({ resetLifecycle: true });
+
+      try {
+        const { resetWafLogFile } = require('../services/WafLogBridge');
+        const { WAF_LOG_PATH } = require('../middleware/wafMiddleware');
+        resetWafLogFile(WAF_LOG_PATH);
+      } catch (wafErr) {
+        console.warn('WAF log clear skipped:', wafErr.message);
+      }
+
+      await writeSecurityLog(req, 'logs_purged', null, 'همه لاگ‌های امنیتی و سیستمی توسط سوپر ادمین پاک شد', {
+        actorId: req.user.id,
+        deletedSecurity: deletedSecurity.deletedCount || 0,
+      });
+
+      res.json({
+        success: true,
+        message: 'همه لاگ‌های امنیتی و سیستمی با موفقیت پاک شدند.',
+        data: { deletedSecurity: deletedSecurity.deletedCount || 0 },
+      });
     } catch (error) {
       next(error);
     }
@@ -487,9 +584,9 @@ class AdminController {
         return res.status(400).json({ message: 'نام کاربری و رمز عبور الزامی هستند' });
       }
 
-      const allowedCreateRoles = req.user.role === 'superadmin' ? ['admin', 'superadmin'] : ['admin'];
+      const allowedCreateRoles = req.user.role === 'superadmin' ? ['admin', 'superadmin'] : [];
       if (!allowedCreateRoles.includes(requestedRole)) {
-        return res.status(400).json({ message: 'ساخت حساب local فقط برای مدیر مجاز است. کاربران عادی باید با Active Directory وارد شوند.' });
+        return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیر بسازد' });
       }
 
       if (!meetsPasswordPolicy(normalizedPassword, requestedRole)) {
@@ -548,6 +645,9 @@ class AdminController {
         if (status !== undefined) update.status = status === 'inactive' ? 'inactive' : 'active';
         if (hasDepartmentId) update.departmentId = departmentId || null;
         if (role !== undefined) {
+          if (req.user.role !== 'superadmin') {
+            return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند نقش مدیر را تغییر دهد' });
+          }
           if (!['user', 'admin'].includes(role)) {
             return res.status(400).json({ message: 'نقش کاربر Active Directory فقط می‌تواند کاربر عادی یا مدیر باشد' });
           }
@@ -605,6 +705,10 @@ class AdminController {
 
       if ((user.role === 'superadmin' || normalizedRole === 'superadmin') && req.user.role !== 'superadmin') {
         return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب سوپر ادمین را مدیریت کند' });
+      }
+
+      if (normalizedRole === 'admin' && req.user.role !== 'superadmin' && user.role !== 'admin') {
+        return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند نقش مدیر اعطا کند' });
       }
 
       if (normalizedRole && !['user', 'admin', 'superadmin'].includes(normalizedRole)) {
@@ -796,8 +900,8 @@ class AdminController {
   static async createWeek(req, res, next) {
     try {
       const { name, week_number, weekNumber, start_date, startDate, end_date, endDate, isActive, status } = req.body;
-      const normalizedStart = start_date || startDate;
-      const normalizedEnd = end_date || endDate;
+      const normalizedStart = resolveWeekBoundary(start_date || startDate);
+      const normalizedEnd = resolveWeekBoundary(end_date || endDate, { endOfDay: true });
       const normalizedWeekNumber = week_number || weekNumber;
 
       if (!normalizedWeekNumber || !normalizedStart || !normalizedEnd) {
@@ -878,8 +982,16 @@ class AdminController {
 
       week.name = name ?? week.name;
       week.weekNumber = week_number || weekNumber || week.weekNumber;
-      week.startDate = start_date || startDate || week.startDate;
-      week.endDate = end_date || endDate || week.endDate;
+      if (start_date || startDate) {
+        const resolved = resolveWeekBoundary(start_date || startDate);
+        if (!resolved) return res.status(400).json({ message: 'تاریخ شروع نامعتبر است' });
+        week.startDate = resolved;
+      }
+      if (end_date || endDate) {
+        const resolved = resolveWeekBoundary(end_date || endDate, { endOfDay: true });
+        if (!resolved) return res.status(400).json({ message: 'تاریخ پایان نامعتبر است' });
+        week.endDate = resolved;
+      }
       week.isActive = isActive ?? (status ? status === 'active' : week.isActive);
       week.status = week.isActive ? 'active' : 'inactive';
       await week.save();
@@ -1291,6 +1403,52 @@ class AdminController {
       if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
       }
+      next(error);
+    }
+  }
+
+  static async uploadPortalSlideImage(req, res, next) {
+    try {
+      if (!req.file?.filename) {
+        return res.status(400).json({ success: false, message: 'فایل تصویر الزامی است.' });
+      }
+
+      const target = String(req.body.target || 'week').trim();
+      const index = Number(req.body.index);
+      const imageUrl = `/uploads/portal-slides/${req.file.filename}`;
+      const settings = await getSettingsLean();
+
+      // اگر فرانت وضعیت فعلی (از جمله enabled) را فرستاد، همان را مبنا بگیر
+      let base = settings.portalSlider;
+      if (req.body.portalSlider) {
+        try {
+          base = typeof req.body.portalSlider === 'string'
+            ? JSON.parse(req.body.portalSlider)
+            : req.body.portalSlider;
+        } catch { /* keep DB config */ }
+      }
+      const config = normalizePortalSliderConfig(base);
+
+      if (target === 'week') {
+        config.weekHeroImage = imageUrl;
+      } else if (target === 'showcase' && Number.isInteger(index) && index >= 0 && index < config.showcaseSlides.length) {
+        config.showcaseSlides[index] = {
+          ...config.showcaseSlides[index],
+          imageUrl,
+          enabled: config.showcaseSlides[index].enabled === true,
+        };
+      } else {
+        return res.status(400).json({ success: false, message: 'هدف آپلود نامعتبر است.' });
+      }
+
+      const saved = await updateAppSettings({ portalSlider: config });
+      res.json({
+        success: true,
+        message: 'تصویر اسلاید ذخیره شد',
+        imageUrl,
+        data: normalizePortalSliderConfig(saved.portalSlider),
+      });
+    } catch (error) {
       next(error);
     }
   }

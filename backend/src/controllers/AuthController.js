@@ -124,7 +124,7 @@ class AuthController {
         }
 
         if (user.status !== 'active') {
-          return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
+          return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
         }
 
         const sessionId = crypto.randomUUID();
@@ -174,7 +174,7 @@ class AuthController {
             await writeSecurityLog(req, 'login_failed', null, 'Inactive LDAP profile login blocked', {
               username: ldapResult.username,
             });
-            return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
+            return res.status(401).json({ message: 'اطلاعات ورود صحیح نیست' });
           }
           const sessionId = await issueSession({
             username: ldapResult.username,
@@ -248,7 +248,8 @@ class AuthController {
   static async verifySuperToken(req, res, next) {
     try {
       const pending = req.session?.pendingSuperLogin;
-      const token = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+      const raw = req.body.token ?? req.body.superToken;
+      const token = typeof raw === 'string' ? raw.trim() : '';
       if (!pending || !pending.userId || Date.now() - Number(pending.createdAt || 0) > SUPER_CHALLENGE_TTL_MS) {
         if (req.session) delete req.session.pendingSuperLogin;
         return res.status(401).json({ success: false, message: 'نشست ورود سوپر ادمین منقضی شده است. دوباره وارد شوید.' });

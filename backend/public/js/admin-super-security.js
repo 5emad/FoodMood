@@ -8,6 +8,7 @@ function securityTypeLabel(type) {
     account_unlocked: 'آنلاک حساب', super_token_required: 'درخواست توکن',
     super_token_success: 'توکن موفق', super_token_failed: 'توکن ناموفق',
     backup_export: 'خروجی پشتیبان', backup_restore: 'بازیابی پشتیبان',
+    logs_purged: 'پاک‌سازی لاگ‌ها', waf_blocked: 'مسدودسازی WAF',
   }[type] || type;
 }
 
@@ -38,6 +39,7 @@ async function loadSecurityCenter() {
     failedAttemptsTotal = 0,
     failedPagination: failedMeta = {},
     logsPagination: logsMeta = {},
+    waf = {},
   } = data.data || {};
 
   failedPagination = {
@@ -57,6 +59,28 @@ async function loadSecurityCenter() {
   document.getElementById('lockedCount').textContent = lockedUsers.length.toLocaleString('fa-IR');
   document.getElementById('failedCount').textContent = Number(failedAttemptsTotal || 0).toLocaleString('fa-IR');
   document.getElementById('securityUnreadCount').textContent = unreadCount.toLocaleString('fa-IR');
+  const wafCountEl = document.getElementById('wafBlockedCount');
+  if (wafCountEl) wafCountEl.textContent = Number(waf.blocked24h || 0).toLocaleString('fa-IR');
+  const wafBadge = document.getElementById('wafStatusBadge');
+  if (wafBadge) {
+    wafBadge.className = `badge ${waf.enabled !== false ? 'badge-success' : 'badge-danger'}`;
+    wafBadge.textContent = waf.enabled !== false
+      ? `فعال · ${waf.engine || 'firewtwall'} · استاندارد`
+      : 'غیرفعال';
+  }
+  const wafWrap = document.getElementById('wafBlocksWrap');
+  if (wafWrap) {
+    const rows = Array.isArray(waf.recent) ? waf.recent : [];
+    wafWrap.innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>قانون</th><th>متد</th><th>مسیر</th><th>IP</th><th>شدت</th></tr></thead><tbody>${rows.map((row) => `
+      <tr>
+        <td style="white-space:nowrap">${row.createdAt ? new Date(row.createdAt).toLocaleString('fa-IR') : '—'}</td>
+        <td><span class="badge badge-danger">${esc(row.rule || '—')}</span></td>
+        <td style="direction:ltr">${esc(row.method || '—')}</td>
+        <td style="direction:ltr;font-size:.78rem">${esc(row.path || '—')}</td>
+        <td style="direction:ltr">${esc(row.ip || '—')}</td>
+        <td>${esc(row.severity || '—')}</td>
+      </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">مسدودسازی WAF ثبت نشده</td></tr>'}</tbody></table>`;
+  }
 
   document.getElementById('lockedUsersWrap').innerHTML = `<table class="table"><thead><tr><th>کاربر</th><th>نقش</th><th>تلاش‌ها</th><th>قفل تا</th><th>عملیات</th></tr></thead><tbody>${lockedUsers.map(u => `
     <tr><td style="font-weight:800">${esc(u.fullName || u.username)}</td><td>${esc(u.role)}</td><td>${Number(u.loginAttempts || 0).toLocaleString('fa-IR')}</td><td>${new Date(u.lockUntil).toLocaleString('fa-IR')}</td>
@@ -136,6 +160,25 @@ async function unlockSecurityUser(id) {
   else notify(data.message || 'خطا در آنلاک', 'error');
 }
 
+async function purgeAllLogs() {
+  if (!(await confirmAction({
+    title: 'پاک‌سازی همه لاگ‌ها؟',
+    text: 'همه لاگ‌های امنیتی و سیستمی برای همیشه حذف می‌شوند. این عمل قابل بازگشت نیست.',
+    confirmText: 'بله، پاک کن',
+    icon: 'warning',
+  }))) return;
+  const data = await api('/api/admin/security/logs/purge', { method: 'POST', body: JSON.stringify({ confirm: true }) });
+  if (data.success) {
+    notify(data.message || 'لاگ‌ها پاک شدند.');
+    failedPagination.page = 1;
+    securityLogsPagination.page = 1;
+    systemLogPagination.page = 1;
+    loadSecurityCenter();
+  } else {
+    notify(data.message || 'خطا در پاک‌سازی لاگ‌ها', 'error');
+  }
+}
+
 async function resetOwnSuperToken() {
   if (!(await confirmAction({ title: 'تغییر توکن سوپر ادمین؟', confirmText: 'تغییر توکن', icon: 'warning' }))) return;
   const data = await api('/api/admin/security/super-token/reset', { method: 'POST' });
@@ -148,6 +191,7 @@ window.goToFailedSummaryPage = goToFailedSummaryPage;
 window.goToSecurityLogsPage = goToSecurityLogsPage;
 window.goToSystemLogsPage = goToSystemLogsPage;
 window.unlockSecurityUser = unlockSecurityUser;
+window.purgeAllLogs = purgeAllLogs;
 window.resetOwnSuperToken = resetOwnSuperToken;
 window.runDbOutageTest = runDbOutageTest;
 window.systemLogLevelFilterChanged = systemLogLevelFilterChanged;

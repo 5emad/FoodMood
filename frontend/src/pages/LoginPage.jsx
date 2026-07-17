@@ -22,12 +22,10 @@ export default function LoginPage() {
   useEffect(() => {
     api('/api/app/public').then((r) => { if (r.success) setConfig(r.data); });
     const t = setInterval(() => setSlide((s) => (s + 1) % SLIDES.length), 4500);
+    if (params.get('expired')) toast('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.', 'warning');
+    if (params.get('idle')) toast('به دلیل عدم فعالیت، نشست شما پایان یافت.', 'warning');
     return () => clearInterval(t);
   }, []);
-
-  const alerts = [];
-  if (params.get('expired')) alerts.push({ type: 'danger', text: 'نشست شما منقضی شده است. لطفا دوباره وارد شوید.' });
-  if (params.get('idle')) alerts.push({ type: 'warning', text: 'به دلیل عدم فعالیت، نشست شما پایان یافت.' });
 
   function redirectAfterLogin(user) {
     if (user?.mustSetFullName) {
@@ -35,7 +33,7 @@ export default function LoginPage() {
       return;
     }
     if (user?.role === 'admin' || user?.role === 'superadmin') {
-      navigate('/admin/dashboard');
+      navigate('/admin/reports');
       return;
     }
     navigate('/user/dashboard');
@@ -48,12 +46,12 @@ export default function LoginPage() {
       if (mode === '2fa') {
         const res = await api('/api/auth/verify-super-token', {
           method: 'POST',
-          body: JSON.stringify({ superToken: form.superToken }),
+          body: JSON.stringify({ token: form.superToken.trim() }),
         });
         if (!res.success && res.message) throw new Error(res.message);
         if (res.user) redirectAfterLogin(res.user);
         else toast('ورود سوپر ادمین انجام شد', 'success');
-        navigate('/admin/dashboard');
+        navigate('/admin/reports');
         return;
       }
 
@@ -95,10 +93,6 @@ export default function LoginPage() {
           <div className="auth-card-title">خوش آمدید</div>
           <div className="auth-card-sub">نام کاربری و رمز عبور خود را وارد کنید</div>
 
-          {alerts.map((a) => (
-            <div key={a.text} className={`alert alert-${a.type}`}><i className="fas fa-exclamation-triangle" /> {a.text}</div>
-          ))}
-
           <form onSubmit={onSubmit} autoComplete="off">
             <div className="form-group">
               <label className="form-label"><i className="fas fa-user" style={{ color: 'var(--primary)', marginLeft: 6 }} /> نام کاربری</label>
@@ -111,7 +105,7 @@ export default function LoginPage() {
             {mode === '2fa' && (
               <div className="form-group">
                 <label className="form-label"><i className="fas fa-shield-halved" style={{ color: 'var(--primary)', marginLeft: 6 }} /> توکن امنیتی سوپر ادمین</label>
-                <input className="form-control input-secret" type="password" value={form.superToken} onChange={(e) => setForm({ ...form, superToken: e.target.value })} required dir="ltr" />
+                <input className="form-control input-secret" type="text" autoComplete="off" spellCheck="false" value={form.superToken} onChange={(e) => setForm({ ...form, superToken: e.target.value })} required dir="ltr" placeholder="توکن را کامل و بدون فاصله وارد کنید" />
                 <button type="button" className="btn btn-outline btn-sm" style={{ marginTop: 8 }} onClick={() => { setMode(''); setForm({ ...form, superToken: '' }); }}>شروع مجدد ورود</button>
               </div>
             )}

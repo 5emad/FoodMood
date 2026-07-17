@@ -57,6 +57,12 @@ const orderSchema = new mongoose.Schema({
     ref: 'MenuItem',
     default: null,
   },
+  dailyMenuId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'DailyMenu',
+    default: null,
+    index: true,
+  },
   quantity: {
     type: Number,
     default: 1,
@@ -89,6 +95,40 @@ const orderSchema = new mongoose.Schema({
   },
 });
 
+// یک رزرو فعال به ازای هر کاربر/مهمان در هر روز
+orderSchema.index(
+  { userId: 1, dailyMenuId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      userId: { $type: 'objectId' },
+      dailyMenuId: { $type: 'objectId' },
+      status: { $ne: 'cancelled' },
+    },
+  },
+);
+orderSchema.index(
+  { ldapUsername: 1, dailyMenuId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      ldapUsername: { $type: 'string' },
+      dailyMenuId: { $type: 'objectId' },
+      status: { $ne: 'cancelled' },
+    },
+  },
+);
+orderSchema.index(
+  { guestId: 1, dailyMenuId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      guestId: { $type: 'objectId' },
+      dailyMenuId: { $type: 'objectId' },
+      status: { $ne: 'cancelled' },
+    },
+  },
+);
 orderSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

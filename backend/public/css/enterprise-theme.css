@@ -1014,15 +1014,17 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 
 #toast-container {
   position: fixed;
-  top: 20px;
-  inset-inline-end: 20px;
-  left: auto;
+  bottom: 20px;
+  left: 20px;
+  right: auto;
+  top: auto;
   z-index: 25000;
   display: flex;
   flex-direction: column;
   gap: 12px;
   max-width: min(420px, calc(100vw - 32px));
   pointer-events: none;
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
 }
 
 .app-toast {
@@ -1040,11 +1042,11 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   line-height: 1.55;
   direction: rtl;
   opacity: 0;
-  transform: translateY(-10px);
+  transform: translateY(10px);
   transition: opacity .28s ease, transform .28s ease;
 }
 .app-toast.is-visible { opacity: 1; transform: translateY(0); }
-.app-toast.is-leaving { opacity: 0; transform: translateY(-8px); }
+.app-toast.is-leaving { opacity: 0; transform: translateY(8px); }
 
 .app-toast__text {
   flex: 1;
@@ -1127,8 +1129,8 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 
 @media (max-width: 680px) {
   #toast-container {
-    top: 12px;
-    inset-inline-end: 12px;
+    bottom: 12px;
+    left: 12px;
     max-width: calc(100vw - 24px);
   }
   .app-toast { font-size: .84rem; padding: 12px 40px 12px 14px; }
@@ -1760,7 +1762,7 @@ body.admin-body { min-height: 100vh; }
 
 .finance-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -1784,8 +1786,27 @@ body.admin-body { min-height: 100vh; }
 .finance-toggle input:checked + .finance-toggle-ui::after { right: 21px; }
 .finance-toggle-text { font-size: .84rem; font-weight: 700; line-height: 1.4; }
 .finance-percent-block { display: flex; flex-direction: column; gap: 8px; }
-.finance-percent-row { display: flex; align-items: center; gap: 8px; }
-.finance-percent-suffix { font-weight: 800; color: var(--text-muted); }
+.finance-percent-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.finance-percent-row .form-control {
+  width: 100%;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+.finance-percent-suffix {
+  font-weight: 800;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  min-width: 1.25rem;
+  text-align: center;
+}
 .finance-split-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .finance-chip {
   font-size: .78rem; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border);
@@ -1793,8 +1814,15 @@ body.admin-body { min-height: 100vh; }
 }
 .finance-chip.org strong, .finance-chip.personal strong { font-weight: 900; }
 .finance-sidebar-note {
-  margin: 0; font-size: .76rem; color: var(--text-muted); line-height: 1.5;
-  display: flex; gap: 6px; align-items: flex-start;
+  margin: 0;
+  font-size: .76rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+  display: block;
+}
+.finance-sidebar-note i {
+  margin-left: 6px;
+  color: var(--primary);
 }
 .finance-main { overflow: hidden; }
 .finance-toolbar {
@@ -1804,9 +1832,26 @@ body.admin-body { min-height: 100vh; }
 .finance-toolbar-title {
   display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 1rem;
 }
-.finance-toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: flex-end; }
-.finance-toolbar-actions .sub-tabs { margin-bottom: 0; }
-.finance-toolbar-actions .form-control { width: 200px; min-width: 160px; padding: 8px 12px; }
+.finance-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+.finance-toolbar-actions .sub-tabs { margin-bottom: 0; flex-shrink: 0; }
+.finance-toolbar-actions select.form-control {
+  width: auto;
+  min-width: 300px;
+  max-width: min(420px, 100%);
+  padding: 8px 14px;
+  padding-left: 2.25rem; /* فضای فلش select در RTL */
+  white-space: nowrap;
+}
+.finance-toolbar-actions #financePdfAllBtn {
+  flex-shrink: 0;
+  margin-inline-start: 4px;
+}
 .finance-summary-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2210,7 +2255,12 @@ body.admin-body .stat-grid .stat-card {
   .finance-layout { grid-template-columns: 1fr; }
   .finance-toolbar { flex-direction: column; align-items: stretch; }
   .finance-toolbar-actions { justify-content: stretch; }
-  .finance-toolbar-actions .form-control { flex: 1; min-width: 0; }
+  .finance-toolbar-actions select.form-control {
+    flex: 1 1 220px;
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
 }
 
 @media print {
@@ -2229,6 +2279,11 @@ body.admin-body .stat-grid .stat-card {
   inset: 0 !important;
   z-index: 20000 !important;
   pointer-events: none;
+}
+/* مودال تأیید باید کلیک را بگیرد؛ toastها همچنان pass-through می‌مانند */
+.swal2-container.swal2-backdrop-show,
+.swal2-container.swal2-center:not(.swal2-toast-shown) {
+  pointer-events: auto !important;
 }
 .swal2-container.swal2-center {
   display: flex !important;

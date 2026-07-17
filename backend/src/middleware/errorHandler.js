@@ -48,6 +48,26 @@ function isConflictError(err) {
 
 const errorHandler = (err, req, res, next) => {
   let status = err.status || 500;
+  if (err.name === 'CastError' || err.kind === 'ObjectId') {
+    status = 400;
+    err.status = 400;
+    err.expose = true;
+    err.message = 'شناسه نامعتبر است';
+  }
+  if (err instanceof SyntaxError || err.type === 'entity.parse.failed' || /JSON|Unexpected token|Expected property/i.test(String(err.message || ''))) {
+    status = 400;
+    err.status = 400;
+    err.expose = true;
+    err.message = 'درخواست نامعتبر است';
+  }
+  if (Number(err?.code) === 11000) {
+    status = 409;
+    err.status = 409;
+    err.expose = true;
+    if (!err.message || looksTechnicalErrorMessage(err.message)) {
+      err.message = 'رکورد تکراری است';
+    }
+  }
   if (isConflictError(err) && status >= 500) status = 409;
 
   const isServerError = status >= 500;

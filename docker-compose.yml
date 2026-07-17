@@ -1,0 +1,158 @@
+# ── FoodMood Docker — همزمانی بالا + آپ‌تایم ─────────────────────────────────
+#   cp .env.docker.example .env.docker
+#   docker compose --env-file .env.docker up -d --build
+#   مقیاس دو نمونه اپ: docker compose --env-file .env.docker up -d --scale app=2
+#
+# داده پایدار: volumes (mongo_data, uploads_data, logs_data) — آپدیت تصویر داده را پاک نمی‌کند.
+
+name: foodmood
+
+x-app-common: &app_common
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: app
+  image: foodmood-app:${APP_IMAGE_TAG:-latest}
+  restart: always
+  stop_grace_period: 40s
+  env_file:
+    - .env.docker
+  environment:
+    NODE_ENV: production
+    PORT: 3000
+    TZ: Asia/Tehran
+    MONGODB_URI: mongodb://${MONGO_APP_USER:-foodapp}:${MONGO_APP_PASSWORD}@mongo:27017/food_ordering?authSource=food_ordering&retryWrites=true&w=majority
+    LOG_DIR: /app/backend/logs
+    CLUSTER_WORKERS: ${CLUSTER_WORKERS:-auto}
+    NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=1536}
+    MONGODB_MAX_POOL_SIZE: ${MONGODB_MAX_POOL_SIZE:-50}
+    MONGODB_MIN_POOL_SIZE: ${MONGODB_MIN_POOL_SIZE:-5}
+    API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-800}
+    WAF_RATE_LIMIT_MAX: ${WAF_RATE_LIMIT_MAX:-800}
+    TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    WAF_TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+    TRUST_TLS: ${TRUST_TLS:-false}
+  volumes:
+    - uploads_data:/app/backend/public/uploads
+    - logs_data:/app/backend/logs
+  networks:
+    - foodmood
+  expose:
+    - "3000"
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/system/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 8
+    start_period: 50s
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
+  deploy:
+    resources:
+      limits:
+        memory: ${APP_MEM_LIMIT:-2048m}
+        cpus: "${APP_CPU_LIMIT:-2.0}"
+      reservations:
+        memory: 512m
+        cpus: "0.50"
+
+services:
+  mongo:
+    image: mongo:7.0
+    restart: always
+    stop_grace_period: 60s
+    command:
+      - mongod
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "${MONGO_CACHE_GB:-1.5}"
+      - --quiet
+    environment:
+      MONGO_INITDB_DATABASE: food_ordering
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-foodroot}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env.docker}
+      MONGO_APP_USER: ${MONGO_APP_USER:-foodapp}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?set MONGO_APP_PASSWORD in .env.docker}
+      MONGO_APP_DB: food_ordering
+    volumes:
+      - mongo_data:/data/db
+      - ./docker/mongo/init-app-user.js:/docker-entrypoint-initdb.d/01-init-app-user.js:ro
+    networks:
+      - foodmood
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "-u", "${MONGO_ROOT_USER:-foodroot}",
+          "-p", "${MONGO_ROOT_PASSWORD}",
+          "--authenticationDatabase", "admin",
+          "--eval", "db.adminCommand('ping').ok",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    deploy:
+      resources:
+        limits:
+          memory: ${MONGO_MEM_LIMIT:-2048m}
+        reservations:
+          memory: 512m
+
+  app:
+    <<: *app_common
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nginx
+    image: foodmood-nginx:${APP_IMAGE_TAG:-latest}
+    restart: always
+    stop_grace_period: 20s
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+    volumes:
+      - uploads_data:/var/www/food/public/uploads:ro
+    networks:
+      - foodmood
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          memory: ${NGINX_MEM_LIMIT:-512m}
+          cpus: "${NGINX_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: 64m
+
+networks:
+  foodmood:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  uploads_data:
+  logs_data:

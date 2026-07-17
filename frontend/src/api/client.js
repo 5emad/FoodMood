@@ -71,17 +71,31 @@ export async function apiBlob(url, options = {}) {
   return res;
 }
 
-export function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const el = document.createElement('script');
-    el.src = src;
-    el.async = false;
-    el.onload = () => resolve();
-    el.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.body.appendChild(el);
-  });
+export async function apiForm(url, formData, method = 'POST') {
+  const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method).toUpperCase());
+  const headers = {};
+  if (needsCsrf) {
+    const token = await getCsrfToken();
+    if (token) headers['X-CSRF-Token'] = token;
+  }
+  const res = await fetch(url, { method, credentials: 'same-origin', headers, body: formData });
+  if (res.status === 401) {
+    redirectLogin('expired');
+    throw new Error('401');
+  }
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { success: false, message: text || `HTTP ${res.status}` };
+  }
 }
+
+export function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+

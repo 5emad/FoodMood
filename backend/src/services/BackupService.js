@@ -70,7 +70,11 @@ function signData(data, salt) {
 }
 
 function verifyDataIntegrity(data, salt, integrity) {
-  if (!integrity) return true; // legacy backups without signature
+  if (!integrity) {
+    // در production امضای HMAC الزامی است
+    if (process.env.NODE_ENV === 'production') return false;
+    return true; // legacy backups فقط در توسعه
+  }
   const expected = signData(data, salt);
   const a = Buffer.from(expected, 'hex');
   const b = Buffer.from(integrity, 'hex');

@@ -18,6 +18,8 @@ const securityLogSchema = new mongoose.Schema({
       'user_deleted',
       'backup_export',
       'backup_restore',
+      'logs_purged',
+      'waf_blocked',
     ],
     required: true,
     index: true,

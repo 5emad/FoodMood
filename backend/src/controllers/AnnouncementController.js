@@ -7,8 +7,8 @@ function resolveCreatedById(user) {
 }
 
 function resolveExpiresAt(body) {
+  // اولویت با تاریخ شمسی؛ null بودن expiresAt نباید jalaliExpiresAt را باطل کند
   if (body.jalaliExpiresAt === null || body.jalaliExpiresAt === '') return null;
-  if (body.expiresAt === null || body.expiresAt === '') return null;
   if (body.jalaliExpiresAt) {
     const parsed = AnnouncementService.endOfJalaliDay(body.jalaliExpiresAt);
     if (!parsed) {
@@ -18,6 +18,7 @@ function resolveExpiresAt(body) {
     }
     return parsed;
   }
+  if (body.expiresAt === null || body.expiresAt === '') return null;
   if (body.expiresAt) return new Date(body.expiresAt);
   return undefined;
 }

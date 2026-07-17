@@ -92,6 +92,11 @@ write_nginx_https_site() {
   local cert_path="$1"
   local key_path="$2"
   local install_dir="$3"
+  local upstream_port=3000
+  # بعد از مهاجرت Docker، اپ پشت 127.0.0.1:8080 است
+  if [[ -f "${install_dir}/.docker-deployed" ]]; then
+    upstream_port=8080
+  fi
   cat > "$NGINX_SITE" <<EOF
 # FoodMood — all traffic on HTTPS (HTTP redirects to HTTPS)
 server {
@@ -121,7 +126,7 @@ server {
     gzip_types text/plain text/css application/javascript application/json image/svg+xml;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:${upstream_port};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -207,6 +212,13 @@ configure_app_https_env() {
   nginx_tls_set_env_kv "$env_file" "TRUST_TLS" "true"
   nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
   nginx_tls_set_env_kv "$env_file" "FORCE_APP_URL" "false"
+
+  if ! grep -q '^TRUSTED_PROXIES=' "$env_file" 2>/dev/null; then
+    nginx_tls_set_env_kv "$env_file" "TRUSTED_PROXIES" "127.0.0.1,::1"
+  fi
+  if ! grep -q '^WAF_TRUSTED_PROXIES=' "$env_file" 2>/dev/null; then
+    nginx_tls_set_env_kv "$env_file" "WAF_TRUSTED_PROXIES" "127.0.0.1,::1"
+  fi
 
   local allowed_origins="$https_url,${default_url}"
   local current_origins

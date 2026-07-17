@@ -26,7 +26,7 @@ function safeJsonForHtml(value) {
 
 function looksTechnicalErrorMessage(message) {
   const text = String(message || '');
-  return /ECONN|ENOENT|ENOTFOUND|EACCES|at\s+\S+:\d+|\/var\/|\/opt\/|C:\\|stderr|stdout|mongodb|MongoServer|openssl|nginx|Traceback|stack/i.test(text);
+  return /ECONN|ENOENT|ENOTFOUND|EACCES|at\s+\S+:\d+|\/var\/|\/opt\/|C:\\|stderr|stdout|mongodb|MongoServer|openssl|nginx|Traceback|stack|Unexpected token|Expected property name|JSON at position|SyntaxError|is not valid JSON|blocked by WAF|heuristic-|sql-|xss-|path-traversal|nosql-|ldap-|Request blocked/i.test(text);
 }
 
 module.exports = {

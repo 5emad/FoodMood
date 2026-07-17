@@ -5,6 +5,8 @@ const Order = require('../models/Order');
 const { defaultSettings, getSettingsLean } = require('../services/SettingsService');
 const { getUserCapabilities, stripPricesFromMenuPayload, isAdminPortalUser } = require('../helpers/PermissionHelper');
 const { resolveEffectiveCapacity } = require('../helpers/CapacityHelper');
+const { cancelOrdersForMenuItems } = require('../helpers/OrderStatusHelper');
+const { writeSystemLog } = require('../services/SystemLogService');
 
 async function attachMenuItems(dailyMenus, settings) {
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity);
@@ -102,8 +104,25 @@ class MenuController {
 
   static async updateItem(req, res, next) {
     try {
-      const { max_capacity, maxCapacity, custom_price, customPrice, is_available, isAvailable } = req.body;
+      const {
+        max_capacity, maxCapacity, custom_price, customPrice,
+        is_available, isAvailable, food_id, foodId,
+      } = req.body;
       const update = {};
+      let cancelledCount = 0;
+
+      const existing = await MenuItem.findById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: 'آیتم منو یافت نشد' });
+      }
+
+      const nextFoodId = food_id || foodId;
+      if (nextFoodId !== undefined && String(nextFoodId) !== String(existing.foodId)) {
+        // عوض کردن غذای این آیتم → لغو سفارش‌های قبلی همین آیتم
+        const cancelResult = await cancelOrdersForMenuItems([existing._id]);
+        cancelledCount = cancelResult.cancelledCount;
+        update.foodId = nextFoodId;
+      }
 
       if (max_capacity !== undefined || maxCapacity !== undefined) update.maxCapacity = Number(max_capacity ?? maxCapacity);
       if (custom_price !== undefined || customPrice !== undefined) update.customPrice = custom_price || customPrice || null;
@@ -112,11 +131,24 @@ class MenuController {
       }
 
       const item = await MenuItem.findByIdAndUpdate(req.params.id, update, { new: true });
-      if (!item) {
-        return res.status(404).json({ message: 'آیتم منو یافت نشد' });
+
+      if (cancelledCount > 0) {
+        writeSystemLog('info', 'menu', 'لغو سفارش‌ها به‌خاطر تغییر غذای منو', {
+          event: 'menu_item_food_changed_orders_cancelled',
+          menuItemId: String(req.params.id),
+          cancelledCount,
+          actorId: req.user?.id || null,
+        });
       }
 
-      res.json({ success: true, message: 'آیتم منو بروزرسانی شد' });
+      res.json({
+        success: true,
+        message: cancelledCount > 0
+          ? `آیتم منو بروزرسانی شد و ${cancelledCount} سفارش لغو گردید`
+          : 'آیتم منو بروزرسانی شد',
+        cancelledCount,
+        data: item,
+      });
     } catch (error) {
       next(error);
     }
@@ -124,17 +156,33 @@ class MenuController {
 
   static async deleteItem(req, res, next) {
     try {
-      const reservedCount = await Order.countDocuments({ menuItemId: req.params.id });
-      if (reservedCount > 0) {
-        return res.status(409).json({ message: 'این آیتم دارای سفارش است و قابل حذف نیست' });
-      }
-
-      const item = await MenuItem.findByIdAndDelete(req.params.id);
+      const item = await MenuItem.findById(req.params.id);
       if (!item) {
         return res.status(404).json({ message: 'آیتم منو یافت نشد' });
       }
 
-      res.json({ success: true, message: 'آیتم منو حذف شد' });
+      // حذف غذا از منوی روز → لغو سفارش‌های همان غذا (از گزارش هم خارج می‌شوند)
+      const { cancelledCount } = await cancelOrdersForMenuItems([item._id]);
+      await MenuItem.findByIdAndDelete(item._id);
+
+      if (cancelledCount > 0) {
+        writeSystemLog('info', 'menu', 'لغو سفارش‌ها به‌خاطر حذف غذا از منو', {
+          event: 'menu_item_removed_orders_cancelled',
+          menuItemId: String(item._id),
+          dailyMenuId: String(item.dailyMenuId || ''),
+          foodId: String(item.foodId || ''),
+          cancelledCount,
+          actorId: req.user?.id || null,
+        });
+      }
+
+      res.json({
+        success: true,
+        message: cancelledCount > 0
+          ? `آیتم منو حذف شد و ${cancelledCount} سفارش مرتبط لغو گردید`
+          : 'آیتم منو حذف شد',
+        cancelledCount,
+      });
     } catch (error) {
       next(error);
     }

@@ -1,18 +1,24 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useToast } from '../components/ToastProvider';
+import AppVersionBadge from '../components/AppVersionBadge';
+import UserHeroSlider from '../components/UserHeroSlider';
 import { normalizeUserCapabilities } from '../lib/portalCapabilities';
-import { esc, faDigits, jdate, money } from '../utils/format';
+import { faDigits, jdate, money } from '../utils/format';
 
 const STATUS_LABEL = { pending: 'در انتظار تایید', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
 const STATUS_CLASS = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
 
+function isAdminRole(role) {
+  return role === 'admin' || role === 'superadmin';
+}
+
 export default function UserDashboardPage() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [tab, setTab] = useState('menu');
   const [user, setUser] = useState(null);
+  const [version, setVersion] = useState(null);
   const [caps, setCaps] = useState(normalizeUserCapabilities({}));
   const [menu, setMenu] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -22,6 +28,8 @@ export default function UserDashboardPage() {
   const [pendingItems, setPendingItems] = useState(new Set());
   const [stmtSub, setStmtSub] = useState('weekly');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [heroSlides, setHeroSlides] = useState([]);
+  const [heroLoading, setHeroLoading] = useState(true);
 
   useEffect(() => {
     document.body.className = '';
@@ -31,17 +39,31 @@ export default function UserDashboardPage() {
   async function bootstrap() {
     setLoading(true);
     try {
-      const [boot, me, ann] = await Promise.all([
+      const [boot, me, ann, pub] = await Promise.all([
         api('/api/app/user/bootstrap'),
         api('/api/auth/me'),
         api('/api/announcements/active'),
+        api('/api/app/public'),
       ]);
-      if (boot.success) setCaps(normalizeUserCapabilities({ ...boot.data.portalSettings, ...boot.data.capabilities }));
+      if (boot.success) {
+        setCaps(normalizeUserCapabilities({ ...boot.data.portalSettings, ...boot.data.capabilities }));
+      }
       if (me.success) setUser(me.user);
+      if (pub.success) setVersion(pub.data);
       if (ann.success) setAnnouncements((ann.data || []).filter((a) => a.title && a.body));
-      await loadMenu();
+      await Promise.all([loadMenu(), loadHeroSlides()]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadHeroSlides() {
+    setHeroLoading(true);
+    try {
+      const data = await api('/api/app/user/portal-slider');
+      if (data.success) setHeroSlides(data.data?.slides || []);
+    } finally {
+      setHeroLoading(false);
     }
   }
 
@@ -56,19 +78,41 @@ export default function UserDashboardPage() {
     }
     setMenu(menuRes.data);
     setOrders(ordersRes.success ? ordersRes.data : []);
-    const pricesOn = menuRes.data?.settings?.showPricesToUsers !== false;
-    const stmtOn = menuRes.data?.settings?.showFinancialStatementToUsers !== false;
-    setCaps((c) => ({ ...c, showPrices: pricesOn, showStatement: stmtOn }));
+    await loadHeroSlides();
+    const settings = menuRes.data?.settings || {};
+    setCaps((c) => normalizeUserCapabilities({
+      ...c,
+      showPrices: settings.showPricesToUsers,
+      showPricesToUsers: settings.showPricesToUsers,
+      showStatement: settings.showFinancialStatementToUsers,
+      showFinancialStatementToUsers: settings.showFinancialStatementToUsers,
+    }));
+  }
+
+  async function refreshStatementConfig() {
+    const data = await api('/api/user/statement/config');
+    if (!data.success) return;
+    setCaps((c) => normalizeUserCapabilities({
+      ...c,
+      showStatement: data.data.showFinancialStatementToUsers,
+      showFinancialStatementToUsers: data.data.showFinancialStatementToUsers,
+      organizationSharePercent: data.data.organizationSharePercent,
+      personalSharePercent: data.data.personalSharePercent,
+      statementDisabledMessage: data.data.statementDisabledMessage,
+    }));
   }
 
   async function loadStatements() {
-    const data = await api(`/api/user/statement/list?type=${stmtSub}`);
+    const type = stmtSub === 'monthly' ? 'month' : 'week';
+    const data = await api(`/api/user/statement/list?type=${type}`);
     if (data.success) setStatements(data.data || []);
     else setStatements([]);
   }
 
   useEffect(() => {
-    if (tab === 'statement' && caps.showStatement) loadStatements();
+    if (tab === 'statement' && caps.showStatement) {
+      refreshStatementConfig().then(loadStatements);
+    }
   }, [tab, stmtSub, caps.showStatement]);
 
   async function placeOrder(menuItemId) {
@@ -99,6 +143,8 @@ export default function UserDashboardPage() {
     orderByItem[String(o.menuItemId._id || o.menuItemId)] = o;
   });
 
+  const showAdminLink = isAdminRole(user?.role);
+
   return (
     <>
       <nav className="top-nav">
@@ -114,20 +160,18 @@ export default function UserDashboardPage() {
             <span className="nav-u-name">{user?.fullName || user?.username || 'همکار گرامی'}</span>
             <span className="nav-u-dept">{user?.department?.name || 'واحد عمومی'}</span>
           </div>
+          {showAdminLink && (
+            <Link to="/admin/reports" className="btn-icon admin-portal-btn" title="بازگشت به پنل مدیریت">
+              <i className="fas fa-cogs" />
+            </Link>
+          )}
           <a href="/logout" className="btn-icon logout-btn" title="خروج"><i className="fas fa-power-off" /></a>
         </div>
       </nav>
 
       <main className="user-portal-shell">
         <div className="user-portal-main">
-          <div className="page-header" style={{ marginBottom: 28 }}>
-            <div>
-              <div className="ph-badge"><i className="fas fa-calendar-week" /> هفته جاری</div>
-              <div className="ph-title">برنامه غذایی هفته</div>
-              <div className="ph-sub">{menu?.week ? (menu.week.name || `${jdate(menu.week.startDate)} تا ${jdate(menu.week.endDate)}`) : 'در حال بارگذاری...'}</div>
-            </div>
-            <i className="fas fa-bowl-food ph-icon" />
-          </div>
+          <UserHeroSlider slides={heroSlides} showPrices={caps.showPrices} loading={heroLoading} />
 
           <div className="user-tabs">
             <button type="button" className={`tab-button${tab === 'menu' ? ' active' : ''}`} onClick={() => setTab('menu')}><i className="fas fa-calendar-days" /> منوی هفته</button>
@@ -191,7 +235,16 @@ export default function UserDashboardPage() {
               <div className="table-wrap">
                 {!orders.length ? <div className="orders-empty"><i className="fas fa-receipt" /><p>هنوز سفارشی ثبت نکرده‌اید.</p></div> : (
                   <table className="table">
-                    <thead><tr><th>کد</th><th>غذا</th>{caps.showPrices && <th>مبلغ</th>}<th>تاریخ</th><th>وضعیت</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>کد</th>
+                        <th>غذا</th>
+                        {caps.showPrices && <th>مبلغ</th>}
+                        <th>تاریخ ثبت</th>
+                        <th>تاریخ تحویل</th>
+                        <th>وضعیت</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {orders.map((o) => (
                         <tr key={o._id}>
@@ -199,6 +252,7 @@ export default function UserDashboardPage() {
                           <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}</td>
                           {caps.showPrices && <td>{money(o.totalPrice)}</td>}
                           <td>{jdate(o.orderDate)}</td>
+                          <td>{o.deliveryDate ? jdate(o.deliveryDate) : '—'}</td>
                           <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
                         </tr>
                       ))}
@@ -215,19 +269,37 @@ export default function UserDashboardPage() {
                 <button type="button" className={`sub-tab-btn${stmtSub === 'weekly' ? ' active' : ''}`} onClick={() => setStmtSub('weekly')}>هفتگی</button>
                 <button type="button" className={`sub-tab-btn${stmtSub === 'monthly' ? ' active' : ''}`} onClick={() => setStmtSub('monthly')}>ماهیانه</button>
               </div>
+              <div className="statement-split-banner">
+                سهم سازمان: <strong>{faDigits(caps.organizationSharePercent)}٪</strong>
+                {' — '}
+                سهم شخص: <strong>{faDigits(caps.personalSharePercent)}٪</strong>
+                <span className="statement-range">فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند</span>
+              </div>
               <div className="table-wrap">
                 {!statements.length ? <div className="orders-empty"><p>صورتحسابی ثبت نشده است.</p></div> : (
-                  <table className="table">
-                    <thead><tr><th>شماره</th><th>بازه</th><th>وعده</th><th>کل</th><th>سازمان</th><th>شخص</th></tr></thead>
+                  <table className="table statement-table">
+                    <thead>
+                      <tr>
+                        <th>شماره</th>
+                        <th>بازه</th>
+                        <th>وعده</th>
+                        <th>کل</th>
+                        <th>سازمان</th>
+                        <th>شخص</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {statements.map((s) => (
                         <tr key={s._id || s.statementNumber}>
-                          <td>{s.statementNumber || '-'}</td>
-                          <td>{s.title || `${s.range?.jalaliStart || ''} - ${s.range?.jalaliEnd || ''}`}</td>
+                          <td className="statement-number-col">{s.statementNumber || '—'}</td>
+                          <td>
+                            {s.title || `${s.range?.jalaliStart || ''} - ${s.range?.jalaliEnd || ''}`}
+                            {s.isActive && <span className="badge badge-success" style={{ marginRight: 6 }}>جاری</span>}
+                          </td>
                           <td>{faDigits(s.summary?.mealCount || 0)}</td>
-                          <td>{money(s.summary?.totalAmount)}</td>
-                          <td>{money(s.summary?.organizationShare)}</td>
-                          <td>{money(s.summary?.personalShare)}</td>
+                          <td>{money(s.summary?.grossTotal)}</td>
+                          <td className="statement-org-col">{money(s.summary?.organizationAmount)}</td>
+                          <td className="statement-personal-col">{money(s.summary?.personalAmount)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -237,6 +309,7 @@ export default function UserDashboardPage() {
             </section>
           )}
         </div>
+        <AppVersionBadge version={version} />
       </main>
 
       {announcements.length > 0 && (

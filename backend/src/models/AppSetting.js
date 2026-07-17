@@ -112,6 +112,21 @@ const appSettingSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  portalSlider: {
+    weekHeroImage: { type: String, default: '/uploads/portal-slides/morgh-torsh.jpg', trim: true },
+    weekHeroEnabled: { type: Boolean, default: true },
+    showAnnouncementSlides: { type: Boolean, default: true },
+    showMenuFoodSlides: { type: Boolean, default: true },
+    showcaseSlides: [{
+      title: { type: String, default: '', trim: true },
+      description: { type: String, default: '', trim: true },
+      imageUrl: { type: String, default: '', trim: true },
+      tags: [{ type: String, trim: true }],
+      badge: { type: String, default: 'اسلاید', trim: true },
+      // بدون default تا Mongoose مقدار false را به true برنگرداند
+      enabled: { type: Boolean },
+    }],
+  },
 });
 
 appSettingSchema.pre('save', function(next) {

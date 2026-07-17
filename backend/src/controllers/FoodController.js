@@ -1,7 +1,12 @@
 const Food = require('../models/Food');
 const MenuItem = require('../models/MenuItem');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
-const { resolveShowPricesForRequest, stripPricesFromFood, stripPricesFromFoodList } = require('../helpers/PermissionHelper');
+const {
+  resolveShowPricesForRequest,
+  stripPricesFromFood,
+  stripPricesFromFoodList,
+  isAdminPortalUser,
+} = require('../helpers/PermissionHelper');
 
 function toBool(value, fallback = true) {
   if (value === undefined) return fallback;
@@ -15,14 +20,16 @@ class FoodController {
       const { category, includeInactive } = req.query;
       const filter = {};
 
-      if (!toBool(includeInactive, false)) {
+      // فقط ادمین می‌تواند غذاهای غیرفعال را ببیند
+      const allowInactive = toBool(includeInactive, false) && isAdminPortalUser(req.user);
+      if (!allowInactive) {
         filter.$and = [
           { $or: [{ status: 'active' }, { status: { $exists: false } }] },
           { $or: [{ isAvailable: true }, { isAvailable: { $exists: false } }] },
         ];
       }
       if (category) {
-        filter.category = category;
+        filter.category = String(category);
       }
 
       // Paginated only when the client asks for a page; other callers
@@ -53,6 +60,10 @@ class FoodController {
     try {
       const food = await Food.findById(req.params.id);
       if (!food) {
+        return res.status(404).json({ message: 'غذا یافت نشد' });
+      }
+      const inactive = food.status === 'inactive' || food.isAvailable === false;
+      if (inactive && !isAdminPortalUser(req.user)) {
         return res.status(404).json({ message: 'غذا یافت نشد' });
       }
       const showPrices = await resolveShowPricesForRequest(req);

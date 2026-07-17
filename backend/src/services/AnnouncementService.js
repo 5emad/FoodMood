@@ -3,14 +3,7 @@ const Department = require('../models/Department');
 const User = require('../models/User');
 const LdapProfile = require('../models/LdapProfile');
 const { decryptAnnouncementText } = require('../helpers/AnnouncementCrypto');
-const { formatJalaliDate, parseJalaliDate } = require('../helpers/DateHelper');
-
-function endOfJalaliDay(value) {
-  const parsed = parseJalaliDate(value);
-  if (!parsed) return null;
-  parsed.setHours(23, 59, 59, 999);
-  return parsed;
-}
+const { formatJalaliDate, endOfJalaliDay } = require('../helpers/DateHelper');
 
 function readAnnouncementContent(doc) {
   if (!doc) return { title: '', body: '' };

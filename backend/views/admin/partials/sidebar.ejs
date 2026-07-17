@@ -9,29 +9,29 @@
   <ul class="sidebar-nav">
     <li><div class="sidebar-section-title">مدیریت</div></li>
     <% if (typeof sidebarMode !== 'undefined' && sidebarMode === 'dashboard') { %>
-      <li><a href="/admin/dashboard" class="sidebar-link<%= activePage === 'reports' ? ' active' : '' %>" data-tab="reports" data-admin-tab="reports" id="reportsNavLink"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span> <span id="reportsPendingBadge" class="badge badge-warning" style="display:none;margin-right:auto">0</span></a></li>
-      <li><a href="/admin/dashboard?tab=weeks" class="sidebar-link<%= activePage === 'weeks' ? ' active' : '' %>" data-tab="weeks" data-admin-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=orders" class="sidebar-link<%= activePage === 'orders' ? ' active' : '' %>" data-tab="orders" data-admin-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=guests" class="sidebar-link<%= activePage === 'guests' ? ' active' : '' %>" data-tab="guests" data-admin-tab="guests"><i class="fas fa-user-tag"></i><span>مهمان‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=foods" class="sidebar-link<%= activePage === 'foods' ? ' active' : '' %>" data-tab="foods" data-admin-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
+      <li><a href="/admin/reports" class="sidebar-link<%= activePage === 'reports' ? ' active' : '' %>" data-tab="reports" data-admin-tab="reports" id="reportsNavLink"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span> <span id="reportsPendingBadge" class="badge badge-warning" style="display:none;margin-right:auto">0</span></a></li>
+      <li><a href="/admin/weeks" class="sidebar-link<%= activePage === 'weeks' ? ' active' : '' %>" data-tab="weeks" data-admin-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
+      <li><a href="/admin/orders" class="sidebar-link<%= activePage === 'orders' ? ' active' : '' %>" data-tab="orders" data-admin-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
+      <li><a href="/admin/guests" class="sidebar-link<%= activePage === 'guests' ? ' active' : '' %>" data-tab="guests" data-admin-tab="guests"><i class="fas fa-user-tag"></i><span>مهمان‌ها</span></a></li>
+      <li><a href="/admin/foods" class="sidebar-link<%= activePage === 'foods' ? ' active' : '' %>" data-tab="foods" data-admin-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
     <% } else { %>
-      <li><a href="/admin/dashboard" class="sidebar-link<%= activePage === 'reports' ? ' active' : '' %>" data-admin-tab="reports"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=weeks" class="sidebar-link<%= activePage === 'weeks' ? ' active' : '' %>" data-admin-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=orders" class="sidebar-link<%= activePage === 'orders' ? ' active' : '' %>" data-admin-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=guests" class="sidebar-link<%= activePage === 'guests' ? ' active' : '' %>" data-admin-tab="guests"><i class="fas fa-user-tag"></i><span>مهمان‌ها</span></a></li>
-      <li><a href="/admin/dashboard?tab=foods" class="sidebar-link<%= activePage === 'foods' ? ' active' : '' %>" data-admin-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
+      <li><a href="/admin/reports" class="sidebar-link<%= activePage === 'reports' ? ' active' : '' %>" data-admin-tab="reports"><i class="fas fa-chart-line"></i><span>گزارش‌ها</span></a></li>
+      <li><a href="/admin/weeks" class="sidebar-link<%= activePage === 'weeks' ? ' active' : '' %>" data-admin-tab="weeks"><i class="fas fa-calendar-week"></i><span>هفته‌ها</span></a></li>
+      <li><a href="/admin/orders" class="sidebar-link<%= activePage === 'orders' ? ' active' : '' %>" data-admin-tab="orders"><i class="fas fa-clipboard-list"></i><span>سفارش‌ها</span></a></li>
+      <li><a href="/admin/guests" class="sidebar-link<%= activePage === 'guests' ? ' active' : '' %>" data-admin-tab="guests"><i class="fas fa-user-tag"></i><span>مهمان‌ها</span></a></li>
+      <li><a href="/admin/foods" class="sidebar-link<%= activePage === 'foods' ? ' active' : '' %>" data-admin-tab="foods"><i class="fas fa-utensils"></i><span>غذاها</span></a></li>
     <% } %>
     <li><div class="sidebar-section-title">تنظیمات</div></li>
     <% if (typeof sidebarMode !== 'undefined' && sidebarMode === 'dashboard') { %>
-      <li><a href="/admin/dashboard?tab=users" class="sidebar-link<%= activePage === 'users' ? ' active' : '' %>" data-tab="users" data-admin-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
-      <li><a href="/admin/dashboard?tab=departments" class="sidebar-link<%= activePage === 'departments' ? ' active' : '' %>" data-tab="departments" data-admin-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
-      <li><a href="/admin/dashboard?tab=finance" class="sidebar-link<%= activePage === 'finance' ? ' active' : '' %>" data-tab="finance" data-admin-tab="finance"><i class="fas fa-coins"></i><span>مالی و حسابداری</span></a></li>
-      <li><a href="/admin/dashboard?tab=announcements" class="sidebar-link<%= activePage === 'announcements' ? ' active' : '' %>" data-tab="announcements" data-admin-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
+      <li><a href="/admin/users" class="sidebar-link<%= activePage === 'users' ? ' active' : '' %>" data-tab="users" data-admin-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
+      <li><a href="/admin/departments" class="sidebar-link<%= activePage === 'departments' ? ' active' : '' %>" data-tab="departments" data-admin-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
+      <li><a href="/admin/finance" class="sidebar-link<%= activePage === 'finance' ? ' active' : '' %>" data-tab="finance" data-admin-tab="finance"><i class="fas fa-coins"></i><span>مالی و حسابداری</span></a></li>
+      <li><a href="/admin/announcements" class="sidebar-link<%= activePage === 'announcements' ? ' active' : '' %>" data-tab="announcements" data-admin-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
     <% } else { %>
-      <li><a href="/admin/dashboard?tab=users" class="sidebar-link<%= activePage === 'users' ? ' active' : '' %>" data-admin-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
-      <li><a href="/admin/dashboard?tab=departments" class="sidebar-link<%= activePage === 'departments' ? ' active' : '' %>" data-admin-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
-      <li><a href="/admin/dashboard?tab=finance" class="sidebar-link<%= activePage === 'finance' ? ' active' : '' %>" data-admin-tab="finance"><i class="fas fa-coins"></i><span>مالی و حسابداری</span></a></li>
-      <li><a href="/admin/dashboard?tab=announcements" class="sidebar-link<%= activePage === 'announcements' ? ' active' : '' %>" data-admin-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
+      <li><a href="/admin/users" class="sidebar-link<%= activePage === 'users' ? ' active' : '' %>" data-admin-tab="users"><i class="fas fa-users"></i><span>کاربران</span></a></li>
+      <li><a href="/admin/departments" class="sidebar-link<%= activePage === 'departments' ? ' active' : '' %>" data-admin-tab="departments"><i class="fas fa-building"></i><span>واحدها</span></a></li>
+      <li><a href="/admin/finance" class="sidebar-link<%= activePage === 'finance' ? ' active' : '' %>" data-admin-tab="finance"><i class="fas fa-coins"></i><span>مالی و حسابداری</span></a></li>
+      <li><a href="/admin/announcements" class="sidebar-link<%= activePage === 'announcements' ? ' active' : '' %>" data-admin-tab="announcements"><i class="fas fa-bullhorn"></i><span>اطلاعیه</span></a></li>
     <% } %>
     <% if (isSuperadmin) { %>
       <li><div class="sidebar-section-title">سوپر ادمین</div></li>

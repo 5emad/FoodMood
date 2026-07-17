@@ -13,7 +13,7 @@ export default function CompleteProfilePage() {
   useEffect(() => {
     api('/api/auth/me').then((res) => {
       if (res.success && res.user && !res.user.mustSetFullName) {
-        const target = ['admin', 'superadmin'].includes(res.user.role) ? '/admin/dashboard' : '/user/dashboard';
+        const target = ['admin', 'superadmin'].includes(res.user.role) ? '/admin/reports' : '/user/dashboard';
         navigate(target);
       }
     });

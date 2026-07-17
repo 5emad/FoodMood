@@ -1,6 +1,6 @@
 {
   "name": "food-ordering-system",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "سیستم رزرو و سفارش غذا",
   "main": "backend/server.js",
   "scripts": {
@@ -11,9 +11,14 @@
     "vendor:sync": "node backend/scripts/sync-vendor.js",
     "build:client": "node backend/scripts/build-client-js.js",
     "build:spa": "cd frontend && npm install && npm run build",
+    "seed:portal-slides": "node backend/scripts/download-portal-slide-images.js",
     "build": "npm run build:client && npm run build:spa",
     "postinstall": "node backend/scripts/sync-vendor.js",
-    "test:outage": "node backend/scripts/test-db-outage.js"
+    "test:outage": "node backend/scripts/test-db-outage.js",
+    "docker:up": "docker compose --env-file .env.docker up -d --build",
+    "docker:down": "docker compose --env-file .env.docker down",
+    "docker:logs": "docker compose --env-file .env.docker logs -f --tail=200",
+    "docker:scale": "docker compose --env-file .env.docker up -d --scale app=2 --no-recreate"
   },
   "keywords": [
     "food",
@@ -33,6 +38,7 @@
     "express": "^4.18.2",
     "express-session": "^1.17.3",
     "express-validator": "^7.0.0",
+    "firewtwall": "^2.4.7",
     "helmet": "^7.0.0",
     "jsonwebtoken": "^9.0.0",
     "ldapts": "^8.1.8",

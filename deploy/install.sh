@@ -832,14 +832,21 @@ deploy_application() {
     useradd -r -m -d "$INSTALL_DIR" -s /bin/bash "$APP_USER"
   fi
   mkdir -p "$INSTALL_DIR"
+  mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
+           "${INSTALL_DIR}/backend/public/uploads/portal-slides" \
+           "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
     --exclude node_modules \
     --exclude .git \
     --exclude .env \
+    --exclude .env.docker \
     --exclude .npm \
     --exclude .cache \
     --exclude INSTALL_INFO.txt \
     --exclude '*.log' \
+    --exclude 'backend/logs/' \
+    --exclude 'backend/public/uploads/' \
+    --exclude 'certs/ssl/' \
     "$PROJECT_DIR/" "$INSTALL_DIR/"
   chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR"
   chmod 755 "$INSTALL_DIR"
@@ -943,6 +950,7 @@ write_env_file() {
   PASSWORD_PEPPER="$(rand_secret)"
   ANNOUNCEMENT_ENCRYPTION_KEY="$(rand_secret)"
   LDAP_ENCRYPTION_KEY="$(rand_secret)"
+  LOG_ENCRYPTION_KEY="$(rand_secret)"
 
   local chrome_bin=""
   if [[ -x "${INSTALL_DIR}/.cache/chrome-linux64/chrome" ]]; then
@@ -957,11 +965,19 @@ PORT=3000
 APP_URL=${app_url}
 ALLOWED_ORIGINS=${app_url}
 TRUST_TLS=true
+TZ=Asia/Tehran
 
 MONGODB_URI=${mongo_uri}
 MONGODB_TLS=false
-MONGODB_MAX_POOL_SIZE=10
+MONGODB_MAX_POOL_SIZE=50
+MONGODB_MIN_POOL_SIZE=5
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=8000
+
+CLUSTER_WORKERS=0
+API_RATE_LIMIT_MAX=400
+WAF_RATE_LIMIT_MAX=400
+TRUSTED_PROXIES=127.0.0.1,::1
+WAF_TRUSTED_PROXIES=127.0.0.1,::1
 
 SESSION_SECRET=${SESSION_SECRET}
 JWT_SECRET=${JWT_SECRET}
@@ -973,6 +989,7 @@ BACKUP_SECRET=${BACKUP_SECRET}
 PASSWORD_PEPPER=${PASSWORD_PEPPER}
 ANNOUNCEMENT_ENCRYPTION_KEY=${ANNOUNCEMENT_ENCRYPTION_KEY}
 LDAP_ENCRYPTION_KEY=${LDAP_ENCRYPTION_KEY}
+LOG_ENCRYPTION_KEY=${LOG_ENCRYPTION_KEY}
 
 LOG_DIR=/var/log/foodmood
 ${chrome_bin:+CHROME_BIN=${chrome_bin}}

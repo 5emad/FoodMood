@@ -1,0 +1,101 @@
+/* Admin panel — align React SPA with legacy enterprise-theme (body.admin-body) */
+
+body.admin-body .toolbar-row { display: none; }
+
+body.admin-body .tab-pane {
+  animation: adminTabIn .2s ease;
+}
+
+@keyframes adminTabIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+body.admin-body .card + .card,
+body.admin-body .card + .table-wrap {
+  margin-top: 14px;
+}
+
+body.admin-body .inline-form {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+body.admin-body .guest-drawer.is-open {
+  transform: translateX(0);
+}
+
+body.admin-body .guest-form-overlay[hidden],
+body.admin-body .guest-drawer-overlay[hidden] {
+  display: none !important;
+}
+
+body.admin-body .guest-form-overlay:not([hidden]) {
+  display: flex;
+}
+
+body.admin-body .guest-drawer-overlay:not([hidden]) {
+  display: block;
+}
+
+.report-table-scroll { overflow-x: auto; }
+
+@media (max-width: 760px) {
+  body.admin-body .inline-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portal-slide-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.portal-slide-admin-card {
+  border: 1px solid var(--border, #e8e8ef);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.portal-slide-admin-card.is-disabled {
+  opacity: 0.55;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.portal-slide-admin-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.portal-slide-admin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.portal-slide-admin-preview {
+  height: 120px;
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+  background-color: #1A0E38;
+}
+
+.portal-slide-admin-preview.small {
+  height: 96px;
+}

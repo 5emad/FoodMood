@@ -9,10 +9,11 @@
       <div class="section-header">
         <div>
           <div class="section-title">مرکز امنیت</div>
-          <div class="section-sub">لاگ ورود، تلاش‌های ناموفق، حساب‌های قفل‌شده و عملیات آنلاک</div>
+          <div class="section-sub">لاگ ورود، WAF، تلاش‌های ناموفق، حساب‌های قفل‌شده و عملیات آنلاک</div>
         </div>
         <div class="d-flex gap-2" style="flex-wrap:wrap">
           <button class="btn btn-warning btn-sm" onclick="resetOwnSuperToken()"><i class="fas fa-key"></i> تغییر توکن من</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeAllLogs()"><i class="fas fa-trash-can"></i> پاک‌سازی همه لاگ‌ها</button>
           <button class="btn btn-outline btn-sm" onclick="loadSecurityCenter()"><i class="fas fa-rotate"></i> بروزرسانی</button>
         </div>
       </div>
@@ -21,6 +22,18 @@
         <div class="stat-card"><div class="stat-icon red"><i class="fas fa-lock"></i></div><div><div class="stat-value" id="lockedCount">0</div><div class="stat-label">حساب قفل‌شده</div></div></div>
         <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-triangle-exclamation"></i></div><div><div class="stat-value" id="failedCount">0</div><div class="stat-label">تلاش ناموفق ۲۴ ساعت</div></div></div>
         <div class="stat-card"><div class="stat-icon blue"><i class="fas fa-bell"></i></div><div><div class="stat-value" id="securityUnreadCount">0</div><div class="stat-label">رخداد مهم اخیر</div></div></div>
+        <div class="stat-card"><div class="stat-icon red"><i class="fas fa-shield-halved"></i></div><div><div class="stat-value" id="wafBlockedCount">0</div><div class="stat-label">مسدودسازی WAF ۲۴س</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-shield-halved" style="margin-left:8px;color:var(--primary)"></i> فایروال وب (WAF)</div>
+          <span id="wafStatusBadge" class="badge badge-success">فعال · firewtwall · استاندارد</span>
+        </div>
+        <div class="card-body">
+          <p class="section-sub" style="margin-bottom:12px">موتور firewtwall — مسدودسازی SQLi، XSS، Path Traversal، NoSQL/LDAP، فازیگ، burst و جعل هدر؛ بدون اعتماد به X-Forwarded-For جعلی.</p>
+          <div class="table-wrap" id="wafBlocksWrap"><div style="padding:32px;text-align:center"><div class="spinner"></div></div></div>
+        </div>
       </div>
 
       <div class="card">

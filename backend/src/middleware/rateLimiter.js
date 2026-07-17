@@ -4,6 +4,8 @@
  * NOTE: resets on server restart; use Redis for multi-instance deployments.
  */
 
+const { directClientIp, resolveClientIp } = require('../helpers/ClientIpHelper');
+
 function createLimiter({ windowMs, max, message, keyGenerator, skipSuccessful = false }) {
   // Each limiter instance gets its own isolated store so counters don't bleed
   // between limiters that share a route (e.g. loginLimiter + apiLimiter on /api/auth/login).
@@ -17,7 +19,7 @@ function createLimiter({ windowMs, max, message, keyGenerator, skipSuccessful = 
   }, 60 * 1000).unref();
 
   return (req, res, next) => {
-    const key = (keyGenerator ? keyGenerator(req) : null) || req.ip || 'unknown';
+    const key = (keyGenerator ? keyGenerator(req) : null) || resolveClientIp(req);
     const now = Date.now();
 
     let entry = store.get(key);
@@ -54,27 +56,36 @@ const loginLimiter = createLimiter({
   max:            10,
   skipSuccessful: true,
   message:        { success: false, message: 'تعداد تلاش‌های ورود بیش از حد مجاز است. ۱۵ دقیقه دیگر تلاش کنید.' },
-  keyGenerator:   (req) => req.ip || req.connection?.remoteAddress || 'unknown',
+  keyGenerator:   (req) => resolveClientIp(req),
 });
 
 const apiLimiter = createLimiter({
   windowMs: 60 * 1000,
   max:      Number(process.env.API_RATE_LIMIT_MAX || 400),
   message:  { success: false, message: 'درخواست‌های زیادی ارسال کردید. لطفاً کمی صبر کنید.' },
+  keyGenerator: (req) => resolveClientIp(req),
 });
 
 const superTokenLimiter = createLimiter({
   windowMs: 10 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'تعداد تلاش برای توکن امنیتی بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.' },
-  keyGenerator: (req) => `${req.ip || req.connection?.remoteAddress || 'unknown'}:${req.session?.pendingSuperLogin?.userId || 'none'}`,
+  max: Number(process.env.SUPER_TOKEN_RATE_LIMIT_MAX || 10),
+  skipSuccessful: true,
+  message: { success: false, message: 'تعداد تلاش برای توکن امنیتی بیش از حد مجاز است. ۱۰ دقیقه دیگر تلاش کنید.' },
+  keyGenerator: (req) => `${resolveClientIp(req)}:${req.session?.pendingSuperLogin?.userId || 'none'}`,
 });
 
 const backupRestoreLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   max: 3,
   message: { success: false, message: 'تعداد بازیابی پشتیبان در ساعت بیش از حد مجاز است.' },
-  keyGenerator: (req) => `${req.ip || 'unknown'}:${req.user?.id || req.session?.userId || 'anon'}`,
+  keyGenerator: (req) => `${resolveClientIp(req)}:${req.user?.id || req.session?.userId || 'anon'}`,
 });
 
-module.exports = { loginLimiter, apiLimiter, superTokenLimiter, backupRestoreLimiter };
+module.exports = {
+  loginLimiter,
+  apiLimiter,
+  superTokenLimiter,
+  backupRestoreLimiter,
+  directClientIp,
+  resolveClientIp,
+};

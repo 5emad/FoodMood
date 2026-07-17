@@ -15,9 +15,9 @@ EnvironmentFile=/opt/food/.env
 ExecStartPre=/opt/food/deploy/wait-for-mongo.sh
 ExecStart=/usr/bin/node backend/server.js
 Restart=always
-RestartSec=5
-StartLimitInterval=300
-StartLimitBurst=5
+RestartSec=3
+StartLimitIntervalSec=120
+StartLimitBurst=20
 
 StandardOutput=journal
 StandardError=journal

@@ -1,45 +1,49 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo } from 'react';
+import { Toaster, toast as sonnerToast } from 'sonner';
 
 const ToastContext = createContext(null);
 
-const ICONS = {
-  success: 'fa-check',
-  error: 'fa-xmark',
-  warning: 'fa-exclamation',
-  info: 'fa-info',
-};
+function showToast(message, type = 'success') {
+  const opts = {
+    duration: type === 'error' ? 5000 : 3500,
+  };
+
+  switch (type) {
+    case 'error':
+      return sonnerToast.error(message, opts);
+    case 'warning':
+      return sonnerToast.warning(message, opts);
+    case 'info':
+      return sonnerToast.info(message, opts);
+    default:
+      return sonnerToast.success(message, opts);
+  }
+}
 
 export function ToastProvider({ children }) {
-  const [items, setItems] = useState([]);
-
-  const dismiss = useCallback((id) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const toast = useCallback((message, type = 'success') => {
-    const id = `${Date.now()}-${Math.random()}`;
-    const duration = type === 'error' ? 4500 : 3200;
-    setItems((prev) => [...prev.slice(-3), { id, message, type }]);
-    window.setTimeout(() => dismiss(id), duration);
-    return id;
-  }, [dismiss]);
+  const toast = useCallback((message, type = 'success') => showToast(message, type), []);
 
   const value = useMemo(() => ({ toast }), [toast]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div id="toast-container">
-        {items.map((item) => (
-          <div key={item.id} className={`app-toast app-toast--${item.type} is-visible`}>
-            <button type="button" className="app-toast__close" aria-label="بستن" onClick={() => dismiss(item.id)}>&times;</button>
-            <span className="app-toast__text">{item.message}</span>
-            <span className="app-toast__icon" aria-hidden="true">
-              <i className={`fas ${ICONS[item.type] || ICONS.success}`} />
-            </span>
-          </div>
-        ))}
-      </div>
+      <Toaster
+        dir="rtl"
+        position="bottom-left"
+        richColors
+        closeButton
+        expand
+        visibleToasts={4}
+        toastOptions={{
+          classNames: {
+            toast: 'sonner-toast-root',
+            title: 'sonner-toast-title',
+            description: 'sonner-toast-desc',
+            closeButton: 'sonner-toast-close',
+          },
+        }}
+      />
     </ToastContext.Provider>
   );
 }

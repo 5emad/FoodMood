@@ -51,17 +51,38 @@ async function ensureDays() {
 
 async function ensureDailyMenus(week) {
   const days = await ensureDays();
-  const base = startOfDay(week.startDate);
-
-  await Promise.all(days.map((day, offset) => {
+  const base = startOfDay(getPersianWeekStart(week.startDate));
+  const dates = days.map((_, offset) => {
     const date = new Date(base);
     date.setDate(base.getDate() + offset);
-    return DailyMenu.findOneAndUpdate(
-      { weekId: week._id, dayId: day._id },
-      { $setOnInsert: { weekId: week._id, dayId: day._id, date } },
-      { upsert: true, new: true },
+    return date;
+  });
+
+  // ایجاد رکوردها در صورت نبود
+  for (let i = 0; i < days.length; i += 1) {
+    await DailyMenu.findOneAndUpdate(
+      { weekId: week._id, dayId: days[i]._id },
+      { $setOnInsert: { weekId: week._id, dayId: days[i]._id, date: dates[i] } },
+      { upsert: true },
     );
-  }));
+  }
+
+  // دو مرحله‌ای تا با unique(weekId, date) تداخل نداشته باشد
+  for (let i = 0; i < days.length; i += 1) {
+    const temp = new Date(base);
+    temp.setFullYear(temp.getFullYear() + 50);
+    temp.setDate(temp.getDate() + i);
+    await DailyMenu.updateOne(
+      { weekId: week._id, dayId: days[i]._id },
+      { $set: { date: temp, updatedAt: new Date() } },
+    );
+  }
+  for (let i = 0; i < days.length; i += 1) {
+    await DailyMenu.updateOne(
+      { weekId: week._id, dayId: days[i]._id },
+      { $set: { date: dates[i], updatedAt: new Date() } },
+    );
+  }
 }
 
 async function mergeWeekRecords(keeper, duplicateId) {

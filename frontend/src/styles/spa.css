@@ -1,1 +1,132 @@
 #root { min-height: 100vh; }
+
+/* یکپارچه‌سازی فونت در کل SPA */
+body,
+#root,
+button,
+input,
+select,
+textarea,
+.table,
+.sidebar,
+.top-nav,
+.top-header {
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+}
+
+/* Sonner toast — RTL polish */
+[data-sonner-toaster] {
+  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  --width: 380px;
+}
+
+.sonner-toast-root {
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
+  padding: 14px 18px !important;
+  font-size: 0.95rem !important;
+  line-height: 1.6 !important;
+}
+
+.sonner-toast-title {
+  font-weight: 600 !important;
+}
+
+.sonner-toast-close {
+  left: 12px !important;
+  right: auto !important;
+}
+
+/* ادمین — دکمه سوئیچ پرتال روی هدر سفید */
+body.admin-body .top-header .btn-site {
+  background: var(--primary-dark, #1e3a5f);
+  color: #fff;
+  border-color: var(--primary-dark, #1e3a5f);
+}
+
+body.admin-body .top-header .btn-site:hover {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.15);
+}
+
+/* ادمین — تب‌های سوئیچر با کنتراست خوانا */
+body.admin-body .sub-tab-btn.active,
+body.admin-body .weekly-report-tab.active {
+  background: var(--primary-dark, #1e3a5f) !important;
+  color: #fff !important;
+  border-color: var(--primary-dark, #1e3a5f) !important;
+}
+
+body.admin-body .sub-tab-btn {
+  color: var(--text-muted, #64748b);
+}
+
+/* منوی درختی ادمین */
+.sidebar-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar-subnav {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0 8px 0 0;
+}
+
+.sidebar-subnav .sidebar-link {
+  padding-right: 28px;
+  font-size: 0.88rem;
+}
+
+/* سوپر ادمین — ثابت پایین سایدبار (بالای فوتر) */
+.sidebar-super {
+  flex-shrink: 0;
+  padding: 4px 10px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-super-nav {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar-link-super {
+  font-size: 0.86rem;
+}
+
+.sidebar-pending-badge {
+  margin-right: auto;
+  font-size: 0.7rem;
+}
+
+/* دکمه بازگشت ادمین در پرتال کاربر */
+.btn-icon.admin-portal-btn {
+  color: var(--primary-dark, #1e3a5f);
+  border-color: rgba(30, 58, 95, 0.2);
+  background: rgba(30, 58, 95, 0.06);
+}
+
+.btn-icon.admin-portal-btn:hover {
+  background: rgba(30, 58, 95, 0.14);
+  color: var(--primary, #2563eb);
+  border-color: rgba(30, 58, 95, 0.35);
+}
+
+/* نسخه در فوتر پرتال */
+.user-portal-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 70px);
+}
+
+.user-portal-shell .app-version-badge {
+  margin: 24px auto 32px;
+}
+
+body.admin-body .main-content .app-version-badge {
+  margin: 0 32px 20px;
+  align-self: flex-start;
+}

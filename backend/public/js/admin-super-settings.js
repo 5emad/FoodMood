@@ -101,11 +101,20 @@ function updateLdapBindPasswordStatus() {
 }
 
 function clearLdapCaCert() {
-  pendingLdapCaCertPem = null;
-  clearLdapCaCertPending = true;
-  const fileInput = document.getElementById('set_ldapCaCertFile');
-  if (fileInput) fileInput.value = '';
-  updateLdapCaCertStatus();
+  confirmAction({
+    title: 'حذف گواهی LDAP',
+    text: 'گواهی CA ذخیره‌شده حذف شود؟ تا زمان ذخیره تنظیمات، تغییر موقت است.',
+    icon: 'warning',
+    confirmText: 'بله، حذف شود',
+    cancelText: 'انصراف',
+  }).then(function (ok) {
+    if (!ok) return;
+    pendingLdapCaCertPem = null;
+    clearLdapCaCertPending = true;
+    const fileInput = document.getElementById('set_ldapCaCertFile');
+    if (fileInput) fileInput.value = '';
+    updateLdapCaCertStatus();
+  });
 }
 
 function bindLdapCaCertFileInput() {

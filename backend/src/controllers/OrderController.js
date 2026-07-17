@@ -1,5 +1,4 @@
 const Order = require('../models/Order');
-const Food = require('../models/Food');
 const MenuItem = require('../models/MenuItem');
 const AppSetting = require('../models/AppSetting');
 const { finalizeExpiredOrders, isCancelable, decorateOrder } = require('../helpers/OrderStatusHelper');
@@ -9,9 +8,15 @@ const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHe
 const {
   orderOwnerFilter,
   buildOrderOwnerFilter,
-  orderBelongsToUser,
   orderActorFromRequest,
 } = require('../helpers/AuthUserHelper');
+const {
+  claimCapacity,
+  releaseCapacity,
+  releaseCapacityForOrder,
+  isDuplicateKeyError,
+  duplicateDayError,
+} = require('../helpers/ReservationHelper');
 
 function orderLookup(identifier) {
   const value = String(identifier || '').trim();
@@ -19,7 +24,7 @@ function orderLookup(identifier) {
   return { _id: value };
 }
 
-async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
+async function buildOrderFromMenuItem(menuItemId, actor) {
   let menuItem = await MenuItem.findById(menuItemId)
     .populate('foodId')
     .populate('dailyMenuId');
@@ -49,25 +54,20 @@ async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
     throw error;
   }
 
-  let userOrders = [];
+  const dailyMenuId = menuItem.dailyMenuId._id || menuItem.dailyMenuId;
   const ownerFilter = orderOwnerFilter(
     actor.ldapUsername
       ? { authSource: 'ldap', username: actor.ldapUsername }
       : { authSource: 'local', id: actor.userId },
   );
   if (actor.userId || actor.ldapUsername) {
-    userOrders = await Order.find({
+    const existing = await Order.findOne({
       ...ownerFilter,
+      dailyMenuId,
       status: { $ne: 'cancelled' },
-    }).populate({
-      path: 'menuItemId',
-      match: { dailyMenuId: menuItem.dailyMenuId._id },
-    });
-
-    if (userOrders.some((order) => order.menuItemId)) {
-      const error = new Error('شما برای این روز قبلا غذا رزرو کرده اید');
-      error.status = 409;
-      throw error;
+    }).select('_id').lean();
+    if (existing) {
+      throw duplicateDayError('شما برای این روز قبلا غذا رزرو کرده اید');
     }
   }
 
@@ -75,27 +75,25 @@ async function buildOrderFromMenuItem(menuItemId, actor, quantity = 1) {
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? 20);
   const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity);
   const resolvedMenuItemId = menuItem._id;
-  const reservedCount = await Order.countDocuments({ menuItemId: resolvedMenuItemId, status: { $ne: 'cancelled' } });
-  if (effectiveCapacity > 0 && reservedCount >= effectiveCapacity) {
-    const error = new Error('ظرفیت این غذا تکمیل شده است');
-    error.status = 409;
-    throw error;
-  }
+  const orderQuantity = 1;
+
+  await claimCapacity(resolvedMenuItemId, orderQuantity, effectiveCapacity);
 
   const price = menuItem.customPrice ?? menuItem.foodId.price;
-  const orderQuantity = Math.min(Math.max(Number(quantity || 1), 1), 100);
   return {
     userId: actor.userId || null,
     ldapUsername: actor.ldapUsername || null,
     orderUserName: actor.orderUserName || null,
     orderUserDepartment: actor.orderUserDepartment || null,
     menuItemId: resolvedMenuItemId,
+    dailyMenuId,
     weekId: menuItem.dailyMenuId.weekId,
     quantity: orderQuantity,
     totalPrice: price * orderQuantity,
     status: 'pending',
     orderDate: new Date(),
     items: [{ foodId: menuItem.foodId._id, quantity: orderQuantity, price }],
+    _capacityClaimed: { menuItemId: resolvedMenuItemId, quantity: orderQuantity },
   };
 }
 
@@ -105,47 +103,23 @@ function orderListResponse(orders, showPrices) {
 
 class OrderController {
   static async create(req, res, next) {
+    let claimed = null;
     try {
       const actor = orderActorFromRequest(req);
-      const { menu_item_id, menuItemId, items, week_id } = req.body;
+      const { menu_item_id, menuItemId } = req.body;
       const selectedMenuItem = menu_item_id || menuItemId;
+      if (!selectedMenuItem) {
+        return res.status(400).json({
+          message: 'رزرو فقط از طریق منوی هفته و با menuItemId مجاز است',
+        });
+      }
+
       const settings = await AppSetting.findOne({ key: 'default' }).lean();
       const maxActiveReservations = Number(settings?.maxActiveReservations || 0);
 
-      let payload;
-      if (selectedMenuItem) {
-        payload = await buildOrderFromMenuItem(selectedMenuItem, actor);
-      } else {
-        if (!items || !Array.isArray(items) || items.length === 0) {
-          return res.status(400).json({ message: 'سفارش باید حداقل یک آیتم داشته باشد' });
-        }
-        if (items.length > 50) {
-          return res.status(400).json({ message: 'تعداد آیتم‌های سفارش بیش از حد مجاز است' });
-        }
-
-        let totalPrice = 0;
-        const orderItems = [];
-
-        for (const item of items) {
-          const food = await Food.findById(item.foodId);
-          if (!food || food.status === 'inactive' || food.isAvailable === false) {
-            return res.status(404).json({ message: `غذای ${item.foodId} یافت نشد یا فعال نیست` });
-          }
-
-          const quantity = Math.min(Math.max(Number(item.quantity || 1), 1), 100);
-          totalPrice += food.price * quantity;
-          orderItems.push({ foodId: item.foodId, quantity, price: food.price });
-        }
-
-        payload = {
-          ...actor,
-          weekId: week_id,
-          totalPrice,
-          status: 'pending',
-          items: orderItems,
-          orderDate: new Date(),
-        };
-      }
+      const payload = await buildOrderFromMenuItem(selectedMenuItem, actor);
+      claimed = payload._capacityClaimed;
+      delete payload._capacityClaimed;
 
       if (maxActiveReservations > 0) {
         const confirmedReservationCount = await Order.countDocuments({
@@ -154,6 +128,7 @@ class OrderController {
           status: 'confirmed',
         });
         if (confirmedReservationCount >= maxActiveReservations) {
+          if (claimed) await releaseCapacity(claimed.menuItemId, claimed.quantity);
           return res.status(409).json({ message: `حداکثر تعداد رزرو تاییدشده شما برای این هفته ${maxActiveReservations} سفارش است` });
         }
       }
@@ -167,6 +142,12 @@ class OrderController {
         data: stripPricesFromOrder(decorateOrder(order), showPrices),
       });
     } catch (error) {
+      if (claimed) {
+        await releaseCapacity(claimed.menuItemId, claimed.quantity).catch(() => {});
+      }
+      if (isDuplicateKeyError(error)) {
+        return res.status(409).json({ message: 'شما برای این روز قبلا غذا رزرو کرده اید' });
+      }
       next(error);
     }
   }
@@ -183,6 +164,7 @@ class OrderController {
         return res.status(400).json({ message: 'مهلت لغو سفارش تمام شده است' });
       }
 
+      await releaseCapacityForOrder(order);
       order.status = 'cancelled';
       await order.save();
       res.json({ success: true, message: 'رزرو لغو شد' });
@@ -306,10 +288,15 @@ class OrderController {
         return res.status(400).json({ message: 'وضعیت نامعتبر است' });
       }
 
-      const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
-      if (!order) {
+      const existing = await Order.findById(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: 'سفارش یافت نشد' });
       }
+      if (status === 'cancelled' && existing.status !== 'cancelled') {
+        await releaseCapacityForOrder(existing);
+      }
+      existing.status = status;
+      await existing.save();
 
       res.json({ success: true, message: 'وضعیت سفارش بروزرسانی شد' });
     } catch (error) {
@@ -328,6 +315,7 @@ class OrderController {
         return res.json({ success: true, message: `سفارش ${order.orderNumber || ''} قبلا لغو شده است` });
       }
 
+      await releaseCapacityForOrder(order);
       order.status = 'cancelled';
       await order.save();
 

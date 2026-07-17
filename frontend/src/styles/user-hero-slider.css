@@ -1,0 +1,221 @@
+.portal-hero-slider {
+  margin-bottom: 28px;
+  border-radius: var(--radius-xl, 20px);
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(26, 14, 56, 0.18);
+  animation: fadeUp .5s ease both;
+}
+
+.portal-hero-slider--loading {
+  min-height: 280px;
+}
+
+.portal-hero-skeleton {
+  height: 280px;
+  background: linear-gradient(120deg, #1A0E38 0%, #2D1460 50%, #1A0E38 100%);
+  border-radius: var(--radius-xl, 20px);
+}
+
+.portal-hero-swiper {
+  width: 100%;
+}
+
+.portal-hero-swiper .swiper-pagination {
+  bottom: 14px !important;
+}
+
+.portal-hero-swiper .swiper-pagination-bullet {
+  width: 8px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.45);
+  opacity: 1;
+  transition: transform .25s ease, background .25s ease;
+}
+
+.portal-hero-swiper .swiper-pagination-bullet-active {
+  background: #fff;
+  transform: scale(1.25);
+}
+
+.portal-hero-slide {
+  position: relative;
+  min-height: 300px;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 28px 28px 110px;
+  overflow: hidden;
+}
+
+.portal-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 12, 28, 0.2) 0%, rgba(8, 12, 28, 0.35) 45%, rgba(8, 12, 28, 0.78) 100%),
+    linear-gradient(120deg, rgba(26, 14, 56, 0.28) 0%, transparent 55%);
+  pointer-events: none;
+}
+
+.portal-hero-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image: radial-gradient(circle at 20% 20%, #fff 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+}
+
+.portal-hero-content {
+  position: relative;
+  z-index: 1;
+  max-width: min(640px, 88%);
+}
+
+.portal-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #fff;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.portal-hero-title {
+  margin: 0 0 8px;
+  font-size: clamp(1.55rem, 3.2vw, 2.15rem);
+  font-weight: 900;
+  color: #fff;
+  line-height: 1.35;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+}
+
+.portal-hero-subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.9rem;
+  line-height: 1.7;
+  max-width: 520px;
+}
+
+/* کارت شیشه‌ای جمع‌وجور — نه نوار تمام‌عرض خالی */
+.portal-hero-glass {
+  position: absolute;
+  inset-inline-start: 20px;
+  inset-inline-end: auto;
+  bottom: 42px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  width: fit-content;
+  max-width: min(440px, calc(100% - 40px));
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.portal-hero-glass-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.portal-hero-glass-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.portal-hero-glass-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portal-hero-glass-desc {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.portal-hero-glass-price {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fde68a;
+}
+
+.portal-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.portal-hero-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .portal-hero-slide {
+    min-height: 260px;
+    padding: 22px 18px 100px;
+  }
+
+  .portal-hero-content {
+    max-width: 100%;
+  }
+
+  .portal-hero-subtitle {
+    display: none;
+  }
+
+  .portal-hero-glass {
+    inset-inline-start: 14px;
+    inset-inline-end: 14px;
+    bottom: 38px;
+    width: auto;
+    max-width: none;
+    gap: 10px;
+  }
+
+  .portal-hero-glass-thumb {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}

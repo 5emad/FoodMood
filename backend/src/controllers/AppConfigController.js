@@ -1,6 +1,10 @@
 const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
 const { getVersionViewModel } = require('../helpers/AppVersionHelper');
 
+function withVersion(data) {
+  return { ...data, ...getVersionViewModel() };
+}
+
 class AppConfigController {
   static async publicConfig(_req, res, next) {
     try {
@@ -28,14 +32,14 @@ class AppConfigController {
       ]);
       res.json({
         success: true,
-        data: {
+        data: withVersion({
           currentUserRole: req.user?.role || '',
           isSuperadmin: capabilities.isSuperadmin,
           currentUserId: req.user?.id || '',
           appSettings: adminWorkspaceSettings(settings),
           reportsAccess: capabilities.reportsAccess,
           capabilities,
-        },
+        }),
       });
     } catch (error) {
       next(error);
@@ -48,7 +52,7 @@ class AppConfigController {
       const capabilities = await getUserCapabilities();
       res.json({
         success: true,
-        data: {
+        data: withVersion({
           user: req.user,
           capabilities,
           portalSettings: {
@@ -57,8 +61,18 @@ class AppConfigController {
             personalSharePercent: capabilities.personalSharePercent,
             showPricesToUsers: capabilities.showPrices,
           },
-        },
+        }),
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getPortalSlider(req, res, next) {
+    try {
+      const { buildPortalSlides } = require('../services/PortalSliderService');
+      const payload = await buildPortalSlides({ user: req.user });
+      res.json({ success: true, data: payload });
     } catch (error) {
       next(error);
     }

@@ -168,7 +168,8 @@ main() {
 
   if [[ -f "${INSTALL_DIR}/.env" ]]; then
     for key in SESSION_SECRET JWT_SECRET BACKUP_SECRET PASSWORD_PEPPER \
-               ANNOUNCEMENT_ENCRYPTION_KEY LDAP_ENCRYPTION_KEY LOG_DIR MONGODB_URI; do
+               ANNOUNCEMENT_ENCRYPTION_KEY LDAP_ENCRYPTION_KEY LOG_ENCRYPTION_KEY \
+               LOG_DIR MONGODB_URI; do
       if env_has_key "$key"; then
         if [[ "$key" == "LOG_DIR" ]]; then
           local logdir

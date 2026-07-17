@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { encryptLogEntry, decryptLogEntry } = require('../helpers/LogCryptoHelper');
 
 const LOG_DIR = process.env.LOG_DIR || path.join(__dirname, '../../logs');
 const LOG_FILE = path.join(LOG_DIR, 'system.log');
@@ -74,19 +75,17 @@ function rotateIfNeeded() {
 }
 
 function parseLogLine(line) {
-  try {
-    return JSON.parse(line);
-  } catch {
-    return {
-      ts: '',
-      level: 'info',
-      category: 'legacy',
-      event: 'legacy',
-      message: line,
-      stack: '',
-      detail: '',
-    };
-  }
+  const entry = decryptLogEntry(line);
+  if (entry) return entry;
+  return {
+    ts: '',
+    level: 'info',
+    category: 'legacy',
+    event: 'legacy',
+    message: line,
+    stack: '',
+    detail: '',
+  };
 }
 
 function readAllLogs() {
@@ -121,7 +120,13 @@ function writeSystemLog(level, category, message, meta = {}) {
     detail: meta.detail ? String(meta.detail).slice(0, 500) : '',
   };
 
-  const line = `${JSON.stringify(entry)}\n`;
+  let line;
+  try {
+    line = `${encryptLogEntry(entry)}\n`;
+  } catch (encErr) {
+    console.error('SystemLog encrypt failed:', encErr.message);
+    line = `${JSON.stringify({ ...entry, encError: true })}\n`;
+  }
 
   try {
     ensureLogDir();
@@ -210,6 +215,18 @@ function readLogsPaginated({ page = 1, perPage = DEFAULT_PER_PAGE, level = '' } 
   };
 }
 
+function clearAllLogs({ resetLifecycle = false } = {}) {
+  ensureLogDir();
+  for (const file of listLogFiles()) {
+    try {
+      if (fs.existsSync(file)) fs.writeFileSync(file, '', { encoding: 'utf8', mode: 0o640 });
+    } catch (err) {
+      console.error('SystemLog clear failed:', err.message);
+    }
+  }
+  if (resetLifecycle) saveLifecycleStats({ ...DEFAULT_STATS });
+}
+
 module.exports = {
   LOG_DIR,
   LOG_FILE,
@@ -221,4 +238,5 @@ module.exports = {
   readRecentLogs,
   readLogsPaginated,
   ensureLogDir,
+  clearAllLogs,
 };
