@@ -2065,30 +2065,36 @@ body.admin-body .top-header {
   box-shadow: 0 1px 0 rgba(15, 23, 42, .06);
 }
 body.admin-body .content-wrapper { padding: 22px 26px; }
+/* Page hero strip: keep dark gradient + white text (do not flatten to white card) */
 body.admin-body .page-header {
-  background: #fff;
-  color: var(--text-main);
-  padding: 22px 26px;
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, .08);
-  box-shadow: 0 2px 12px rgba(15, 23, 42, .04);
-  margin-bottom: 22px;
+  background: linear-gradient(120deg, #1A0E38 0%, #2D1460 50%, #1A0E38 100%);
+  color: #fff;
+  padding: 28px 32px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-accent);
+  box-shadow: 0 12px 36px var(--primary-glow), inset 0 1px 0 rgba(255,255,255,.1);
+  margin-bottom: 24px;
 }
 body.admin-body .page-header::before,
-body.admin-body .page-header::after { display: none; }
+body.admin-body .page-header::after { display: block; }
 body.admin-body .ph-title {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: var(--text-main);
-  margin-bottom: 4px;
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #fff;
+  margin-bottom: 6px;
 }
-body.admin-body .ph-sub { color: var(--text-muted); font-size: .86rem; }
-body.admin-body .ph-icon { display: none; }
+body.admin-body .ph-sub { color: rgba(255,255,255,.65); font-size: .88rem; }
+body.admin-body .ph-icon {
+  display: block;
+  font-size: 3rem;
+  opacity: .18;
+  color: #fff;
+}
 body.admin-body .ph-badge {
-  background: var(--primary-bg);
-  border-color: var(--border-accent);
-  color: var(--primary-dark);
-  margin-bottom: 8px;
+  background: rgba(245,166,35,.15);
+  border-color: rgba(245,166,35,.3);
+  color: var(--gold-light);
+  margin-bottom: 10px;
 }
 body.admin-body .card,
 body.admin-body .table-wrap {
