@@ -20,6 +20,7 @@ export default function ReportsTab() {
   const [months, setMonths] = useState([]);
   const [subTab, setSubTab] = useState('weekly');
   const [weeklyTab, setWeeklyTab] = useState('personnel');
+  const [personnelCellMode, setPersonnelCellMode] = useState('names');
   const [weekId, setWeekId] = useState('');
   const [monthVal, setMonthVal] = useState('');
   const [report, setReport] = useState(null);
@@ -83,6 +84,9 @@ export default function ReportsTab() {
       url = `/api/admin/reports/supplier/pdf?${weekId ? `weekId=${weekId}` : 'type=week'}`;
     } else {
       url += weekId ? `weekId=${weekId}` : 'type=week';
+      if (weeklyTab === 'personnel' && personnelCellMode === 'type1') {
+        url += '&cellMode=type1';
+      }
     }
     try {
       const res = await apiBlob(url);
@@ -136,11 +140,17 @@ export default function ReportsTab() {
               <button type="button" className={`weekly-report-tab${weeklyTab === 'personnel' ? ' active' : ''}`} onClick={() => setWeeklyTab('personnel')}><i className="fas fa-users" /> گزارش پرسنلی</button>
               <button type="button" className={`weekly-report-tab${weeklyTab === 'supplier' ? ' active' : ''}`} onClick={() => setWeeklyTab('supplier')}><i className="fas fa-kitchen-set" /> گزارش تامین‌کننده</button>
             </div>
+            {weeklyTab === 'personnel' && (
+              <div className="weekly-report-tabs no-print" style={{ marginTop: 8 }}>
+                <button type="button" className={`weekly-report-tab${personnelCellMode === 'names' ? ' active' : ''}`} onClick={() => setPersonnelCellMode('names')}><i className="fas fa-utensils" /> نام غذا</button>
+                <button type="button" className={`weekly-report-tab${personnelCellMode === 'type1' ? ' active' : ''}`} onClick={() => setPersonnelCellMode('type1')}><i className="fas fa-check-double" /> نوع یک (بله/خیر)</button>
+              </div>
+            )}
             {reportLoading ? <AdminSpinner /> : (
               <>
                 <div id="weeklyPersonnelPane" hidden={weeklyTab !== 'personnel'}>
                   <div className="print-title" id="printTitleWeekly">{printWeekly}</div>
-                  <div id="weeklyReportWrap"><WeeklyPersonnelReport report={weeklyTab === 'personnel' ? report : null} /></div>
+                  <div id="weeklyReportWrap"><WeeklyPersonnelReport report={weeklyTab === 'personnel' ? report : null} cellMode={personnelCellMode} /></div>
                   <DailyStatsGrid report={weeklyTab === 'personnel' ? report : null} />
                 </div>
                 <div id="weeklySupplierPane" hidden={weeklyTab !== 'supplier'}>

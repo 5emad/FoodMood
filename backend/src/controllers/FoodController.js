@@ -92,7 +92,7 @@ class FoodController {
 
   static async create(req, res, next) {
     try {
-      const { name, description, price, category, status, is_available, isAvailable } = req.body;
+      const { name, description, price, category, status, is_available, isAvailable, isType1 } = req.body;
 
       if (!name || !price || !category) {
         return res.status(400).json({ message: 'نام، دسته بندی و قیمت الزامی هستند' });
@@ -102,7 +102,8 @@ class FoodController {
         name: name.trim(),
         description,
         price: Number(String(price).replace(/,/g, '')),
-        category,
+        category: String(category).trim(),
+        isType1: toBool(isType1, false),
         image: req.file ? req.file.filename : null,
         isAvailable: toBool(is_available ?? isAvailable, true),
         status: status || 'active',
@@ -116,7 +117,7 @@ class FoodController {
 
   static async update(req, res, next) {
     try {
-      const { name, description, price, category, status, is_available, isAvailable } = req.body;
+      const { name, description, price, category, status, is_available, isAvailable, isType1 } = req.body;
       const food = await Food.findById(req.params.id);
 
       if (!food) {
@@ -126,7 +127,8 @@ class FoodController {
       food.name = name ?? food.name;
       food.description = description ?? food.description;
       food.price = price !== undefined ? Number(String(price).replace(/,/g, '')) : food.price;
-      food.category = category ?? food.category;
+      food.category = category !== undefined ? String(category).trim() : food.category;
+      if (isType1 !== undefined) food.isType1 = toBool(isType1, false);
       food.status = status ?? food.status;
       food.isAvailable = toBool(is_available ?? isAvailable, food.isAvailable);
       food.image = req.file ? req.file.filename : food.image;

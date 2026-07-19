@@ -187,6 +187,10 @@ class AdminController {
           if (colorPattern.test(value)) update[key] = value;
         }
       });
+      if (req.body.uiFont !== undefined) {
+        const font = String(req.body.uiFont || '').trim();
+        update.uiFont = font === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn';
+      }
       try {
         Object.assign(update, ldapFieldsFromBody(req.body));
       } catch (err) {
@@ -1221,6 +1225,7 @@ class AdminController {
         getSettingsLean(),
         nextReportNumber(),
       ]);
+      const cellMode = String(req.query.cellMode || req.query.view || 'names') === 'type1' ? 'type1' : 'names';
       const payload = {
         type: reportType,
         title,
@@ -1233,6 +1238,7 @@ class AdminController {
           jalaliEnd: formatJalaliDate(range.end),
         },
         ...report,
+        cellMode,
       };
 
       const pdf = await htmlToPdfBuffer(renderReportHtml(payload));

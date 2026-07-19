@@ -87,6 +87,30 @@ function orderFoodName(order) {
     || '-';
 }
 
+/** برای گزارش: نام غذا + پرچم نوع‌یک */
+function orderFoodEntries(order) {
+  const menuFood = order.menuItemId?.foodId;
+  if (menuFood?.name) {
+    return [{ name: menuFood.name, isType1: !!menuFood.isType1 }];
+  }
+  const fromItems = (order.items || [])
+    .map((item) => {
+      const food = item.foodId;
+      if (!food?.name) return null;
+      return { name: food.name, isType1: !!food.isType1 };
+    })
+    .filter(Boolean);
+  if (fromItems.length) return fromItems;
+  return [{ name: '-', isType1: false }];
+}
+
+function pushFoodEntries(day, order) {
+  if (!day) return;
+  for (const entry of orderFoodEntries(order)) {
+    day.foods.push(entry);
+  }
+}
+
 /**
  * Resolves the report range/title from query params.
  * Shared by getReports and getReportPdf.
@@ -181,14 +205,14 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
       select: 'username fullName departmentId role',
       populate: { path: 'departmentId', select: 'name' },
     })
-    .populate('items.foodId', 'name')
+    .populate('items.foodId', 'name isType1')
     .populate({
       path: 'guestId',
       select: 'guestCode fullName guestType department status validUntil',
     })
     .populate({
       path: 'menuItemId',
-      populate: [{ path: 'foodId', select: 'name' }, { path: 'dailyMenuId', select: 'date weekId' }],
+      populate: [{ path: 'foodId', select: 'name isType1' }, { path: 'dailyMenuId', select: 'date weekId' }],
     });
 }
 
@@ -338,7 +362,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
       orderedUserIds.add(ownerKey);
       const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
       const day = row.days.find((item) => item.jalaliDate === jalaliDate);
-      if (day) day.foods.push(orderFoodName(order));
+      if (day) pushFoodEntries(day, order);
       row.total += orderMealCount(order);
       row.totalPrice += Number(order.totalPrice || 0);
     }
@@ -375,7 +399,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     const row = byGuestMap.get(guestKey);
     const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
     const day = row.days.find((item) => item.jalaliDate === jalaliDate);
-    if (day) day.foods.push(orderFoodName(order));
+    if (day) pushFoodEntries(day, order);
     row.total += orderMealCount(order);
     row.totalPrice += Number(order.totalPrice || 0);
   }

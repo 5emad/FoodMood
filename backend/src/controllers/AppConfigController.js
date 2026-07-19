@@ -14,6 +14,7 @@ class AppConfigController {
         success: true,
         data: {
           organizationName: settings?.organizationName || 'سامانه تغذیه',
+          uiFont: settings?.uiFont === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn',
           ...version,
         },
       });

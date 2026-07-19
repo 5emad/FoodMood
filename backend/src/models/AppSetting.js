@@ -65,6 +65,13 @@ const appSettingSchema = new mongoose.Schema({
     default: '#2D1460',
     trim: true,
   },
+  /** vazirmatn | yekanbakh */
+  uiFont: {
+    type: String,
+    enum: ['vazirmatn', 'yekanbakh'],
+    default: 'vazirmatn',
+    trim: true,
+  },
   ldapEnabled: {
     type: Boolean,
     default: false,

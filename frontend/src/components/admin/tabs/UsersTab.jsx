@@ -14,14 +14,18 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
   const [users, setUsers] = useState([]);
   const [depts, setDepts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ id: '', username: '', fullName: '', password: '', email: '', phone: '', role: 'admin', status: 'active', departmentId: '' });
 
-  async function load(page = 1) {
+  async function load(page = 1, q = search) {
     setLoading(true);
+    const qs = new URLSearchParams({ page: String(page), limit: '20' });
+    if (String(q || '').trim()) qs.set('search', String(q).trim());
     const [usersData, deptData] = await Promise.all([
-      api(`/api/admin/users?page=${page}&limit=20`),
+      api(`/api/admin/users?${qs}`),
       api('/api/admin/departments'),
     ]);
     setUsers(usersData.success ? usersData.data : []);
@@ -31,6 +35,16 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const next = searchInput.trim();
+      if (next === search) return;
+      setSearch(next);
+      load(1, next);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   function openAdd() {
     setForm({ id: '', username: '', fullName: '', password: '', email: '', phone: '', role: 'admin', status: 'active', departmentId: '' });
@@ -100,6 +114,27 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
         sub="افزودن، ویرایش و غیرفعال‌سازی کاربران سامانه"
         actions={<button type="button" className="btn btn-primary btn-sm" onClick={openAdd}><i className="fas fa-user-plus" /> کاربر جدید</button>}
       />
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="card-body" style={{ padding: '12px 16px' }}>
+          <div className="inline-form" style={{ margin: 0 }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+              <i className="fas fa-search" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                className="form-control"
+                style={{ paddingRight: 36 }}
+                placeholder="جستجو بر اساس نام، نام کاربری، ایمیل یا موبایل…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+            </div>
+            {searchInput ? (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => { setSearchInput(''); setSearch(''); load(1, ''); }}>
+                پاک کردن
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
       {showForm && (
         <div id="userFormWrap" className="card" style={{ marginBottom: 18 }}>
           <div className="card-header">
@@ -184,10 +219,10 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
                         : <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(u._id, u.fullName || u.username)} title="حذف"><i className="fas fa-trash" /></button>}
                     </TableActions>
                   </tr>
-                )) : <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>کاربری ثبت نشده</td></tr>}
+                )) : <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{search ? 'نتیجه‌ای یافت نشد' : 'کاربری ثبت نشده'}</td></tr>}
               </tbody>
             </table>
-            <Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} onPage={load} />
+            <Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} onPage={(p) => load(p)} />
           </>
         )}
       </div>

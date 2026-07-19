@@ -1,6 +1,7 @@
 #root { min-height: 100vh; }
 
 /* یکپارچه‌سازی فونت در کل SPA */
+/* فونت سامانه از theme-vars (--font-family) می‌آید */
 body,
 #root,
 button,
@@ -11,9 +12,8 @@ textarea,
 .sidebar,
 .top-nav,
 .top-header {
-  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif);
 }
-
 /* Sonner toast — RTL polish */
 [data-sonner-toaster] {
   font-family: 'Vazirmatn', Tahoma, sans-serif;

@@ -9,9 +9,11 @@ const MenuController = require('../controllers/MenuController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
 const { backupRestoreLimiter } = require('../middleware/rateLimiter');
+const { createWafParamsRestoreMiddleware } = require('../middleware/firewtwallPatches');
 
 const router = express.Router();
-
+const restoreIds = createWafParamsRestoreMiddleware();
+router.param('id', (req, res, next) => restoreIds(req, res, next));
 const backupUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },

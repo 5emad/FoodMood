@@ -84,7 +84,7 @@
 *, *::before, *::after { box-sizing: border-box; outline: none; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
-  font-family: 'Vazirmatn', Tahoma, sans-serif;
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif);
   /* Aurora mesh that follows the active theme color */
   background:
     radial-gradient(1100px 520px at 88% -8%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 62%),

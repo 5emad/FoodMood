@@ -46,7 +46,15 @@ function weekSelectLabel(w) {
 function compactMoney(v) {
   return Number(v || 0).toLocaleString('fa-IR');
 }
-function money(v) { return compactMoney(v) + ' تومان'; }
+function money(v) {
+  var suffix = ' تومان';
+  try {
+    var raw = getComputedStyle(document.documentElement).getPropertyValue('--toman-suffix').trim().replace(/^["']|["']$/g, '');
+    if (raw) suffix = raw;
+    else if (document.documentElement.dataset.appFont === 'yekanbakh') suffix = '\u00A0\u0621';
+  } catch (e) { /* ignore */ }
+  return compactMoney(v) + suffix;
+}
 function jdate(v) { return new Date(v).toLocaleDateString('fa-IR-u-ca-persian'); }
 function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${text}</span>`; }
 function tableActionsHtml(buttonsHtml) {

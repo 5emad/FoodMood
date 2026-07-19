@@ -5,6 +5,12 @@ import { confirmAction } from '../../../hooks/useConfirm';
 import SectionHeader from '../shared/SectionHeader';
 import AdminSpinner from '../shared/AdminSpinner';
 import PortalSlidesPanel from './PortalSlidesPanel';
+import { applyAppFont, refreshThemeVars } from '../../../lib/appFont';
+
+const FONT_OPTIONS = [
+  { id: 'vazirmatn', label: 'وزیرمتن' },
+  { id: 'yekanbakh', label: 'یکان‌بخ' },
+];
 
 const THEME_PRESETS = [
   { id: 'purple', label: 'تم بنفش', themePrimary: '#9B6DFF', themePrimaryLight: '#C4A8FF', themePrimaryDark: '#6C3FD4', themeGradientFrom: '#1A0E38', themeGradientTo: '#2D1460' },
@@ -25,35 +31,60 @@ function currentThemeId(form) {
   return match?.id || '';
 }
 
-function buildSaveBody(form, extras = {}) {
-  const body = { ...form, ...extras };
-  delete body.ldapBindPassword;
-  delete body.hasLdapBindPassword;
-  delete body.ldapBindPasswordStored;
-  delete body.ldapBindPasswordFromEnv;
-  delete body.hasLdapCaCert;
-  delete body.key;
-  delete body._id;
-  delete body.__v;
-  delete body.updatedAt;
-  delete body.ldapBindPasswordEnc;
-  delete body.ldapCaCertPem;
+const GENERAL_SAVE_KEYS = [
+  'organizationName',
+  'publicUrl',
+  'maxActiveReservations',
+  'defaultMenuItemCapacity',
+  'showPricesToUsers',
+  'uiFont',
+  'themePrimary',
+  'themePrimaryLight',
+  'themePrimaryDark',
+  'themeGradientFrom',
+  'themeGradientTo',
+];
 
-  if (form.portalSlider) {
+const LDAP_SAVE_KEYS = [
+  'ldapEnabled',
+  'ldapUrl',
+  'ldapSecurity',
+  'ldapBaseDn',
+  'ldapBindDn',
+  'ldapUserFilter',
+];
+
+function buildSaveBody(form, extras = {}) {
+  const body = {};
+  for (const key of GENERAL_SAVE_KEYS) {
+    if (form[key] !== undefined) body[key] = form[key];
+  }
+
+  if (extras.includeLdap) {
+    for (const key of LDAP_SAVE_KEYS) {
+      if (form[key] !== undefined) body[key] = form[key];
+    }
+  }
+
+  if (extras.includePortalSlider && form.portalSlider) {
     body.portalSlider = {
-      ...form.portalSlider,
+      weekHeroImage: form.portalSlider.weekHeroImage || '',
       weekHeroEnabled: form.portalSlider.weekHeroEnabled === true,
       showAnnouncementSlides: form.portalSlider.showAnnouncementSlides === true,
       showMenuFoodSlides: form.portalSlider.showMenuFoodSlides === true,
       showcaseSlides: (form.portalSlider.showcaseSlides || []).map((slide) => ({
-        ...slide,
+        title: slide?.title || '',
+        description: slide?.description || '',
+        imageUrl: slide?.imageUrl || '',
+        tags: Array.isArray(slide?.tags) ? slide.tags : [],
+        badge: slide?.badge || 'اسلاید',
         enabled: slide?.enabled === true,
       })),
     };
   }
 
   if (extras.ldapBindPassword) body.ldapBindPassword = extras.ldapBindPassword;
-  else if (form.ldapBindPassword) body.ldapBindPassword = form.ldapBindPassword;
+  else if (extras.includeLdap && form.ldapBindPassword) body.ldapBindPassword = form.ldapBindPassword;
   if (extras.ldapCaCertPem) body.ldapCaCertPem = extras.ldapCaCertPem;
   if (extras.ldapClearCaCert) body.ldapClearCaCert = true;
 
@@ -84,7 +115,11 @@ export default function SuperSettingsPanel() {
       api('/api/admin/settings'),
       api('/api/admin/settings/ssl-status'),
     ]);
-    if (s.success) setForm(s.data || {});
+    if (s.success) {
+      setForm(s.data || {});
+      applyAppFont(s.data?.uiFont);
+      refreshThemeVars();
+    }
     if (sslRes.success) setSsl(sslRes.data || {});
     setLoading(false);
     // یک تیک بعد از لود، auto-save را فعال کن
@@ -100,8 +135,7 @@ export default function SuperSettingsPanel() {
   const activeTheme = useMemo(() => currentThemeId(form), [form]);
 
   function refreshThemeCss() {
-    const link = document.querySelector('link[href^="/css/theme-vars.css"]');
-    if (link) link.href = `/css/theme-vars.css?v=${Date.now()}`;
+    refreshThemeVars();
   }
 
   async function persistNow(nextForm, extras = {}) {
@@ -118,34 +152,35 @@ export default function SuperSettingsPanel() {
         return false;
       }
       const saved = { ...(data.data || nextForm), ldapBindPassword: '' };
-      setForm(saved);
-      formRef.current = saved;
+      applyAppFont(saved.uiFont);
+      setForm((prev) => ({ ...prev, ...saved }));
+      formRef.current = { ...formRef.current, ...saved };
       setSaveStatus('saved');
       refreshThemeCss();
       return true;
-    } catch {
+    } catch (err) {
       if (seq === saveSeqRef.current) {
         setSaveStatus('error');
-        toast('خطا در ذخیره خودکار', 'error');
+        toast(err?.message || 'خطا در ذخیره خودکار', 'error');
       }
       return false;
     }
   }
 
-  function persistDebounced(nextForm) {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSaveStatus('saving');
-    debounceRef.current = setTimeout(() => {
-      persistNow(nextForm);
-    }, DEBOUNCE_MS);
-  }
-
   function updateFields(partial, { immediate = false } = {}) {
+    const includeLdap = Object.keys(partial).some((k) => k.startsWith('ldap'));
     setForm((prev) => {
       const next = { ...prev, ...partial };
       formRef.current = next;
-      if (immediate) persistNow(next);
-      else persistDebounced(next);
+      const extras = includeLdap ? { includeLdap: true } : {};
+      if (immediate) persistNow(next, extras);
+      else {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        setSaveStatus('saving');
+        debounceRef.current = setTimeout(() => {
+          persistNow(next, extras);
+        }, DEBOUNCE_MS);
+      }
       return next;
     });
   }
@@ -173,20 +208,20 @@ export default function SuperSettingsPanel() {
     setLdapBadge(data.success ? 'success' : 'danger');
     toast(data.message || (data.success ? 'اتصال موفق' : 'خطا'), data.success ? 'success' : 'error');
     if (data.success && current.ldapBindPassword) {
-      await persistNow(current, { ldapBindPassword: current.ldapBindPassword });
+      await persistNow(current, { includeLdap: true, ldapBindPassword: current.ldapBindPassword });
     }
   }
 
   async function handleClearCa() {
     if (!(await confirmAction({ title: 'حذف گواهی LDAP؟', text: 'گواهی بلافاصله حذف می‌شود.', confirmText: 'حذف', icon: 'warning' }))) return;
-    await persistNow(formRef.current, { ldapClearCaCert: true });
+    await persistNow(formRef.current, { includeLdap: true, ldapClearCaCert: true });
   }
 
   async function handleCaFile(file) {
     if (!file) return;
     try {
       const pem = await file.text();
-      await persistNow(formRef.current, { ldapCaCertPem: pem });
+      await persistNow(formRef.current, { includeLdap: true, ldapCaCertPem: pem });
       toast('گواهی CA ذخیره شد', 'success');
     } catch {
       toast('خواندن فایل گواهی ناموفق بود', 'error');
@@ -268,6 +303,26 @@ export default function SuperSettingsPanel() {
                 <option value="true">فعال</option>
                 <option value="false">غیرفعال</option>
               </select>
+            </div>
+            <div className="form-group theme-picker" style={{ gridColumn: '1 / -1' }}>
+              <label className="form-label">فونت سامانه</label>
+              <div className="theme-options" role="radiogroup" aria-label="فونت سامانه">
+                {FONT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={`theme-option${(form.uiFont || 'vazirmatn') === opt.id ? ' active' : ''}`}
+                    onClick={() => {
+                      applyAppFont(opt.id);
+                      updateFields({ uiFont: opt.id }, { immediate: true });
+                    }}
+                  >
+                    <span style={{ fontFamily: opt.id === 'yekanbakh' ? "'Yekan Bakh FaNum', Tahoma, sans-serif" : "'Vazirmatn', Tahoma, sans-serif", fontWeight: 700 }}>
+                      {opt.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="form-group theme-picker">
               <label className="form-label">رنگ‌بندی سامانه</label>

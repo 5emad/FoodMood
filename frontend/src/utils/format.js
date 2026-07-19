@@ -31,8 +31,35 @@ export function jdateParts(value) {
   return { year: pick('year'), month: pick('month'), day: pick('day') };
 }
 
+export function tomanSuffix() {
+  if (typeof document !== 'undefined') {
+    if (document.documentElement.dataset.appFont === 'yekanbakh') {
+      return `\u00A0\u0621`;
+    }
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--toman-suffix').trim();
+    let cleaned = raw.replace(/^["']|["']$/g, '');
+    // اگر escapeهای CSS به‌اشتباه به‌صورت متن برگشته باشند، تبدیل کن
+    if (/\\u?[0-9a-fA-F]{2,4}/.test(cleaned) || /\\00a0|\\0621/i.test(cleaned)) {
+      cleaned = cleaned
+        .replace(/\\u([0-9a-fA-F]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .replace(/\\([0-9a-fA-F]{2,4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    }
+    if (cleaned && !/\\/.test(cleaned)) return cleaned;
+  }
+  return ' تومان';
+}
+
+/** برچسب واحد پول برای عناوین جدول/placeholder */
+export function tomanLabel() {
+  if (typeof document !== 'undefined' && document.documentElement.dataset.appFont === 'yekanbakh') {
+    return '\u0621';
+  }
+  const suffix = tomanSuffix().trim();
+  return suffix || 'تومان';
+}
+
 export function money(value) {
-  return `${Number(value || 0).toLocaleString('fa-IR')} تومان`;
+  return `${Number(value || 0).toLocaleString('fa-IR')}${tomanSuffix()}`;
 }
 
 export function compactMoney(value) {

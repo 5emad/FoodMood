@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { compactMoney, faDigits, money } from '../../../utils/format';
+import { compactMoney, faDigits, money, tomanLabel } from '../../../utils/format';
 import EmptyState from '../shared/EmptyState';
 
 function groupByDepartment(users) {
@@ -61,7 +61,18 @@ export function MissingUsersTable({ report }) {
   );
 }
 
-export function GuestWeeklyReport({ report }) {
+function foodLabel(food) {
+  if (food && typeof food === 'object') return food.name || '-';
+  return food || '-';
+}
+
+function dayType1Label(foods) {
+  if (!foods?.length) return '-';
+  const isType1 = foods.some((food) => food && typeof food === 'object' && food.isType1);
+  return isType1 ? 'بله' : 'خیر';
+}
+
+export function GuestWeeklyReport({ report, cellMode = 'names' }) {
   const byGuest = report?.byGuest || [];
   if (!byGuest.length) return null;
   const reportDays = report.days || byGuest[0]?.days || [];
@@ -81,7 +92,7 @@ export function GuestWeeklyReport({ report }) {
                 <th>نوع</th>
                 {reportDays.map((d) => <th key={d.jalaliDate}>{d.jalaliDate}</th>)}
                 <th className="col-total">جمع وعده</th>
-                <th className="col-price">هزینه (تومان)</th>
+                <th className="col-price">{`هزینه (${tomanLabel()})`}</th>
               </tr>
             </thead>
             <tbody>
@@ -93,9 +104,12 @@ export function GuestWeeklyReport({ report }) {
                   {reportDays.map((reportDay) => {
                     const day = (guest.days || []).find((d) => d.jalaliDate === reportDay.jalaliDate);
                     if (!day?.foods?.length) return <td key={reportDay.jalaliDate} className="report-day-cell">-</td>;
+                    if (cellMode === 'type1') {
+                      return <td key={reportDay.jalaliDate} className="report-day-cell"><div className="report-food-item">{dayType1Label(day.foods)}</div></td>;
+                    }
                     return (
                       <td key={reportDay.jalaliDate} className="report-day-cell">
-                        {day.foods.map((food, i) => <div key={i} className="report-food-item">{food}</div>)}
+                        {day.foods.map((food, i) => <div key={i} className="report-food-item">{foodLabel(food)}</div>)}
                       </td>
                     );
                   })}
@@ -111,7 +125,7 @@ export function GuestWeeklyReport({ report }) {
   );
 }
 
-export function WeeklyPersonnelReport({ report }) {
+export function WeeklyPersonnelReport({ report, cellMode = 'names' }) {
   if (!report) return null;
   const byUser = (report.byUser || []).filter((u) => !isSuperadminUser(u));
   const reportDays = report.days || byUser[0]?.days || [];
@@ -135,7 +149,7 @@ export function WeeklyPersonnelReport({ report }) {
                 <th>واحد</th>
                 {reportDays.map((d) => <th key={d.jalaliDate}>{d.jalaliDate}</th>)}
                 <th className="col-total">جمع وعده</th>
-                <th className="col-price">هزینه (تومان)</th>
+                <th className="col-price">{`هزینه (${tomanLabel()})`}</th>
               </tr>
             </thead>
             <tbody>
@@ -153,9 +167,12 @@ export function WeeklyPersonnelReport({ report }) {
                       {reportDays.map((reportDay) => {
                         const day = (u.days || []).find((d) => d.jalaliDate === reportDay.jalaliDate);
                         if (!day?.foods?.length) return <td key={reportDay.jalaliDate} className="report-day-cell">-</td>;
+                        if (cellMode === 'type1') {
+                          return <td key={reportDay.jalaliDate} className="report-day-cell"><div className="report-food-item">{dayType1Label(day.foods)}</div></td>;
+                        }
                         return (
                           <td key={reportDay.jalaliDate} className="report-day-cell">
-                            {day.foods.map((food, i) => <div key={i} className="report-food-item">{food}</div>)}
+                            {day.foods.map((food, i) => <div key={i} className="report-food-item">{foodLabel(food)}</div>)}
                           </td>
                         );
                       })}
@@ -172,7 +189,7 @@ export function WeeklyPersonnelReport({ report }) {
         <div className="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>
       )}
       <MissingUsersTable report={report} />
-      <GuestWeeklyReport report={report} />
+      <GuestWeeklyReport report={report} cellMode={cellMode} />
     </>
   );
 }
@@ -306,7 +323,7 @@ export function MonthlyReport({ report }) {
       {byUser.length > 0 && (
         <div className="table-wrap report-table-scroll">
           <table className="report-table">
-            <thead><tr><th>#</th><th className="col-name" style={{ textAlign: 'right' }}>نام فرد</th><th>واحد</th><th className="col-total">جمع وعده</th><th className="col-price">هزینه (تومان)</th></tr></thead>
+            <thead><tr><th>#</th><th className="col-name" style={{ textAlign: 'right' }}>نام فرد</th><th>واحد</th><th className="col-total">جمع وعده</th><th className="col-price">{`هزینه (${tomanLabel()})`}</th></tr></thead>
             <tbody>
               {byUser.map((u, i) => (
                 <tr key={u.name + u.department}>
@@ -334,7 +351,7 @@ export function MonthlyReport({ report }) {
           <div className="card-body" style={{ padding: 0 }}>
             <div className="table-wrap report-table-scroll" style={{ border: 'none', borderRadius: 0, background: 'transparent' }}>
               <table className="report-table">
-                <thead><tr><th>#</th><th>کد مهمان</th><th className="col-name" style={{ textAlign: 'right' }}>نام مهمان</th><th>نوع</th><th className="col-total">جمع وعده</th><th className="col-price">هزینه (تومان)</th></tr></thead>
+                <thead><tr><th>#</th><th>کد مهمان</th><th className="col-name" style={{ textAlign: 'right' }}>نام مهمان</th><th>نوع</th><th className="col-total">جمع وعده</th><th className="col-price">{`هزینه (${tomanLabel()})`}</th></tr></thead>
                 <tbody>
                   {guestRows.map((guest, i) => (
                     <tr key={guest.code + guest.name}>

@@ -22,8 +22,21 @@ function scrubObjectIds(obj, backups) {
   }
 }
 
+/**
+ * ObjectId کامل ۲۴ هگز را داخل یک UUID v4-مانند جا می‌دهد تا WAF رد نکند
+ * و در صورت نیاز بتوان id را از توکن بازیابی کرد (restore URL اولویت دارد).
+ */
 function toSafeUuidToken(id) {
-  return `00000000-0000-4000-8000-${String(id).slice(0, 12)}`;
+  const hex = String(id).toLowerCase();
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-8${hex.slice(15, 18)}-${hex.slice(18, 24)}00`;
+}
+
+function fromSafeUuidToken(token) {
+  const m = String(token || '').toLowerCase().match(
+    /^([a-f0-9]{8})-([a-f0-9]{4})-4([a-f0-9]{3})-8([a-f0-9]{3})-([a-f0-9]{6})00$/,
+  );
+  if (!m) return null;
+  return `${m[1]}${m[2]}${m[3]}${m[4]}${m[5]}`;
 }
 
 function scrubUrlObjectIds(req, backups) {
@@ -35,10 +48,15 @@ function scrubUrlObjectIds(req, backups) {
   }
   PATH_OID_RE.lastIndex = 0;
 
-  const scrubbed = raw.replace(PATH_OID_RE, (_, id) => `/${toSafeUuidToken(id)}`);
+  const idMap = [];
+  const scrubbed = raw.replace(PATH_OID_RE, (_, id) => {
+    const token = toSafeUuidToken(id);
+    idMap.push({ token, id });
+    return `/${token}`;
+  });
   if (scrubbed === raw) return;
 
-  backups.push({ type: 'url', url: raw, originalUrl: req.originalUrl });
+  backups.push({ type: 'url', url: raw, originalUrl: req.originalUrl, idMap });
   req.url = scrubbed;
   if (typeof req.originalUrl === 'string') {
     PATH_OID_RE.lastIndex = 0;
@@ -58,6 +76,18 @@ function restoreScrubs(backups, req) {
     }
   }
   backups.length = 0;
+}
+
+/** بعد از match شدن روت، params ممکن است هنوز توکن UUID داشته باشد — به ObjectId برگردان */
+function restoreParamsObjectIds(req) {
+  if (!req?.params || typeof req.params !== 'object') return;
+  for (const key of Object.keys(req.params)) {
+    if (!isIdParamName(key)) continue;
+    const val = req.params[key];
+    if (typeof val !== 'string' || OBJECT_ID_RE.test(val)) continue;
+    const restored = fromSafeUuidToken(val);
+    if (restored && OBJECT_ID_RE.test(restored)) req.params[key] = restored;
+  }
 }
 
 /**
@@ -101,6 +131,16 @@ function createWafRestoreMiddleware() {
     if (req._fmoxCookieSaved && req._fmoxSavedCookie !== undefined) {
       req.headers.cookie = req._fmoxSavedCookie;
     }
+    // params معمولاً هنوز خالی است؛ بعد از روت هم یک‌بار چک می‌کنیم
+    restoreParamsObjectIds(req);
+    next();
+  };
+}
+
+/** بعد از روت‌ها — اگر به هر دلیل params هنوز توکن باشد، ObjectId را برگردان */
+function createWafParamsRestoreMiddleware() {
+  return function wafParamsRestore(req, _res, next) {
+    restoreParamsObjectIds(req);
     next();
   };
 }
@@ -119,4 +159,5 @@ module.exports = {
   createWafCompatMiddleware,
   createWafScrubMiddleware,
   createWafRestoreMiddleware,
+  createWafParamsRestoreMiddleware,
 };

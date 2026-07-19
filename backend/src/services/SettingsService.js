@@ -16,6 +16,7 @@ const defaultSettings = {
   themePrimaryDark: '#6C3FD4',
   themeGradientFrom: '#1A0E38',
   themeGradientTo: '#2D1460',
+  uiFont: 'vazirmatn',
   ldapEnabled: false,
   ldapUrl: '',
   ldapSecurity: 'ldaps',
@@ -56,6 +57,7 @@ function adminWorkspaceSettings(settings) {
     showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true),
     showFinancialStatementToUsers: isEnabledFlag(raw.showFinancialStatementToUsers, true),
     organizationSharePercent: Math.min(100, Math.max(0, Number(raw.organizationSharePercent) || 0)),
+    uiFont: raw.uiFont === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn',
   };
 }
 

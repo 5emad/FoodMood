@@ -17,9 +17,19 @@ function compactMoney(value) {
   return Number(value || 0).toLocaleString('fa-IR');
 }
 
-function renderFoodCell(foods) {
+function renderFoodCell(foods, cellMode = 'names') {
   if (!foods?.length) return '<span class="food-empty">-</span>';
-  return foods.map((food) => `<div class="food-item">${escapeHtml(food)}</div>`).join('');
+  if (cellMode === 'type1') {
+    const isType1 = foods.some((food) => {
+      if (food && typeof food === 'object') return !!food.isType1;
+      return false;
+    });
+    return `<div class="food-item">${isType1 ? 'بله' : 'خیر'}</div>`;
+  }
+  return foods.map((food) => {
+    const label = food && typeof food === 'object' ? (food.name || '-') : food;
+    return `<div class="food-item">${escapeHtml(label)}</div>`;
+  }).join('');
 }
 
 function renderSignatureSection() {
@@ -64,6 +74,7 @@ function buildGuestWeeklyColgroup(dayCount) {
 }
 
 function renderGuestWeeklyRows(report) {
+  const cellMode = report.cellMode === 'type1' ? 'type1' : 'names';
   const dayCount = report.byGuest?.[0]?.days?.length || report.byUser[0]?.days?.length || 0;
   const dayHeaders = (report.byGuest?.[0]?.days || report.days || []).map((day) => `<th class="col-day">${escapeHtml(day.jalaliDate)}</th>`).join('');
   let rowIndex = 0;
@@ -75,7 +86,7 @@ function renderGuestWeeklyRows(report) {
       <td class="col-code">${escapeHtml(guest.guestCode)}</td>
       <td class="col-name">${escapeHtml(guest.fullName)}</td>
       <td class="col-type">${escapeHtml(guest.guestTypeLabel || (guest.guestType === 'permanent' ? 'دائم' : 'موقت'))}</td>
-      ${guest.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods)}</td>`).join('')}
+      ${guest.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, cellMode)}</td>`).join('')}
       <td class="col-total">${Number(guest.total || 0).toLocaleString('fa-IR')}</td>
       <td class="col-price" title="${formatMoney(guest.totalPrice)}">${compactMoney(guest.totalPrice)}</td>
     </tr>`;
@@ -121,9 +132,13 @@ function buildWeeklyColgroup(dayCount) {
 
 function renderReportHtml(report) {
   const isMonthlyReport = report.type === 'month';
+  const cellMode = report.cellMode === 'type1' ? 'type1' : 'names';
   const generatedAt = escapeHtml(formatJalaliDate(new Date()));
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
   const dayCount = report.byUser[0]?.days?.length || 0;
+  const weeklySecTitle = cellMode === 'type1'
+    ? 'گزارش پرسنلی — نوع یک هر روز (بله/خیر)'
+    : 'گزارش پرسنلی — تفکیک روزانه سفارشات هفته';
 
   const userDayHeaders = report.byUser[0]?.days?.map((day) => `<th class="col-day">${escapeHtml(day.jalaliDate)}</th>`).join('') || '';
   let rowIndex = 0;
@@ -141,7 +156,7 @@ function renderReportHtml(report) {
       <td class="col-idx">${rowIndex.toLocaleString('fa-IR')}</td>
       <td class="col-name">${escapeHtml(user.fullName)}</td>
       <td class="col-dept">${escapeHtml(user.department)}</td>
-      ${user.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods)}</td>`).join('')}
+      ${user.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, cellMode)}</td>`).join('')}
       <td class="col-total">${Number(user.total || 0).toLocaleString('fa-IR')}</td>
       <td class="col-price" title="${formatMoney(user.totalPrice)}">${compactMoney(user.totalPrice)}</td>
     </tr>`;
@@ -178,7 +193,7 @@ function renderReportHtml(report) {
     <div class="stat"><span class="stat-val">${compactMoney(report.totals.totalPrice)}</span> <span class="stat-label">مبلغ کل (تومان)</span></div>
   </div>
 
-  <div class="sec-title">گزارش پرسنلی — تفکیک روزانه سفارشات هفته</div>
+  <div class="sec-title">${weeklySecTitle}</div>
   <div class="tbl-wrap wide">
     <table class="report-grid">
       ${buildWeeklyColgroup(dayCount)}

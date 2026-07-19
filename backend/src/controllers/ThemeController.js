@@ -4,6 +4,29 @@ function validColor(value, fallback) {
   return /^#[0-9a-fA-F]{6}$/.test(String(value || '')) ? value : fallback;
 }
 
+function resolveUiFont(value) {
+  return String(value || '').trim() === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn';
+}
+
+function fontStack(uiFont) {
+  if (uiFont === 'yekanbakh') {
+    return "'Yekan Bakh FaNum', Tahoma, sans-serif";
+  }
+  return "'Vazirmatn', Tahoma, sans-serif";
+}
+
+/**
+ * علامت تومان یکان‌بخ (راهنمای فونت‌ایران): کاراکتر همزه «ء» به‌جای واژه «تومان».
+ * در وزیرمتن همان واژه «تومان» نمایش داده می‌شود.
+ */
+function tomanSuffixCss(uiFont) {
+  if (uiFont === 'yekanbakh') {
+    // کاراکتر واقعی NBSP + همزه (نه escape متنی) تا JS و CSS درست بخوانند
+    return `"${'\u00A0\u0621'}"`;
+  }
+  return '" تومان"';
+}
+
 class ThemeController {
   static async variables(_req, res) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean().catch(() => null);
@@ -12,6 +35,7 @@ class ThemeController {
     const primaryDark = validColor(settings?.themePrimaryDark, '#5A1624');
     const gradientFrom = validColor(settings?.themeGradientFrom, '#3D0F18');
     const gradientTo = validColor(settings?.themeGradientTo, '#5A1624');
+    const uiFont = resolveUiFont(settings?.uiFont);
 
     res.type('text/css');
     res.setHeader('Cache-Control', 'no-store');
@@ -37,6 +61,11 @@ class ThemeController {
       `  --sidebar-dim: color-mix(in srgb, ${primaryLight} 28%, #64748B);`,
       `  --menu-hover-bg: color-mix(in srgb, ${primary} 12%, transparent);`,
       `  --menu-active-bg: linear-gradient(135deg, color-mix(in srgb, ${primary} 30%, transparent), color-mix(in srgb, ${primaryDark} 18%, transparent));`,
+      `  --font-family: ${fontStack(uiFont)};`,
+      `  --toman-suffix: ${tomanSuffixCss(uiFont)};`,
+      '}',
+      'html, body, button, input, select, textarea, .table, .sidebar, .top-nav, .top-header {',
+      '  font-family: var(--font-family);',
       '}',
       '.page-header, .day-card-header, .auth-side, .home-hero, .table thead th {',
       `  background: linear-gradient(135deg, ${gradientFrom}, ${gradientTo}) !important;`,
