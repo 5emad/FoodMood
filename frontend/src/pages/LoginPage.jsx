@@ -127,7 +127,11 @@ export default function LoginPage() {
 
       if (res.tokenRequired) {
         setStep('2fa');
-        toast(res.message || 'توکن امنیتی را وارد کنید.', 'info');
+        if (res.secondFactorToken) {
+          toast(`توکن جدید: ${res.secondFactorToken}`, 'warning');
+        } else {
+          toast(res.message || 'توکن امنیتی را وارد کنید.', 'info');
+        }
         return;
       }
 

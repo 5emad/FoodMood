@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const User = require('../models/User');
-const { hashPassword, comparePassword, compareSensitiveToken } = require('../helpers/SecurityHelper');
+const { hashPassword, comparePassword, compareSensitiveToken, hashSensitiveToken } = require('../helpers/SecurityHelper');
 const { generateToken, generateLdapToken } = require('../helpers/TokenHelper');
 const LdapHelper = require('../helpers/LdapHelper');
 const { getSettingsLean } = require('../services/SettingsService');
@@ -164,7 +164,7 @@ class AuthController {
           { email: identifier.toLowerCase() },
           { phone: identifier },
         ],
-      }).select('+password');
+      }).select('+password +superTokenHash');
 
       // Account lock check — return the generic auth failure so probing a
       // username cannot confirm the account exists (anti-enumeration).
@@ -198,6 +198,17 @@ class AuthController {
         const sessionId = crypto.randomUUID();
 
         if (user.role === 'superadmin') {
+          let issuedToken = null;
+          if (!user.superTokenHash) {
+            issuedToken = [
+              crypto.randomBytes(18).toString('base64url'),
+              crypto.randomBytes(18).toString('base64url'),
+              crypto.randomBytes(18).toString('base64url'),
+            ].join('.');
+            user.superTokenHash = hashSensitiveToken(issuedToken);
+            user.superTokenCreatedAt = new Date();
+            await user.save();
+          }
           req.session.pendingSuperLogin = {
             userId: String(user._id),
             sessionId,
@@ -207,7 +218,11 @@ class AuthController {
           return res.json({
             success: false,
             tokenRequired: true,
-            message: 'توکن امنیتی سوپر ادمین را وارد کنید',
+            tokenIssued: Boolean(issuedToken),
+            message: issuedToken
+              ? 'توکن امنیتی جدید صادر شد — همین الان ذخیره کنید'
+              : 'توکن امنیتی سوپر ادمین را وارد کنید',
+            ...(issuedToken ? { secondFactorToken: issuedToken } : {}),
           });
         }
 

@@ -98,19 +98,24 @@ const authMiddleware = async (req, res, next) => {
       return next();
     }
 
-    const dbUser = await User.findById(user.id).select('activeSessionId status role').lean();
+    const dbUser = await User.findById(user.id).select('activeSessionId status role username fullName email').lean();
     if (!dbUser || dbUser.status !== 'active') {
       await invalidateSession(req, res, 'expired');
       if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'inactive');
       return res.status(401).json({ message: 'حساب کاربری غیرفعال یا یافت نشد' });
     }
 
-    // Role in the token must match the current DB role — a demoted admin
-    // must not keep elevated access until the JWT expires.
-    if (dbUser.role !== user.role) {
-      await invalidateSession(req, res, 'expired');
-      if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
-      return res.status(401).json({ message: 'سطح دسترسی شما تغییر کرده است. لطفاً دوباره وارد شوید.' });
+    // Always authorize with DB role (JWT may be stale after promote admin→superadmin).
+    const effectiveRole = String(dbUser.role || 'user').toLowerCase();
+    const tokenRole = String(user.role || 'user').toLowerCase();
+    if (tokenRole !== effectiveRole) {
+      // Privilege drop: force re-login. Privilege raise (promote): accept DB role.
+      const rank = { user: 1, admin: 2, superadmin: 3 };
+      if ((rank[effectiveRole] || 0) < (rank[tokenRole] || 0)) {
+        await invalidateSession(req, res, 'expired');
+        if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'expired');
+        return res.status(401).json({ message: 'سطح دسترسی شما تغییر کرده است. لطفاً دوباره وارد شوید.' });
+      }
     }
 
     const sessionState = await assertActiveUserSession({
@@ -125,7 +130,14 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: sessionState.message || 'نشست شما منقضی شده است' });
     }
 
-    req.user = user;
+    req.user = {
+      ...user,
+      role: effectiveRole,
+      username: dbUser.username || user.username,
+      fullName: dbUser.fullName || user.fullName,
+      email: dbUser.email || user.email,
+    };
+    if (req.session) req.session.userRole = effectiveRole;
     touchSessionActivity(req);
     await touchSession(user.sessionId);
     res.locals.sessionPolicy = getSessionPolicy();

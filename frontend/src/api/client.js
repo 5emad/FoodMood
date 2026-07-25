@@ -63,8 +63,10 @@ export async function api(url, options = {}) {
     return body || { success: false, message: 'دسترسی مجاز نیست' };
   }
 
-  if (body && typeof body === 'object') return body;
-  return { success: false, message: text || `HTTP ${res.status}` };
+  if (body && typeof body === 'object') {
+    return { ...body, _httpStatus: res.status };
+  }
+  return { success: false, message: text || `HTTP ${res.status}`, _httpStatus: res.status };
 }
 
 export async function apiBlob(url, options = {}) {

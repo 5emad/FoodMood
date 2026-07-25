@@ -66,7 +66,14 @@ export default function AdminLayout() {
 
   useEffect(() => {
     api('/api/app/admin/bootstrap').then((res) => {
-      if (res.success) setBoot(res.data);
+      if (res.success) {
+        setBoot(res.data);
+        return;
+      }
+      // Regular users opening /admin get FORBIDDEN_ROLE on every action
+      if (res._httpStatus === 401 || res._httpStatus === 403 || res.code === 'FORBIDDEN_ROLE') {
+        window.location.replace('/login?expired=1');
+      }
     });
   }, []);
 

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-07-25
+
+### Fixed
+- “دسترسی غیرمجاز” after promote: authorize with DB role, case-insensitive roles, auto-issue missing superadmin 2FA token, redirect non-admin away from `/admin`
+
 ## [1.9.7] - 2026-07-25
 
 ### Added
