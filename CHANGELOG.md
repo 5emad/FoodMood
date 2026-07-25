@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-07-25
+
+### Changed
+- `update.sh` console UI: English-only, numbered steps, banner / success card
+
 ## [1.9.1] - 2026-07-25
 
 ### Fixed

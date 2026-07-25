@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  FoodMood — update (systemd + Mongo میزبان + Nginx)
+#  FoodMood — Update
 #
-#  یک دستور بعد از نصب:
+#  One-liner (after install):
 #    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
 #
-#  اگر سرور هنوز Docker داشته باشد، داده به mongod میزبان منتقل و
-#  کانتینرها جمع می‌شوند؛ سپس آپدیت bare-metal اعمال می‌شود.
+#  If Docker leftovers exist, data is moved to host mongod and
+#  containers are removed, then a bare-metal update continues.
 #
 #  Reset superadmin:
 #    sudo bash .../update.sh --superadmin-pass 'Food@Super2026!'
@@ -26,18 +26,73 @@ REPAIR_DB_ONLY=0
 SUPERADMIN_USER="${SUPERADMIN_USER:-superadmin}"
 SUPERADMIN_PASS="${SUPERADMIN_PASS:-}"
 
+# ── colors ────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
-log_info()  { echo -e "${CYAN}[*]${NC} $*"; }
-log_ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
-log_warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
-log_err()   { echo -e "${RED}[✗]${NC} $*" >&2; }
+# ── logging ───────────────────────────────────────────────────
+log_info()  { echo -e "  ${CYAN}●${NC}  $*"; }
+log_ok()    { echo -e "  ${GREEN}✔${NC}  $*"; }
+log_warn()  { echo -e "  ${YELLOW}▲${NC}  $*"; }
+log_err()   { echo -e "  ${RED}✖${NC}  $*" >&2; }
+log_dim()   { echo -e "  ${DIM}$*${NC}"; }
+
+ui_rule() {
+  echo -e "${DIM}  ────────────────────────────────────────────────────────────${NC}"
+}
+
+ui_blank() { echo ""; }
+
+ui_banner() {
+  local title="$1"
+  ui_blank
+  echo -e "${BLUE}${BOLD}"
+  echo "  ╔══════════════════════════════════════════════════════════╗"
+  printf "  ║  %-54s ║\n" "$title"
+  echo "  ╚══════════════════════════════════════════════════════════╝"
+  echo -e "${NC}"
+}
+
+ui_kv() {
+  printf "  ${DIM}%-12s${NC} %s\n" "$1" "$2"
+}
+
+# Progressive steps: ui_step N TOTAL "Title" then work, then log_ok...
+UPDATE_STEP=0
+UPDATE_STEPS_TOTAL=10
+
+ui_step() {
+  UPDATE_STEP=$((UPDATE_STEP + 1))
+  local title="$1"
+  ui_blank
+  echo -e "  ${BOLD}${CYAN}${UPDATE_STEP}${DIM}/${UPDATE_STEPS_TOTAL}${NC}  ${BOLD}${title}${NC}"
+  ui_rule
+}
+
+ui_success_card() {
+  local version="$1"
+  local commit="$2"
+  local url="$3"
+  ui_blank
+  echo -e "${GREEN}${BOLD}"
+  echo "  ╔══════════════════════════════════════════════════════════╗"
+  echo "  ║                   Update complete                        ║"
+  echo "  ╚══════════════════════════════════════════════════════════╝"
+  echo -e "${NC}"
+  ui_kv "Version"  "v${version}"
+  ui_kv "Commit"   "${commit}"
+  ui_kv "URL"      "${url}"
+  ui_blank
+  echo -e "  ${GREEN}${BOLD}→${NC}  Open ${BOLD}${url}${NC}"
+  ui_blank
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,7 +106,7 @@ while [[ $# -gt 0 ]]; do
     --superadmin-user) SUPERADMIN_USER="$2"; shift 2 ;;
     --superadmin-pass) SUPERADMIN_PASS="$2"; shift 2 ;;
     -h|--help)
-      sed -n '2,20p' "$0"
+      sed -n '2,16p' "$0"
       exit 0
       ;;
     *) log_err "Unknown option: $1"; exit 1 ;;
@@ -60,7 +115,8 @@ done
 
 require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    log_err "Run as root: curl -fsSL .../deploy/update.sh | sudo bash"
+    log_err "Run as root:"
+    log_dim "curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash"
     exit 1
   fi
 }
@@ -76,13 +132,14 @@ load_lib() {
 }
 
 list_remote_tags() {
-  log_info "Released tags on ${REPO_URL}:"
+  log_info "Released tags on ${REPO_URL}"
   git ls-remote --tags "$REPO_URL" 2>/dev/null \
     | awk '{print $2}' \
     | sed 's|refs/tags/||' \
     | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
     | sort -V \
-    | tail -20
+    | tail -20 \
+    | while read -r t; do echo -e "     ${DIM}${t}${NC}"; done
 }
 
 show_status() {
@@ -90,20 +147,21 @@ show_status() {
   load_lib || exit 1
   current="$(read_installed_version)"
   server_ip="$(detect_server_ip)"
-  echo ""
-  echo -e "${BOLD}Installed version:${NC}  v${current}"
-  echo -e "${BOLD}Deploy mode:${NC}       bare-metal (systemd)"
-  echo -e "${BOLD}Server IP:${NC}         ${server_ip}"
-  echo -e "${BOLD}Install path:${NC}       ${INSTALL_DIR}"
-  echo -e "${BOLD}Service:${NC}            $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
-  echo -e "${BOLD}App URL:${NC}            https://${server_ip}/login"
-  echo ""
-  echo -e "${BOLD}Update:${NC}"
-  echo "  curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash"
-  echo ""
-  echo -e "${BOLD}Latest GitHub tags:${NC}"
+  ui_banner "FoodMood  ·  Status"
+  ui_kv "Version"  "v${current}"
+  ui_kv "Mode"     "bare-metal (systemd)"
+  ui_kv "Server"   "${server_ip}"
+  ui_kv "Path"     "${INSTALL_DIR}"
+  ui_kv "Service"  "$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
+  ui_kv "URL"      "https://${server_ip}/login"
+  ui_blank
+  ui_rule
+  log_dim "Update with:"
+  echo "    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash"
+  ui_blank
+  echo -e "  ${BOLD}Latest tags${NC}"
   list_remote_tags
-  echo ""
+  ui_blank
 }
 
 read_package_version() {
@@ -131,7 +189,7 @@ configure_tls_deployment() {
   server_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)"
   source_nginx_tls_lib || return 1
   sync_runtime_url_from_settings || true
-  log_info "Configuring HTTPS (server IP ${server_ip}, app URL from settings/.env)..."
+  log_info "Configuring HTTPS (IP ${server_ip}, URL from settings/.env)…"
   configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER"
 
   if [[ ! -f /etc/sudoers.d/foodmood-ssl ]]; then
@@ -147,7 +205,7 @@ EOF
     ufw allow 443/tcp comment 'HTTPS / Nginx' >/dev/null 2>&1 || true
   fi
 
-  log_ok "HTTPS configured on port 443"
+  log_ok "HTTPS ready on port 443"
 }
 
 migrate_env_keys() {
@@ -164,7 +222,7 @@ migrate_env_keys() {
     echo "${key}=${val}" >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_warn "Added missing ${key} to .env — save it in your password vault"
+    log_warn "Added missing ${key} to .env — store it in your password vault"
   }
 
   ensure_env_default() {
@@ -176,10 +234,10 @@ migrate_env_keys() {
     echo "${key}=${val}" >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_info "Added ${key}=${val} to .env"
+    log_info "Added ${key}=${val}"
   }
 
-  # مقدار را همیشه روی لوپ‌بک می‌گذارد (مهاجرت از Docker اغلب رنج 10/172 را جا می‌گذارد).
+  # Always force loopback (legacy Docker CIDRs break WAF behind local nginx).
   ensure_env_force() {
     local key="$1"
     local val="$2"
@@ -200,7 +258,7 @@ migrate_env_keys() {
     echo 'LOG_DIR=/var/log/foodmood' >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_warn "Added LOG_DIR=/var/log/foodmood to .env"
+    log_warn "Added LOG_DIR=/var/log/foodmood"
   fi
 
   if ! grep -q '^TRUST_TLS=' "$env_file" 2>/dev/null; then
@@ -209,22 +267,19 @@ migrate_env_keys() {
     chmod 600 "$env_file"
   fi
 
-  # WAF + پرفورمنس + IP واقعی پشت nginx محلی (بدون از دست رفتن داده)
   ensure_env_default TZ Asia/Tehran
   ensure_env_default API_RATE_LIMIT_MAX 400
   ensure_env_default WAF_RATE_LIMIT_MAX 400
   ensure_env_default CLUSTER_WORKERS 0
   ensure_env_default MONGODB_MAX_POOL_SIZE 50
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
-  # فقط لوپ‌بک — nginx روی همان سرور (اجباری؛ رنج قدیمی Docker را پاک می‌کند)
   ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
-  # WAF_ENABLED=false برای خاموش کردن فایروال وب (فقط در صورت نیاز)
   if ! grep -q '^WAF_ENABLED=' "$env_file" 2>/dev/null; then
     echo 'WAF_ENABLED=true' >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
     chmod 600 "$env_file"
-    log_info "Added WAF_ENABLED=true to .env (set false to disable WAF)"
+    log_info "Added WAF_ENABLED=true (set false to disable WAF)"
   fi
 }
 
@@ -252,18 +307,18 @@ migrate_systemd_service() {
 
 fetch_source() {
   CLONE_DIR="$(mktemp -d /tmp/food-update-XXXXXX)"
-
+  log_info "Fetching source from ${REPO_URL}…"
   if [[ -n "$TAG" ]]; then
-    log_info "Fetching ${TAG} from ${REPO_URL}..."
-    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$CLONE_DIR"
+    log_dim "tag ${TAG}"
+    git clone --depth 1 --branch "$TAG" "$REPO_URL" "$CLONE_DIR" >/dev/null
   else
-    log_info "Fetching branch ${BRANCH} from ${REPO_URL}..."
-    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
+    log_dim "branch ${BRANCH}"
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR" >/dev/null
   fi
+  log_ok "Source ready"
 }
 
-
-# اگر هنوز Docker روی سرور است، داده را به mongod میزبان منتقل و کانتینرها را جمع می‌کند.
+# Migrate leftover Docker installs back to host mongod + systemd.
 exit_docker_to_bare_metal_if_needed() {
   local marker="${INSTALL_DIR}/.docker-deployed"
   local envf="${INSTALL_DIR}/.env.docker"
@@ -275,19 +330,22 @@ exit_docker_to_bare_metal_if_needed() {
     return 0
   fi
   if ! docker info >/dev/null 2>&1; then
-    log_warn "Docker در حال اجرا نیست؛ فقط marker پاک می‌شود."
+    log_warn "Docker is not running — clearing deploy markers only"
     rm -f "$marker" "$envf"
     return 0
   fi
 
-  log_info "خروج از Docker و بازگشت به systemd + mongod میزبان..."
+  ui_blank
+  echo -e "  ${BOLD}${CYAN}·${NC}  ${BOLD}Legacy Docker detected${NC}"
+  ui_rule
+  log_info "Moving data to host mongod and removing containers…"
   local compose_file="${INSTALL_DIR}/docker-compose.yml"
   local dump_file="${INSTALL_DIR}/backups/docker-exit-$(date +%Y%m%d-%H%M%S).archive"
   mkdir -p "${INSTALL_DIR}/backups"
 
   if [[ -f "$compose_file" ]]; then
     if [[ -f "$envf" ]] && docker compose -f "$compose_file" --env-file "$envf" ps -q mongo 2>/dev/null | grep -q .; then
-      log_info "دامپ Mongo از کانتینر..."
+      log_info "Dumping MongoDB from container…"
       if docker compose -f "$compose_file" --env-file "$envf" exec -T mongo \
           mongodump --archive --gzip --db food_reservation >"$dump_file" 2>/dev/null \
         && [[ -s "$dump_file" ]]; then
@@ -295,17 +353,17 @@ exit_docker_to_bare_metal_if_needed() {
         sleep 2
         if command -v mongorestore >/dev/null 2>&1; then
           mongorestore --archive="$dump_file" --gzip --drop --db=food_reservation >/dev/null 2>&1 \
-            && log_ok "داده به mongod میزبان منتقل شد." \
-            || log_warn "mongorestore ناموفق — دامپ: $dump_file"
+            && log_ok "Data restored to host mongod" \
+            || log_warn "mongorestore failed — dump kept at ${dump_file}"
         else
-          log_warn "mongorestore نیست — دامپ نگه داشته شد: $dump_file"
+          log_warn "mongorestore not installed — dump kept at ${dump_file}"
         fi
       else
-        log_warn "دامپ Docker ناموفق بود."
+        log_warn "Docker Mongo dump failed"
         rm -f "$dump_file"
       fi
     fi
-    log_info "توقف و حذف کانتینرها..."
+    log_info "Stopping containers…"
     if [[ -f "$envf" ]]; then
       docker compose -f "$compose_file" --env-file "$envf" down --remove-orphans 2>/dev/null || true
     else
@@ -320,7 +378,8 @@ exit_docker_to_bare_metal_if_needed() {
     nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
   fi
   rm -f "$marker" "$envf"
-  log_ok "خروج از Docker انجام شد."
+  log_ok "Docker exit complete — continuing bare-metal update"
+  ui_blank
 }
 
 apply_update() {
@@ -337,21 +396,28 @@ apply_update() {
   fi
 
   if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
-    log_err ".env missing in ${INSTALL_DIR} — unsafe to update."
+    log_err ".env missing in ${INSTALL_DIR} — refusing to update."
     exit 1
   fi
 
   server_ip="$(detect_server_ip)"
-  echo ""
-  echo -e "${MAGENTA}${BOLD}  FoodMood Update${NC}"
-  echo -e "  ${BOLD}From:${NC} v${old_version}  →  ${BOLD}To:${NC} v${new_version} (${TAG:-$BRANCH} @ ${source_commit})"
-  echo ""
 
-  log_info "Backing up .env..."
+  UPDATE_STEP=0
+  UPDATE_STEPS_TOTAL=10
+
+  ui_banner "FoodMood  ·  Update"
+  ui_kv "From"    "v${old_version}"
+  ui_kv "To"      "v${new_version}  ·  ${TAG:-$BRANCH} @ ${source_commit}"
+  ui_kv "Target"  "${INSTALL_DIR}"
+  ui_kv "Mode"    "bare-metal (systemd + host MongoDB + Nginx)"
+  ui_blank
+
+  ui_step "Backup configuration"
   cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
+  log_ok ".env backed up"
 
-  log_info "Syncing application files (keeping .env, uploads, certs)..."
-  # آپلودها و گواهی سفارشی هرگز با --delete پاک نمی‌شوند
+  ui_step "Sync application files"
+  log_info "Preserving .env, uploads, and certificates…"
   mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
            "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
@@ -371,45 +437,55 @@ apply_update() {
   chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
   chmod 600 "${INSTALL_DIR}/.env"
 
-  # v1.5.14+: Puppeteer removed — clear stale install that blocks npm
   rm -rf "${INSTALL_DIR}/node_modules/puppeteer" 2>/dev/null || true
   if [[ -f "${INSTALL_DIR}/.env" ]]; then
     sed -i '/^PUPPETEER_/d' "${INSTALL_DIR}/.env" 2>/dev/null || true
   fi
+  log_ok "Files synced"
 
-  log_info "Installing npm dependencies..."
+  ui_step "Install dependencies"
+  log_info "npm install --omit=dev…"
   if ! sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev"; then
-    log_warn "npmjs.org unreachable — trying npmmirror.com..."
+    log_warn "npmjs.org unreachable — trying npmmirror.com…"
     sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm install --omit=dev --registry=https://registry.npmmirror.com"
   fi
+  log_ok "Dependencies installed"
 
-  log_info "Syncing vendor fonts and assets..."
+  ui_step "Build assets"
+  log_info "Vendor fonts & SPA bundles…"
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
-
-  log_info "Building minified client JS bundles..."
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build" || log_warn "build failed — non-minified JS / SPA may be stale"
-
+  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build" \
+    || log_warn "Build failed — non-minified JS / SPA may be stale"
   chmod -R a+rX "${INSTALL_DIR}/backend/public" 2>/dev/null || true
+  log_ok "Assets ready"
 
+  ui_step "Migrate service & environment"
   migrate_systemd_service
+  log_ok "systemd unit and .env keys updated"
 
-  log_info "Ensuring MongoDB is running..."
+  ui_step "MongoDB"
+  log_info "Ensuring mongod is healthy…"
   ensure_services_running
-  repair_mongodb_from_env || log_warn "MongoDB repair pass 1 had issues — continuing to restart app"
+  repair_mongodb_from_env || log_warn "MongoDB repair pass 1 had issues — continuing"
+  log_ok "MongoDB check finished"
 
-  log_info "Ensuring PDF browser and runtime cache..."
+  ui_step "PDF runtime"
+  log_info "Chrome / Chromium for report PDFs…"
   ensure_chrome_for_pdf || true
   ensure_pdf_runtime_dirs
   configure_chrome_env
+  log_ok "PDF runtime prepared"
 
+  ui_step "HTTPS / Nginx"
   configure_tls_deployment
 
-  log_info "Restarting ${SERVICE_NAME} (load new code even if MongoDB was down)..."
+  ui_step "Restart & health checks"
+  log_info "Restarting ${SERVICE_NAME}…"
   systemctl restart "$SERVICE_NAME"
   sleep 2
 
   if ! repair_mongodb_from_env; then
-    log_err "MongoDB repair failed after restart — superadmin and login will not work"
+    log_err "MongoDB repair failed after restart — login will not work"
     run_diagnose "$server_ip"
     exit 1
   fi
@@ -424,11 +500,11 @@ apply_update() {
   log_ok "MongoDB ready (${mongo_query#OK:})"
 
   if ! wait_for_api_health 30; then
-    log_warn "API not healthy yet — retrying MongoDB repair and restart..."
+    log_warn "API not healthy yet — retrying repair and restart…"
     repair_mongodb_from_env || true
     systemctl restart "$SERVICE_NAME"
     if ! wait_for_api_health 20; then
-      log_err "Service failed health check. Log: journalctl -u ${SERVICE_NAME} -n 40"
+      log_err "Health check failed. Logs: journalctl -u ${SERVICE_NAME} -n 40"
       run_diagnose "$server_ip"
       exit 1
     fi
@@ -442,15 +518,16 @@ apply_update() {
   fi
   log_ok "Installed version confirmed: v${installed_after}"
 
-  log_info "Verifying site (fonts, HTTPS, login)..."
+  ui_step "Verify site"
+  log_info "Fonts, HTTPS, login probe…"
   site_checks="$(verify_fonts_and_site "$server_ip")"
-  echo "  ${site_checks}"
+  log_dim "${site_checks}"
 
   if source_nginx_tls_lib 2>/dev/null; then
     if verify_https_only_deployment "$server_ip"; then
-      log_ok "HTTPS, port 443, CSS checks passed"
+      log_ok "HTTPS / port 443 / CSS checks passed"
     else
-      log_warn "HTTPS verification had issues — nginx will be restarted once more"
+      log_warn "HTTPS verification had issues — restarting nginx once"
       systemctl restart nginx 2>/dev/null || true
     fi
   fi
@@ -469,25 +546,22 @@ apply_update() {
   if test_pdf_browser; then
     log_ok "PDF browser executable by ${APP_USER}"
   else
-    log_warn "PDF browser check failed — report PDF may not work until Chrome/Chromium is installed"
+    log_warn "PDF browser check failed — install Chrome/Chromium if reports need PDF"
   fi
 
   if [[ -n "$SUPERADMIN_PASS" ]]; then
     reset_superadmin_credentials "$SUPERADMIN_USER" "$SUPERADMIN_PASS" || exit 1
   fi
 
-  log_ok "Update complete — FoodMood v${new_version} (${source_commit}) is running."
-  echo ""
-  echo -e "${GREEN}${BOLD}  Open in browser:${NC}"
-  echo -e "  ${BOLD}https://${server_ip}/login${NC}"
-  echo ""
+  ui_success_card "$new_version" "$source_commit" "https://${server_ip}/login"
+
   if [[ -z "$SUPERADMIN_PASS" ]]; then
-    echo -e "${YELLOW}[!]${NC} Reset superadmin on next update:"
-    echo -e "  curl -fsSL .../deploy/update.sh | sudo bash -s -- --superadmin-pass 'YourPass@123!'"
-    echo ""
+    log_dim "Optional — reset superadmin on next update:"
+    echo "    curl -fsSL .../deploy/update.sh | sudo bash -s -- --superadmin-pass 'YourPass@123!'"
+    ui_blank
   fi
-  echo -e "${YELLOW}[!]${NC} Self-signed: browser shows ${BOLD}Not Secure${NC} — accept once or upload certificate in Superadmin panel."
-  echo ""
+  log_warn "Self-signed cert: browser may show ${BOLD}Not Secure${NC} — accept once or upload a cert in Superadmin."
+  ui_blank
 
   {
     echo ""
@@ -509,7 +583,9 @@ main() {
   command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq git rsync curl python3; }
 
   if [[ "$LIST_TAGS" -eq 1 ]]; then
+    ui_banner "FoodMood  ·  Tags"
     list_remote_tags
+    ui_blank
     exit 0
   fi
 
@@ -528,7 +604,8 @@ main() {
     load_lib || exit 1
     local server_ip
     server_ip="$(detect_server_ip)"
-    log_info "MongoDB repair only (no code sync)..."
+    ui_banner "FoodMood  ·  MongoDB repair"
+    log_info "Repair only (no code sync)…"
     ensure_services_running
     if ! repair_mongodb_from_env; then
       run_diagnose "$server_ip"
@@ -542,7 +619,8 @@ main() {
     if [[ -n "$SUPERADMIN_PASS" ]]; then
       reset_superadmin_credentials "$SUPERADMIN_USER" "$SUPERADMIN_PASS" || exit 1
     fi
-    log_ok "MongoDB repair complete — open https://${server_ip}/login and sign in again"
+    log_ok "Repair complete — open https://${server_ip}/login"
+    ui_blank
     exit 0
   fi
 
@@ -552,14 +630,24 @@ main() {
   fi
 
   if [[ ! -d "$INSTALL_DIR" || ! -f "${INSTALL_DIR}/.env" ]]; then
-    log_err "FoodMood not installed. Run install.sh first:"
-    log_err "  curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash"
+    log_err "FoodMood is not installed. Run install.sh first:"
+    log_dim "curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/install.sh | sudo bash"
     exit 1
   fi
+
+  ui_blank
+  echo -e "  ${DIM}Preparing update…${NC}"
+  ui_blank
 
   fetch_source
   trap 'rm -rf "$CLONE_DIR"' EXIT
   load_lib "${CLONE_DIR}/deploy/lib.sh"
+  # Keep pretty loggers after lib.sh (lib may redefine them)
+  log_info()  { echo -e "  ${CYAN}●${NC}  $*"; }
+  log_ok()    { echo -e "  ${GREEN}✔${NC}  $*"; }
+  log_warn()  { echo -e "  ${YELLOW}▲${NC}  $*"; }
+  log_err()   { echo -e "  ${RED}✖${NC}  $*" >&2; }
+
   exit_docker_to_bare_metal_if_needed
   apply_update "$CLONE_DIR"
 }
