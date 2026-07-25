@@ -88,8 +88,16 @@ async function main() {
       });
       console.log('Superadmin created (was missing after DB migrate).');
     } else {
-      if (user.role !== 'superadmin') throw new Error('Username exists but is not superadmin.');
+      // Promote admin (or other local roles) — do not leave a plain "admin" behind
+      if (user.role !== 'superadmin' && user.role !== 'admin') {
+        throw new Error(`Username exists with role "${user.role}" — refuse to overwrite.`);
+      }
+      if (user.role === 'admin') {
+        console.log('Promoting existing admin → superadmin…');
+      }
       user.password = await hashPassword(password);
+      user.role = 'superadmin';
+      user.fullName = user.fullName || 'سوپر ادمین';
       user.superTokenHash = hashSensitiveToken(token);
       user.superTokenCreatedAt = new Date();
       user.superTokenLastUsedAt = null;
@@ -103,6 +111,7 @@ async function main() {
     }
     console.log('Username:', username);
     console.log('Password:', password);
+    console.log('Role: superadmin');
     console.log('Second-factor token:', token);
     console.log('Store this token now. It is not recoverable from the database.');
   }

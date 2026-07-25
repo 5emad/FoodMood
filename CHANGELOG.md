@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-07-25
+
+### Fixed
+- Docker-exit dump/restore used wrong DB name `food_reservation` instead of `food_ordering` (data appeared “lost”)
+- `reset-credentials` now promotes existing `admin` → `superadmin` (no more stuck plain admin)
+
+### Added
+- `deploy/restore-data.sh` to scan backups and restore into `food_ordering`
+
 ## [1.9.5] - 2026-07-25
 
 ### Fixed

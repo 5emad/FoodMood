@@ -345,19 +345,20 @@ exit_docker_to_bare_metal_if_needed() {
   log_info "Moving data to host mongod and removing containers…"
   local compose_file="${INSTALL_DIR}/docker-compose.yml"
   local dump_file="${INSTALL_DIR}/backups/docker-exit-$(date +%Y%m%d-%H%M%S).archive"
+  local db_name="${DB_NAME:-food_ordering}"
   mkdir -p "${INSTALL_DIR}/backups"
 
   if [[ -f "$compose_file" ]]; then
     if [[ -f "$envf" ]] && docker compose -f "$compose_file" --env-file "$envf" ps -q mongo 2>/dev/null | grep -q .; then
-      log_info "Dumping MongoDB from container…"
+      log_info "Dumping MongoDB (${db_name}) from container…"
       if docker compose -f "$compose_file" --env-file "$envf" exec -T mongo \
-          mongodump --archive --gzip --db food_reservation >"$dump_file" 2>/dev/null \
+          mongodump --archive --gzip --db "$db_name" >"$dump_file" 2>/dev/null \
         && [[ -s "$dump_file" ]]; then
         systemctl start mongod 2>/dev/null || true
         sleep 2
         if command -v mongorestore >/dev/null 2>&1; then
-          mongorestore --archive="$dump_file" --gzip --drop --db=food_reservation >/dev/null 2>&1 \
-            && log_ok "Data restored to host mongod" \
+          mongorestore --archive="$dump_file" --gzip --drop --db="$db_name" >/dev/null 2>&1 \
+            && log_ok "Data restored to host mongod (${db_name})" \
             || log_warn "mongorestore failed — dump kept at ${dump_file}"
         else
           log_warn "mongorestore not installed — dump kept at ${dump_file}"
