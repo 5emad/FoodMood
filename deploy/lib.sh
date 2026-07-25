@@ -110,6 +110,35 @@ PY
   chmod 600 "$env_file"
 }
 
+# After Docker exit, URI may still point at hostname "mongo" / container DNS.
+normalize_mongodb_uri_to_localhost() {
+  local env_file="${INSTALL_DIR}/.env"
+  [[ -f "$env_file" ]] || return 0
+  python3 - "$env_file" <<'PY'
+import re, sys
+path = sys.argv[1]
+with open(path, encoding='utf-8') as f:
+    lines = f.readlines()
+out = []
+changed = False
+for line in lines:
+    if not line.startswith('MONGODB_URI='):
+        out.append(line)
+        continue
+    uri = line[len('MONGODB_URI='):].rstrip('\r\n')
+    new = re.sub(r'@(?:mongo|mongodb)(?::(\d+))?', lambda m: '@127.0.0.1:' + (m.group(1) or '27017'), uri)
+    new = re.sub(r'@127\.0\.0\.1(?=/|\?)', '@127.0.0.1:27017', new)
+    if new != uri:
+        changed = True
+    out.append('MONGODB_URI=' + new + '\n')
+with open(path, 'w', encoding='utf-8') as f:
+    f.writelines(out)
+sys.exit(0 if changed else 0)
+PY
+  chown "$APP_USER:$APP_USER" "$env_file" 2>/dev/null || true
+  chmod 600 "$env_file" 2>/dev/null || true
+}
+
 mongo_auth_uri_for() {
   local user="$1" pass="$2"
   local encoded
@@ -709,13 +738,12 @@ reset_superadmin_credentials() {
     echo "$output" | sed 's/^/  /'
     return 0
   fi
-  if echo "$output" | grep -qi 'reset-credentials'; then
-    log_warn "reset-credentials not in script yet — trying create..."
-    if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node backend/scripts/super-admin.js create $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
-      log_ok "Superadmin created"
-      echo "$output" | sed 's/^/  /'
-      return 0
-    fi
+  log_warn "reset-credentials failed — trying create..."
+  echo "$output" | sed 's/^/  /'
+  if output="$(sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node backend/scripts/super-admin.js create $(printf '%q' "$username") $(printf '%q' "$password")" 2>&1)"; then
+    log_ok "Superadmin created"
+    echo "$output" | sed 's/^/  /'
+    return 0
   fi
   log_err "Superadmin reset failed: $output"
   return 1

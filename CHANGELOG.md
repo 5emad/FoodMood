@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-07-25
+
+### Fixed
+- Login / DB access after Docker exit: normalize `MONGODB_URI` host to `127.0.0.1`, recreate missing superadmin on reset, bypass WAF for SPA shells (`/login`, `/admin/*`), surface real API error messages on login
+
 ## [1.9.2] - 2026-07-25
 
 ### Changed

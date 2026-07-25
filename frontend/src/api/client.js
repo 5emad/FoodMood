@@ -59,6 +59,10 @@ export async function api(url, options = {}) {
     throw new Error(body?.message || 'نشست منقضی شده است');
   }
 
+  if (res.status === 403 && isAuthCredentialCall) {
+    return body || { success: false, message: 'دسترسی مجاز نیست' };
+  }
+
   if (body && typeof body === 'object') return body;
   return { success: false, message: text || `HTTP ${res.status}` };
 }

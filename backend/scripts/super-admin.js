@@ -71,19 +71,36 @@ async function main() {
     if (!validatePassword(password)) {
       throw new Error('Password must be at least 12 chars and include letter, number, and symbol.');
     }
-    const user = await User.findOne({ username }).select('+superTokenHash +password');
-    if (!user || user.role !== 'superadmin') throw new Error('Superadmin not found.');
+    let user = await User.findOne({ username }).select('+superTokenHash +password');
     const token = strongToken();
-    user.password = await hashPassword(password);
-    user.superTokenHash = hashSensitiveToken(token);
-    user.superTokenCreatedAt = new Date();
-    user.superTokenLastUsedAt = null;
-    user.loginAttempts = 0;
-    user.lockUntil = null;
-    user.status = 'active';
-    user.activeSessionId = null;
-    await user.save();
-    console.log('Superadmin credentials reset.');
+    if (!user) {
+      await User.create({
+        username,
+        fullName: 'سوپر ادمین',
+        password: await hashPassword(password),
+        role: 'superadmin',
+        status: 'active',
+        ldapUser: false,
+        superTokenHash: hashSensitiveToken(token),
+        superTokenCreatedAt: new Date(),
+        loginAttempts: 0,
+        lockUntil: null,
+      });
+      console.log('Superadmin created (was missing after DB migrate).');
+    } else {
+      if (user.role !== 'superadmin') throw new Error('Username exists but is not superadmin.');
+      user.password = await hashPassword(password);
+      user.superTokenHash = hashSensitiveToken(token);
+      user.superTokenCreatedAt = new Date();
+      user.superTokenLastUsedAt = null;
+      user.loginAttempts = 0;
+      user.lockUntil = null;
+      user.status = 'active';
+      user.ldapUser = false;
+      user.activeSessionId = null;
+      await user.save();
+      console.log('Superadmin credentials reset.');
+    }
     console.log('Username:', username);
     console.log('Password:', password);
     console.log('Second-factor token:', token);

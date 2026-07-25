@@ -86,6 +86,11 @@ const WAF_OPTIONS = {
     '/api/admin/backup/export',
     '/api/admin/backup/restore',
     '/favicon.ico',
+    // SPA shells (HTML) — must not be blocked by cookie/entropy heuristics
+    '/login',
+    '/complete-profile',
+    '/foods',
+    '/unavailable',
   ],
 
   // لایهٔ سخت بیرونی؛ limiter اپ همچنان برای لاگین/API جزئی‌تر عمل می‌کند
@@ -189,7 +194,7 @@ function createSafeWafResponseMiddleware() {
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
-  const prefixes = ['/vendor/', '/css/', '/js/', '/spa/assets/'];
+  const prefixes = ['/vendor/', '/css/', '/js/', '/spa/assets/', '/admin/', '/user/'];
   return function wafPathBypass(req, _res, next) {
     const p = req.path || '';
     if (exact.has(p) || prefixes.some((pre) => p.startsWith(pre))) {

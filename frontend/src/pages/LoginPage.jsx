@@ -132,14 +132,14 @@ export default function LoginPage() {
       }
 
       if (!res.success) {
-        toast('اطلاعات وارد شده صحیح نیست.', 'error');
+        toast(res.message || 'اطلاعات وارد شده صحیح نیست.', 'error');
         return;
       }
 
       if (res.user) redirectAfterLogin(res.user);
       else navigate('/user/dashboard');
-    } catch {
-      toast('اطلاعات وارد شده صحیح نیست.', 'error');
+    } catch (err) {
+      toast(err.message || 'ورود ناموفق بود. اتصال یا پایگاه داده را بررسی کنید.', 'error');
     } finally {
       setLoading(false);
     }

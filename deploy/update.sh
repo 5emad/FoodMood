@@ -275,6 +275,10 @@ migrate_env_keys() {
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
   ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
+  # Point Mongo URI at host loopback if a Docker hostname remained
+  if declare -F normalize_mongodb_uri_to_localhost >/dev/null 2>&1; then
+    normalize_mongodb_uri_to_localhost
+  fi
   if ! grep -q '^WAF_ENABLED=' "$env_file" 2>/dev/null; then
     echo 'WAF_ENABLED=true' >> "$env_file"
     chown "$APP_USER:$APP_USER" "$env_file"
