@@ -464,18 +464,26 @@ class AuthController {
     }
   }
 
-  static async logout(req, res, next) {
+  static async logout(req, res) {
     try {
       const username = req.session?.username || req.user?.username;
-      await writeSecurityLog(req, 'logout_success', null, 'User logout', { username });
-
+      try {
+        await writeSecurityLog(req, 'logout_success', null, 'User logout', { username });
+      } catch {
+        /* logging must not block logout */
+      }
       await invalidateSession(req, res, 'logout');
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      return res.json({ success: true, message: 'خروج موفقیت‌آمیز بود' });
-    } catch (error) {
-      next(error);
+    } catch {
+      try {
+        const { clearAuthCookies } = require('../helpers/AuthCookieHelper');
+        clearAuthCookies(res);
+      } catch {
+        /* ignore */
+      }
     }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    return res.json({ success: true, message: 'خروج موفقیت‌آمیز بود' });
   }
 
   static async ping(req, res) {

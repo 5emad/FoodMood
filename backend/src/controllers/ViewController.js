@@ -159,7 +159,16 @@ class ViewController {
   }
 
   static async logout(req, res) {
-    await invalidateSession(req, res, 'logout');
+    try {
+      await invalidateSession(req, res, 'logout');
+    } catch {
+      try {
+        const { clearAuthCookies } = require('../helpers/AuthCookieHelper');
+        clearAuthCookies(res);
+      } catch {
+        /* ignore */
+      }
+    }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     return redirectTo(req, res, '/login');

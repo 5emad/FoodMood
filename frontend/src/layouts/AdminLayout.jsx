@@ -65,16 +65,19 @@ export default function AdminLayout() {
   }, [isGuests]);
 
   useEffect(() => {
+    let cancelled = false;
     api('/api/app/admin/bootstrap').then((res) => {
+      if (cancelled) return;
       if (res.success) {
         setBoot(res.data);
         return;
       }
       // Regular users opening /admin get FORBIDDEN_ROLE on every action
       if (res._httpStatus === 401 || res._httpStatus === 403 || res.code === 'FORBIDDEN_ROLE') {
-        window.location.replace('/login?expired=1');
+        window.location.replace('/logout');
       }
     });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -106,6 +109,15 @@ export default function AdminLayout() {
 
   const tabs = allowedAdminTabs(adminCaps);
   const isSuper = !!adminCaps.isSuperadmin;
+
+  // Do not mount admin tabs until bootstrap succeeds — avoids spam "دسترسی غیرمجاز" toasts
+  if (!boot) {
+    return (
+      <div className="admin-body" style={{ padding: '2rem', textAlign: 'center', direction: 'rtl' }}>
+        در حال بارگذاری پنل…
+      </div>
+    );
+  }
   const superLinks = SUPER_LINKS.filter((l) => adminCaps.features?.[l.feature]);
 
   const tabMeta = activeTab ? TAB_META[activeTab] : null;
@@ -245,7 +257,6 @@ export default function AdminLayout() {
             <a
               href="/logout"
               className="sidebar-action-link sidebar-action-link--logout"
-              onClick={(e) => { e.preventDefault(); window.location.assign('/logout'); }}
             >
               <i className="fas fa-sign-out-alt" /> خروج
             </a>

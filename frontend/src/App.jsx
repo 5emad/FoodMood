@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import UserDashboardPage from './pages/UserDashboardPage';
@@ -17,15 +18,23 @@ function RootRedirect() {
 }
 
 function LegacyLogout() {
-  (async () => {
-    try {
-      await api('/api/auth/logout', { method: 'POST', body: '{}' });
-    } catch {
-      /* ignore */
-    }
-    window.location.replace('/login');
-  })();
-  return null;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await api('/api/auth/logout', { method: 'POST', body: '{}' });
+      } catch {
+        /* ignore — always leave */
+      }
+      if (!cancelled) window.location.replace('/login');
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  return (
+    <div style={{ padding: '2rem', textAlign: 'center', direction: 'rtl', fontFamily: 'Tahoma,sans-serif' }}>
+      در حال خروج…
+    </div>
+  );
 }
 
 function AdminLegacyUrlRedirect() {

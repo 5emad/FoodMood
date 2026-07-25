@@ -10,10 +10,12 @@ function csrfMiddleware(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
 
   // Login flow and second factor bootstrap/rotate authenticated sessions.
+  // Logout must never be blocked by a stale CSRF cookie.
   if (
     req.path === '/auth/login'
     || req.path === '/auth/resolve-username'
     || req.path === '/auth/verify-super-token'
+    || req.path === '/auth/logout'
   ) return next();
 
   // Bearer-token API clients are not using ambient browser cookies.

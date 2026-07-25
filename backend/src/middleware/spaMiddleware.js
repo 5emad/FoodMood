@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const SPA_INDEX = path.join(__dirname, '../../public/spa/index.html');
 
-const SPA_ROUTE_RE = /^\/(?:login|complete-profile|foods|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
+const SPA_ROUTE_RE = /^\/(?:login|logout|complete-profile|foods|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
 
 function spaIndexExists() {
   try {

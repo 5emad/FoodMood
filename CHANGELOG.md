@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.9] - 2026-07-25
+
+### Fixed
+- Logout always succeeds (CSRF exempt, never throws); admin panel waits for bootstrap before mounting tabs to stop spam «دسترسی غیرمجاز»
+
 ## [1.9.8] - 2026-07-25
 
 ### Fixed
