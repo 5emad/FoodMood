@@ -209,12 +209,8 @@ configure_app_https_env() {
   nginx_tls_set_env_kv "$env_file" "APP_URL" "$https_url"
   nginx_tls_set_env_kv "$env_file" "FORCE_APP_URL" "false"
 
-  if ! grep -q '^TRUSTED_PROXIES=' "$env_file" 2>/dev/null; then
-    nginx_tls_set_env_kv "$env_file" "TRUSTED_PROXIES" "127.0.0.1,::1"
-  fi
-  if ! grep -q '^WAF_TRUSTED_PROXIES=' "$env_file" 2>/dev/null; then
-    nginx_tls_set_env_kv "$env_file" "WAF_TRUSTED_PROXIES" "127.0.0.1,::1"
-  fi
+  nginx_tls_set_env_kv "$env_file" "TRUSTED_PROXIES" "127.0.0.1,::1"
+  nginx_tls_set_env_kv "$env_file" "WAF_TRUSTED_PROXIES" "127.0.0.1,::1"
 
   local allowed_origins="$https_url,${default_url}"
   local current_origins
