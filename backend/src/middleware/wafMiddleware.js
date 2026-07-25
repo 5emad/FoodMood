@@ -194,7 +194,7 @@ function createSafeWafResponseMiddleware() {
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
-  const prefixes = ['/vendor/', '/css/', '/js/', '/spa/assets/', '/admin/', '/user/'];
+  const prefixes = ['/vendor/', '/css/', '/js/', '/assets/', '/spa/assets/', '/admin/', '/user/'];
   return function wafPathBypass(req, _res, next) {
     const p = req.path || '';
     if (exact.has(p) || prefixes.some((pre) => p.startsWith(pre))) {

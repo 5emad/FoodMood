@@ -87,7 +87,7 @@ const staticHeaders = (res, filePath) => {
   }
 };
 
-// Static assets first — never blocked by session/health middleware
+// Static assets first — never blocked by session/health middleware / WAF
 app.use('/vendor', express.static(path.join(publicDir, 'vendor'), {
   maxAge: staticCache,
   setHeaders: staticHeaders,
@@ -97,6 +97,11 @@ app.use('/css', express.static(path.join(publicDir, 'css'), {
   setHeaders: staticHeaders,
 }));
 app.use('/js', express.static(path.join(publicDir, 'js'), {
+  maxAge: staticCache,
+  setHeaders: staticHeaders,
+}));
+// Vite SPA bundles (must be before WAF — otherwise login is a blank white page)
+app.use('/assets', express.static(path.join(publicDir, 'spa', 'assets'), {
   maxAge: staticCache,
   setHeaders: staticHeaders,
 }));

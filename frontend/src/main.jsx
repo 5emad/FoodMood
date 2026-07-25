@@ -27,6 +27,9 @@ if (boot && boot.settings && boot.settings.uiFont) {
 
 function Root() {
   useEffect(() => {
+    const root = document.getElementById('root');
+    if (root) root.dataset.reactMounted = '1';
+
     api('/api/app/public').then((res) => {
       if (res.success) {
         if (!boot) applyAppFont(res.data?.uiFont);
@@ -49,3 +52,14 @@ createRoot(document.getElementById('root')).render(
     <Root />
   </React.StrictMode>,
 );
+
+// Visible fallback if the bundle never mounts (blank white page)
+window.setTimeout(() => {
+  const root = document.getElementById('root');
+  if (root && !root.dataset.reactMounted && root.childElementCount === 0) {
+    root.innerHTML = '<div style="font-family:Tahoma,sans-serif;padding:2rem;text-align:center;direction:rtl">'
+      + '<p>بارگذاری صفحه ورود ناموفق بود.</p>'
+      + '<p style="color:#666;font-size:.9rem">لطفاً صفحه را سخت‌رفرش کنید (Ctrl+F5) یا کش مرورگر را پاک کنید.</p>'
+      + '<a href="/login">تلاش مجدد</a></div>';
+  }
+}, 4000);

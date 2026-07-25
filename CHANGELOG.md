@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-07-25
+
+### Fixed
+- Blank white login page: serve Vite `/assets` before WAF (JS/CSS were blocked so the username form never mounted)
+
 ## [1.9.4] - 2026-07-25
 
 ### Fixed
