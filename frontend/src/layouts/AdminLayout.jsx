@@ -47,6 +47,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [boot, setBoot] = useState(null);
+  const [bootError, setBootError] = useState('');
   const [openGroups, setOpenGroups] = useState(() => new Set(['main']));
 
   const isSuperPath = location.pathname.startsWith('/admin/super/');
@@ -66,17 +67,34 @@ export default function AdminLayout() {
 
   useEffect(() => {
     let cancelled = false;
-    api('/api/app/admin/bootstrap').then((res) => {
+    let tries = 0;
+
+    async function loadBoot() {
+      tries += 1;
+      const res = await api('/api/app/admin/bootstrap');
       if (cancelled) return;
       if (res.success) {
+        setBootError('');
         setBoot(res.data);
         return;
       }
-      // Regular users opening /admin get FORBIDDEN_ROLE on every action
-      if (res._httpStatus === 401 || res._httpStatus === 403 || res.code === 'FORBIDDEN_ROLE') {
-        window.location.replace('/logout');
+      // Session not ready yet right after login — retry once
+      if (tries < 2 && (res._httpStatus === 401 || res._httpStatus === 403)) {
+        await new Promise((r) => setTimeout(r, 400));
+        return loadBoot();
       }
-    });
+      if (res._httpStatus === 401) {
+        window.location.replace('/login?expired=1');
+        return;
+      }
+      if (res.code === 'FORBIDDEN_ROLE') {
+        setBootError('این حساب به پنل مدیریت دسترسی ندارد. با حساب سوپرادمین وارد شوید.');
+        return;
+      }
+      setBootError(res.message || 'بارگذاری پنل ناموفق بود.');
+    }
+
+    loadBoot();
     return () => { cancelled = true; };
   }, []);
 
@@ -109,6 +127,17 @@ export default function AdminLayout() {
 
   const tabs = allowedAdminTabs(adminCaps);
   const isSuper = !!adminCaps.isSuperadmin;
+
+  if (bootError) {
+    return (
+      <div className="admin-body" style={{ padding: '2rem', textAlign: 'center', direction: 'rtl', maxWidth: 480, margin: '10vh auto' }}>
+        <p style={{ marginBottom: 16 }}>{bootError}</p>
+        <a className="btn btn-primary" href="/logout">خروج و ورود مجدد</a>
+        {' '}
+        <a className="btn btn-outline" href="/login" style={{ marginRight: 8 }}>صفحه ورود</a>
+      </div>
+    );
+  }
 
   // Do not mount admin tabs until bootstrap succeeds — avoids spam "دسترسی غیرمجاز" toasts
   if (!boot) {

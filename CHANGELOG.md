@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.10] - 2026-07-25
+
+### Fixed
+- Admin panel no longer force-logouts on bootstrap race after login; shows clear error and retry path instead
+
 ## [1.9.9] - 2026-07-25
 
 ### Fixed
