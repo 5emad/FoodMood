@@ -511,6 +511,193 @@ mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 }
 \"" 2>&1 || true
 }
 
+# How many app users in a DB (via MONGODB_URI, swapping db name).
+count_app_users_in_db() {
+  local db="$1"
+  local uri count
+  uri="$(grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  [[ -n "$uri" ]] || { echo 0; return; }
+  count="$(
+    DB_TARGET="$db" MONGODB_URI="$uri" python3 - <<'PY' 2>/dev/null || true
+import os, re, urllib.parse
+uri = os.environ["MONGODB_URI"]
+db = os.environ["DB_TARGET"]
+# swap path db name: mongodb://...@host:port/DB?...
+uri2 = re.sub(r"(mongodb(?:\+srv)?://[^/]+/)([^?]+)", r"\1" + db, uri, count=1)
+print(uri2)
+PY
+  )"
+  # count via mongosh
+  local n
+  n="$(mongosh --quiet "$count" --eval 'db.users.estimatedDocumentCount()' 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  if [[ "$n" =~ ^[0-9]+$ ]]; then
+    echo "$n"
+  else
+    # localhost no-auth fallback
+    n="$(mongosh --quiet "$db" --eval 'db.users.estimatedDocumentCount()' 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+    [[ "$n" =~ ^[0-9]+$ ]] && echo "$n" || echo 0
+  fi
+}
+
+restore_archive_or_dir_into_ordering() {
+  local src="$1"
+  local uri
+  uri="$(grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  [[ -n "$uri" && -e "$src" ]] || return 1
+
+  if [[ -f "$src" ]]; then
+    mongorestore --uri="$uri" --archive="$src" --gzip --drop \
+        --nsFrom='food_reservation.*' --nsTo="${DB_NAME}.*" >/dev/null 2>&1 \
+      || mongorestore --uri="$uri" --archive="$src" --gzip --drop \
+        --nsFrom='food_ordering.*' --nsTo="${DB_NAME}.*" >/dev/null 2>&1 \
+      || mongorestore --uri="$uri" --archive="$src" --gzip --drop --db="$DB_NAME" >/dev/null 2>&1 \
+      || mongorestore --uri="$uri" --archive="$src" --drop --db="$DB_NAME" >/dev/null 2>&1 \
+      || return 1
+    return 0
+  fi
+
+  if [[ -d "$src" ]]; then
+    local dump_dir="$src"
+    [[ -d "${src}/food_ordering" ]] && dump_dir="${src}/food_ordering"
+    [[ -d "${src}/food_reservation" ]] && dump_dir="${src}/food_reservation"
+    [[ -d "${src}/mongodump/food_ordering" ]] && dump_dir="${src}/mongodump/food_ordering"
+    [[ -d "${src}/mongodump/food_reservation" ]] && dump_dir="${src}/mongodump/food_reservation"
+    mongorestore --uri="$uri" --drop --db="$DB_NAME" "$dump_dir" >/dev/null 2>&1 || return 1
+    return 0
+  fi
+  return 1
+}
+
+# One-shot recovery: wrong DB name, leftover dumps, docker-migrate backups.
+auto_recover_app_data() {
+  local ordering_users reservation_users best=""
+  local uri tmp_archive
+
+  uri="$(grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+  [[ -n "$uri" ]] || return 0
+
+  ordering_users="$(count_app_users_in_db "$DB_NAME")"
+  reservation_users="$(count_app_users_in_db food_reservation)"
+  log_info "Data check: ${DB_NAME}=${ordering_users} users, food_reservation=${reservation_users} users"
+
+  # Case A: data landed in wrong DB name after bad Docker exit
+  if [[ "$ordering_users" -lt 1 && "$reservation_users" -gt 0 ]]; then
+    log_warn "Found data in food_reservation — copying into ${DB_NAME}…"
+    local res_uri tmp_archive
+    res_uri="$(DB_TARGET=food_reservation MONGODB_URI="$uri" python3 - <<'PY'
+import os, re
+uri = os.environ["MONGODB_URI"]
+db = os.environ["DB_TARGET"]
+print(re.sub(r"(mongodb(?:\+srv)?://[^/]+/)([^?]+)", r"\1" + db, uri, count=1))
+PY
+)"
+    tmp_archive="$(mktemp /tmp/food-nsfix-XXXXXX.archive)"
+    if mongodump --uri="$res_uri" --archive="$tmp_archive" --gzip >/dev/null 2>&1 \
+      || mongodump --db=food_reservation --archive="$tmp_archive" --gzip >/dev/null 2>&1; then
+      if mongorestore --uri="$uri" --archive="$tmp_archive" --gzip --drop \
+          --nsFrom='food_reservation.*' --nsTo="${DB_NAME}.*" >/dev/null 2>&1 \
+        || mongorestore --uri="$uri" --archive="$tmp_archive" --gzip --drop --db="$DB_NAME" >/dev/null 2>&1; then
+        log_ok "Copied food_reservation → ${DB_NAME}"
+      else
+        log_warn "Could not copy food_reservation automatically"
+      fi
+    else
+      log_warn "Could not dump food_reservation"
+    fi
+    rm -f "$tmp_archive"
+    ordering_users="$(count_app_users_in_db "$DB_NAME")"
+  fi
+
+  # Case B: still empty — restore newest filesystem backup
+  if [[ "$ordering_users" -lt 1 ]]; then
+    log_warn "App DB looks empty — searching backups…"
+    best="$(
+      {
+        ls -1t "${INSTALL_DIR}/backups"/docker-exit-*.archive 2>/dev/null || true
+        ls -1td /var/backups/foodmood-docker-migrate-* 2>/dev/null || true
+        ls -1td /var/backups/foodmood-* 2>/dev/null || true
+        find /var/backups /opt/food/backups -maxdepth 3 -type d -name mongodump 2>/dev/null || true
+        find /var/backups /opt/food/backups -maxdepth 3 -type f -name '*.archive' 2>/dev/null || true
+      } | head -n 1
+    )"
+    if [[ -n "$best" ]]; then
+      log_info "Restoring from ${best}…"
+      if restore_archive_or_dir_into_ordering "$best"; then
+        log_ok "Backup restored into ${DB_NAME}"
+      else
+        log_warn "Restore from ${best} failed"
+      fi
+    else
+      log_warn "No filesystem backup found"
+    fi
+    ordering_users="$(count_app_users_in_db "$DB_NAME")"
+  fi
+
+  log_info "App users in ${DB_NAME} after recovery: ${ordering_users}"
+  return 0
+}
+
+# Ensure a superadmin exists; auto-generate password if none provided.
+# Sets global AUTO_SUPERADMIN_PASS / AUTO_SUPERADMIN_TOKEN_FILE when generated.
+AUTO_SUPERADMIN_PASS=""
+AUTO_SUPERADMIN_NOTE=""
+
+ensure_superadmin_exists() {
+  local q pass user out_file admin_user
+  user="${SUPERADMIN_USER:-superadmin}"
+  q="$(test_mongodb_app_query)"
+  if [[ "$q" == OK:* && "$q" != OK:no-superadmin ]]; then
+    log_ok "Superadmin present (${q#OK:})"
+    if [[ -n "${SUPERADMIN_PASS:-}" ]]; then
+      reset_superadmin_credentials "$user" "$SUPERADMIN_PASS" || true
+    fi
+    return 0
+  fi
+
+  # Prefer promoting an existing admin account (keeps username users know)
+  admin_user="$(
+    sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node -e \"
+require('dotenv').config();
+const mongoose=require('mongoose');
+const User=require('./backend/src/models/User');
+mongoose.connect(process.env.MONGODB_URI).then(async()=>{
+  const a=await User.findOne({role:'admin'}).select('username').lean();
+  console.log(a&&a.username?a.username:'');
+  await mongoose.disconnect();
+}).catch(()=>process.exit(0));
+\"" 2>/dev/null | tail -n1 | tr -d '\r'
+  )"
+  if [[ -n "$admin_user" ]]; then
+    user="$admin_user"
+    log_info "Promoting existing admin '${user}' → superadmin"
+  fi
+
+  pass="${SUPERADMIN_PASS:-}"
+  if [[ -z "$pass" ]]; then
+    pass="Fm$(openssl rand -hex 4)!$(openssl rand -hex 2)9A"
+    AUTO_SUPERADMIN_PASS="$pass"
+    log_warn "Creating/promoting ${user} with a one-time password"
+  fi
+
+  if reset_superadmin_credentials "$user" "$pass"; then
+    out_file="/root/foodmood-superadmin-credentials.txt"
+    {
+      echo "FoodMood superadmin (generated $(date -Is))"
+      echo "Username: ${user}"
+      echo "Password: ${pass}"
+      echo "See update terminal output for second-factor token."
+      echo "Change this password after login."
+    } >"$out_file"
+    chmod 600 "$out_file"
+    AUTO_SUPERADMIN_NOTE="$out_file"
+    SUPERADMIN_USER="$user"
+    log_ok "Superadmin ready — credentials saved to ${out_file}"
+    return 0
+  fi
+  log_err "Could not create superadmin"
+  return 1
+}
+
 repair_mongodb_from_env() {
   local env_file="${INSTALL_DIR}/.env"
   local uri mongo_user mongo_pass tmp_js encoded_pass new_uri

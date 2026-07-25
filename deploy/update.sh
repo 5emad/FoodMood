@@ -408,7 +408,7 @@ apply_update() {
   server_ip="$(detect_server_ip)"
 
   UPDATE_STEP=0
-  UPDATE_STEPS_TOTAL=10
+  UPDATE_STEPS_TOTAL=11
 
   ui_banner "FoodMood  ·  Update"
   ui_kv "From"    "v${old_version}"
@@ -473,6 +473,11 @@ apply_update() {
   ensure_services_running
   repair_mongodb_from_env || log_warn "MongoDB repair pass 1 had issues — continuing"
   log_ok "MongoDB check finished"
+
+  ui_step "Recover application data"
+  auto_recover_app_data || log_warn "Auto data recovery had issues — continuing"
+  ensure_superadmin_exists || log_warn "Superadmin ensure skipped"
+  log_ok "Data recovery pass finished"
 
   ui_step "PDF runtime"
   log_info "Chrome / Chromium for report PDFs…"
@@ -554,15 +559,21 @@ apply_update() {
     log_warn "PDF browser check failed — install Chrome/Chromium if reports need PDF"
   fi
 
-  if [[ -n "$SUPERADMIN_PASS" ]]; then
-    reset_superadmin_credentials "$SUPERADMIN_USER" "$SUPERADMIN_PASS" || exit 1
-  fi
+  ensure_superadmin_exists || true
 
   ui_success_card "$new_version" "$source_commit" "https://${server_ip}/login"
 
-  if [[ -z "$SUPERADMIN_PASS" ]]; then
-    log_dim "Optional — reset superadmin on next update:"
-    echo "    curl -fsSL .../deploy/update.sh | sudo bash -s -- --superadmin-pass 'YourPass@123!'"
+  if [[ -n "${AUTO_SUPERADMIN_PASS:-}" ]]; then
+    echo -e "  ${YELLOW}${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${YELLOW}${BOLD}║  SAVE THESE SUPERADMIN CREDENTIALS (shown once)          ║${NC}"
+    echo -e "  ${YELLOW}${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
+    ui_kv "Username" "${SUPERADMIN_USER:-superadmin}"
+    ui_kv "Password" "${AUTO_SUPERADMIN_PASS}"
+    [[ -n "${AUTO_SUPERADMIN_NOTE:-}" ]] && ui_kv "Saved in" "${AUTO_SUPERADMIN_NOTE}"
+    log_warn "Copy the Second-factor token from the reset output above — required at login."
+    ui_blank
+  elif [[ -n "$SUPERADMIN_PASS" ]]; then
+    log_ok "Superadmin password was reset as requested"
     ui_blank
   fi
   log_warn "Self-signed cert: browser may show ${BOLD}Not Secure${NC} — accept once or upload a cert in Superadmin."
@@ -577,6 +588,9 @@ apply_update() {
     echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "  App URL     : https://${server_ip}"
     echo "  Mode        : bare-metal"
+    if [[ -n "${AUTO_SUPERADMIN_PASS:-}" ]]; then
+      echo "  Superadmin  : ${SUPERADMIN_USER:-superadmin} / ${AUTO_SUPERADMIN_PASS}"
+    fi
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
 

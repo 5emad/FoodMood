@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.7] - 2026-07-25
+
+### Added
+- One-shot update auto-recovery: copy `food_reservation`→`food_ordering`, restore newest backup if empty, create/promote superadmin automatically and print credentials
+
 ## [1.9.6] - 2026-07-25
 
 ### Fixed
