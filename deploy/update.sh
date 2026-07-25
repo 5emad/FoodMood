@@ -514,21 +514,28 @@ apply_update_docker() {
   fi
 
   touch "$FOOD_DOCKER_MARKER"
+  log_info "Pointing host nginx to Docker edge :${FOOD_DOCKER_HTTP_PORT}..."
   repoint_host_nginx_to_docker "$FOOD_DOCKER_HTTP_PORT"
-  configure_tls_deployment
+  log_info "Configuring HTTPS (may take a moment)..."
+  configure_tls_deployment || log_warn "TLS configure had issues — continuing"
   # بعد از مارکر، سایت nginx دوباره با upstream 8080 نوشته شود
   if source_nginx_tls_lib 2>/dev/null; then
     configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER" || true
   fi
   repoint_host_nginx_to_docker "$FOOD_DOCKER_HTTP_PORT"
 
+  log_info "Disabling bare-metal app service (host mongod later)..."
   stop_bare_metal_app_services
 
   if ! wait_docker_health 45; then
     log_err "Docker health ناموفق — لاگ: cd /opt/food && docker compose --env-file .env.docker logs --tail=80"
+    log_err "وضعیت: cd /opt/food && docker compose --env-file .env.docker ps"
     exit 1
   fi
   log_ok "Docker API healthy روی 127.0.0.1:${FOOD_DOCKER_HTTP_PORT}"
+
+  # فقط وقتی داکر سالم است، mongod میزبان را خاموش کن
+  stop_host_mongod_if_docker
 
   if [[ -n "$SUPERADMIN_PASS" ]]; then
     # reset از طریق کانتینر app اگر ممکن باشد

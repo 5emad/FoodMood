@@ -219,44 +219,53 @@ repoint_host_nginx_to_docker() {
 }
 
 stop_bare_metal_app_services() {
-  systemctl stop "${SERVICE_NAME:-foodmood}" 2>/dev/null || true
-  systemctl disable "${SERVICE_NAME:-foodmood}" 2>/dev/null || true
-  # mongod میزبان را بعد از مهاجرت موفق خاموش می‌کنیم تا تداخل پورت/منابع نباشد
-  if [[ -f "$FOOD_DOCKER_MARKER" ]]; then
-    systemctl stop mongod 2>/dev/null || true
-    systemctl disable mongod 2>/dev/null || true
-    log_info "mongod میزبان متوقف شد (داده در volume داکر است)"
+  # systemctl disable گاهی روی بعضی دیستروها بدون خروجی hang می‌شود
+  timeout 20 systemctl stop "${SERVICE_NAME:-foodmood}" 2>/dev/null || true
+  timeout 20 systemctl disable "${SERVICE_NAME:-foodmood}" 2>/dev/null || true
+}
+
+stop_host_mongod_if_docker() {
+  # فقط بعد از healthy شدن استک داکر صدا زده شود
+  if [[ ! -f "$FOOD_DOCKER_MARKER" ]]; then
+    return 0
   fi
+  log_info "Stopping host mongod (data lives in Docker volume)..."
+  timeout 20 systemctl stop mongod 2>/dev/null || true
+  timeout 20 systemctl disable mongod 2>/dev/null || true
+  log_ok "Host mongod stopped (safe — Docker mongo is primary)"
 }
 
 docker_stack_up() {
-  local dc scale="${1:-1}" i mongo_ok=0 app_ok=0
+  local dc scale="${1:-1}" i mongo_ok=0 app_ok=0 mongo_cid=""
   dc="$(docker_compose_cmd)"
   cd "$INSTALL_DIR"
 
   log_info "Cleaning stuck app/nginx containers (volumes kept)..."
   $dc --env-file .env.docker stop nginx 2>/dev/null || true
   $dc --env-file .env.docker rm -f nginx 2>/dev/null || true
-  # Scaled replicas may be named foodmood-app-1 / foodmood-app-2
   $dc --env-file .env.docker stop app 2>/dev/null || true
   $dc --env-file .env.docker rm -f app 2>/dev/null || true
   docker ps -aq --filter "name=foodmood-app" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
 
-  log_info "Building images..."
+  log_info "Building images (ممکن است چند دقیقه طول بکشد)..."
   $dc --env-file .env.docker build app nginx || return 1
 
   log_info "Starting mongo..."
   $dc --env-file .env.docker up -d mongo || return 1
   for ((i=1; i<=60; i++)); do
-    if docker inspect --format='{{.State.Health.Status}}' \
-      "$($dc --env-file .env.docker ps -q mongo | head -n1)" 2>/dev/null | grep -qx healthy; then
+    mongo_cid="$($dc --env-file .env.docker ps -q mongo | head -n1)"
+    if [[ -n "$mongo_cid" ]] \
+      && docker inspect --format='{{.State.Health.Status}}' "$mongo_cid" 2>/dev/null | grep -qx healthy; then
       mongo_ok=1
       break
+    fi
+    if (( i % 5 == 0 )); then
+      log_info "Waiting for mongo healthy... (${i}/60)"
     fi
     sleep 2
   done
   if [[ "$mongo_ok" -ne 1 ]]; then
-    log_err "mongo healthy نشد — لاگ: $dc --env-file .env.docker logs --tail=60 mongo"
+    log_err "mongo healthy نشد — لاگ: cd /opt/food && docker compose --env-file .env.docker logs --tail=60 mongo"
     return 1
   fi
   log_ok "mongo healthy"
@@ -264,11 +273,13 @@ docker_stack_up() {
   log_info "Starting app ×${scale}..."
   $dc --env-file .env.docker up -d --scale "app=${scale}" --no-deps app || return 1
   for ((i=1; i<=45; i++)); do
-    # At least one app replica must answer /healthz
     if $dc --env-file .env.docker ps -q app 2>/dev/null | head -n1 | xargs -r -I{} \
-      docker exec {} curl -fsS http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+      docker exec {} curl -fsS --max-time 3 http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
       app_ok=1
       break
+    fi
+    if (( i % 5 == 0 )); then
+      log_info "Waiting for app /healthz... (${i}/45)"
     fi
     sleep 2
   done
@@ -281,15 +292,22 @@ docker_stack_up() {
 
   log_info "Starting nginx edge..."
   $dc --env-file .env.docker up -d --no-deps nginx || return 1
+  log_ok "Docker services started"
   return 0
 }
 
 wait_docker_health() {
   local tries="${1:-40}" i
+  log_info "Checking edge health on 127.0.0.1:${FOOD_DOCKER_HTTP_PORT}..."
   for ((i=1; i<=tries; i++)); do
-    if curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/healthz" >/dev/null 2>&1 \
-      || curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/api/system/health" >/dev/null 2>&1; then
+    if curl -fsS --connect-timeout 2 --max-time 3 \
+         "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/healthz" >/dev/null 2>&1 \
+      || curl -fsS --connect-timeout 2 --max-time 3 \
+         "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/api/system/health" >/dev/null 2>&1; then
       return 0
+    fi
+    if (( i % 5 == 0 )); then
+      log_info "Still waiting for Docker edge... (${i}/${tries})"
     fi
     sleep 2
   done
