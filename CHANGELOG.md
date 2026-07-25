@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-24
+
+### Removed
+- Docker / Compose deployment path (`Dockerfile`, `docker-compose.yml`, `docker/`, `deploy/lib-docker.sh`)
+- Docker-related npm scripts and docs
+
+### Changed
+- `update.sh` is bare-metal only (systemd + host MongoDB + Nginx)
+- Servers still on Docker are migrated off automatically on update (mongo dump → host mongod, compose down, nginx → `:3000`)
+
 ## [1.8.0] - 2026-07-17
 
 ### Added

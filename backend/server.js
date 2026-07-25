@@ -102,7 +102,7 @@ app.use('/js', express.static(path.join(publicDir, 'js'), {
 }));
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
-// Docker / compose liveness — always 200 once the process accepts HTTP (DB readiness is separate).
+// Liveness probe — always 200 once the process accepts HTTP (DB readiness is separate).
 app.get('/healthz', (_req, res) => {
   res.status(200).type('text/plain').send('ok');
 });

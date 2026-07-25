@@ -1,6 +1,6 @@
 {
   "name": "foodmood-backend",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "Backend (Express) — وابستگی‌های سرور؛ فرانت در frontend/",
   "main": "backend/server.js",
   "scripts": {
@@ -13,11 +13,7 @@
     "build:spa": "cd frontend && npm install && npm run build",
     "build": "npm run build:client && npm run build:spa",
     "postinstall": "node backend/scripts/sync-vendor.js",
-    "test:outage": "node backend/scripts/test-db-outage.js",
-    "docker:up": "docker compose --env-file .env.docker up -d --build",
-    "docker:down": "docker compose --env-file .env.docker down",
-    "docker:logs": "docker compose --env-file .env.docker logs -f --tail=200",
-    "docker:scale": "docker compose --env-file .env.docker up -d --scale app=2 --no-recreate"
+    "test:outage": "node backend/scripts/test-db-outage.js"
   },
   "keywords": [
     "food",

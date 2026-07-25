@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  FoodMood — update (پیش‌فرض: Docker + WAF)
+#  FoodMood — update (systemd + Mongo میزبان + Nginx)
 #
 #  یک دستور بعد از نصب:
 #    curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash
 #
-#  فرانت + بک + Mongo + WAF داخل Docker می‌آیند؛ داده حفظ می‌شود.
-#  HTTPS همان Nginx میزبان می‌ماند و به 127.0.0.1:8080 پروکسی می‌شود.
-#
-#  فقط نصب قدیمی بدون Docker (اضطراری):
-#    sudo bash /opt/food/deploy/update.sh --bare-metal
+#  اگر سرور هنوز Docker داشته باشد، داده به mongod میزبان منتقل و
+#  کانتینرها جمع می‌شوند؛ سپس آپدیت bare-metal اعمال می‌شود.
 #
 #  Reset superadmin:
 #    sudo bash .../update.sh --superadmin-pass 'Food@Super2026!'
@@ -26,7 +23,6 @@ LIST_TAGS=0
 SHOW_STATUS=0
 DIAGNOSE_ONLY=0
 REPAIR_DB_ONLY=0
-USE_DOCKER=1
 SUPERADMIN_USER="${SUPERADMIN_USER:-superadmin}"
 SUPERADMIN_PASS="${SUPERADMIN_PASS:-}"
 
@@ -52,8 +48,6 @@ while [[ $# -gt 0 ]]; do
     --status) SHOW_STATUS=1; shift ;;
     --diagnose) DIAGNOSE_ONLY=1; shift ;;
     --repair-db) REPAIR_DB_ONLY=1; shift ;;
-    --docker) USE_DOCKER=1; shift ;;
-    --bare-metal|--no-docker) USE_DOCKER=0; shift ;;
     --superadmin-user) SUPERADMIN_USER="$2"; shift 2 ;;
     --superadmin-pass) SUPERADMIN_PASS="$2"; shift 2 ;;
     -h|--help)
@@ -92,28 +86,20 @@ list_remote_tags() {
 }
 
 show_status() {
-  local current server_ip mode="bare-metal"
+  local current server_ip
   load_lib || exit 1
   current="$(read_installed_version)"
   server_ip="$(detect_server_ip)"
-  [[ -f "${INSTALL_DIR}/.docker-deployed" ]] && mode="docker"
   echo ""
   echo -e "${BOLD}Installed version:${NC}  v${current}"
-  echo -e "${BOLD}Deploy mode:${NC}       ${mode}"
+  echo -e "${BOLD}Deploy mode:${NC}       bare-metal (systemd)"
   echo -e "${BOLD}Server IP:${NC}         ${server_ip}"
   echo -e "${BOLD}Install path:${NC}       ${INSTALL_DIR}"
-  if [[ "$mode" == "docker" ]]; then
-    echo -e "${BOLD}Docker:${NC}            cd /opt/food && docker compose --env-file .env.docker ps"
-  else
-    echo -e "${BOLD}Service:${NC}            $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
-  fi
+  echo -e "${BOLD}Service:${NC}            $(systemctl is-active "$SERVICE_NAME" 2>/dev/null || echo 'unknown')"
   echo -e "${BOLD}App URL:${NC}            https://${server_ip}/login"
   echo ""
-  echo -e "${BOLD}Update (Docker default):${NC}"
+  echo -e "${BOLD}Update:${NC}"
   echo "  curl -fsSL https://raw.githubusercontent.com/5emad/FoodMood/main/deploy/update.sh | sudo bash"
-  echo ""
-  echo -e "${BOLD}Emergency bare-metal only:${NC}"
-  echo "  sudo bash /opt/food/deploy/update.sh --bare-metal"
   echo ""
   echo -e "${BOLD}Latest GitHub tags:${NC}"
   list_remote_tags
@@ -217,7 +203,7 @@ migrate_env_keys() {
   ensure_env_default CLUSTER_WORKERS 0
   ensure_env_default MONGODB_MAX_POOL_SIZE 50
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
-  # فقط لوپ‌بک — nginx روی همان سرور؛ شبکه‌های داکر را روی bare-metal ست نکنید
+  # فقط لوپ‌بک — nginx روی همان سرور
   ensure_env_default TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_default WAF_TRUSTED_PROXIES '127.0.0.1,::1'
   # WAF_ENABLED=false برای خاموش کردن فایروال وب (فقط در صورت نیاز)
@@ -261,6 +247,67 @@ fetch_source() {
     log_info "Fetching branch ${BRANCH} from ${REPO_URL}..."
     git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
   fi
+}
+
+
+# اگر هنوز Docker روی سرور است، داده را به mongod میزبان منتقل و کانتینرها را جمع می‌کند.
+exit_docker_to_bare_metal_if_needed() {
+  local marker="${INSTALL_DIR}/.docker-deployed"
+  local envf="${INSTALL_DIR}/.env.docker"
+  if [[ ! -f "$marker" && ! -f "$envf" ]]; then
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    rm -f "$marker" "$envf"
+    return 0
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    log_warn "Docker در حال اجرا نیست؛ فقط marker پاک می‌شود."
+    rm -f "$marker" "$envf"
+    return 0
+  fi
+
+  log_info "خروج از Docker و بازگشت به systemd + mongod میزبان..."
+  local compose_file="${INSTALL_DIR}/docker-compose.yml"
+  local dump_file="${INSTALL_DIR}/backups/docker-exit-$(date +%Y%m%d-%H%M%S).archive"
+  mkdir -p "${INSTALL_DIR}/backups"
+
+  if [[ -f "$compose_file" ]]; then
+    if [[ -f "$envf" ]] && docker compose -f "$compose_file" --env-file "$envf" ps -q mongo 2>/dev/null | grep -q .; then
+      log_info "دامپ Mongo از کانتینر..."
+      if docker compose -f "$compose_file" --env-file "$envf" exec -T mongo \
+          mongodump --archive --gzip --db food_reservation >"$dump_file" 2>/dev/null \
+        && [[ -s "$dump_file" ]]; then
+        systemctl start mongod 2>/dev/null || true
+        sleep 2
+        if command -v mongorestore >/dev/null 2>&1; then
+          mongorestore --archive="$dump_file" --gzip --drop --db=food_reservation >/dev/null 2>&1 \
+            && log_ok "داده به mongod میزبان منتقل شد." \
+            || log_warn "mongorestore ناموفق — دامپ: $dump_file"
+        else
+          log_warn "mongorestore نیست — دامپ نگه داشته شد: $dump_file"
+        fi
+      else
+        log_warn "دامپ Docker ناموفق بود."
+        rm -f "$dump_file"
+      fi
+    fi
+    log_info "توقف و حذف کانتینرها..."
+    if [[ -f "$envf" ]]; then
+      docker compose -f "$compose_file" --env-file "$envf" down --remove-orphans 2>/dev/null || true
+    else
+      docker compose -f "$compose_file" down --remove-orphans 2>/dev/null || true
+    fi
+  fi
+
+  systemctl enable mongod 2>/dev/null || true
+  systemctl start mongod 2>/dev/null || true
+  if [[ -f /etc/nginx/sites-available/food ]]; then
+    sed -i 's|proxy_pass http://127.0.0.1:8080|proxy_pass http://127.0.0.1:3000|g' /etc/nginx/sites-available/food || true
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+  fi
+  rm -f "$marker" "$envf"
+  log_ok "خروج از Docker انجام شد."
 }
 
 apply_update() {
@@ -441,135 +488,6 @@ apply_update() {
   } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
 }
 
-# ─── مسیر پیش‌فرض: همه‌چیز Docker (فرانت/بک/مونگو/WAF) ───────────────────────
-apply_update_docker() {
-  local source_dir="$1"
-  local old_version new_version source_commit server_ip backup_root first_migrate=0
-  local APP_SCALE="${APP_SCALE:-2}"
-
-  old_version="$(read_installed_version)"
-  new_version="$(read_package_version "$source_dir")"
-  source_commit="$(git -C "$source_dir" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  server_ip="$(detect_server_ip)"
-
-  echo ""
-  echo -e "${MAGENTA}${BOLD}  FoodMood Update → Docker${NC}"
-  echo -e "  ${BOLD}From:${NC} v${old_version}  →  ${BOLD}To:${NC} v${new_version} (${TAG:-$BRANCH} @ ${source_commit})"
-  echo -e "  ${BOLD}Stack:${NC} nginx(host TLS) → Docker(app×${APP_SCALE}+mongo+WAF)"
-  echo ""
-
-  log_info "Backing up .env..."
-  cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
-
-  # shellcheck source=/dev/null
-  source "${source_dir}/deploy/lib-docker.sh"
-
-  log_info "Syncing application files (keeping .env, uploads, certs, docker volumes data)..."
-  mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
-           "${INSTALL_DIR}/certs/ssl"
-  rsync -a --delete \
-    --exclude node_modules \
-    --exclude .git \
-    --exclude .env \
-    --exclude .env.docker \
-    --exclude .docker-deployed \
-    --exclude .npm \
-    --exclude .cache \
-    --exclude INSTALL_INFO.txt \
-    --exclude '*.log' \
-    --exclude 'backend/logs/' \
-    --exclude 'backend/public/uploads/' \
-    --exclude 'certs/ssl/' \
-    "$source_dir/" "$INSTALL_DIR/"
-
-  chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR" 2>/dev/null || true
-  [[ -f "${INSTALL_DIR}/.env" ]] && chmod 600 "${INSTALL_DIR}/.env"
-
-  migrate_env_keys
-  migrate_systemd_service
-
-  ensure_docker_engine || exit 1
-  ensure_env_docker_file
-
-  if [[ ! -f "$FOOD_DOCKER_MARKER" ]]; then
-    first_migrate=1
-    backup_root="/var/backups/foodmood-docker-migrate-$(date +%Y%m%d-%H%M%S)"
-    log_info "اولین مهاجرت به Docker — بکاپ داده: ${backup_root}"
-    backup_bare_metal_data "$backup_root"
-  fi
-
-  systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-
-  log_info "Building & starting Docker stack (WAF داخل app)..."
-  docker_stack_up "$APP_SCALE" || {
-    log_err "docker compose up ناموفق"
-    exit 1
-  }
-
-  if [[ "$first_migrate" -eq 1 ]]; then
-    restore_data_into_docker "$backup_root"
-    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$FOOD_DOCKER_MARKER"
-    echo "version=${new_version}" >> "$FOOD_DOCKER_MARKER"
-    chmod 644 "$FOOD_DOCKER_MARKER"
-  fi
-
-  touch "$FOOD_DOCKER_MARKER"
-  log_info "Pointing host nginx to Docker edge :${FOOD_DOCKER_HTTP_PORT}..."
-  repoint_host_nginx_to_docker "$FOOD_DOCKER_HTTP_PORT"
-  log_info "Configuring HTTPS (may take a moment)..."
-  configure_tls_deployment || log_warn "TLS configure had issues — continuing"
-  # بعد از مارکر، سایت nginx دوباره با upstream 8080 نوشته شود
-  if source_nginx_tls_lib 2>/dev/null; then
-    configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER" || true
-  fi
-  repoint_host_nginx_to_docker "$FOOD_DOCKER_HTTP_PORT"
-
-  log_info "Disabling bare-metal app service (host mongod later)..."
-  stop_bare_metal_app_services
-
-  if ! wait_docker_health 45; then
-    log_err "Docker health ناموفق — لاگ: cd /opt/food && docker compose --env-file .env.docker logs --tail=80"
-    log_err "وضعیت: cd /opt/food && docker compose --env-file .env.docker ps"
-    exit 1
-  fi
-  log_ok "Docker API healthy روی 127.0.0.1:${FOOD_DOCKER_HTTP_PORT}"
-
-  # فقط وقتی داکر سالم است، mongod میزبان را خاموش کن
-  stop_host_mongod_if_docker
-
-  if [[ -n "$SUPERADMIN_PASS" ]]; then
-    # reset از طریق کانتینر app اگر ممکن باشد
-    local app_cid dc
-    dc="$(docker_compose_cmd)"
-    app_cid="$(cd "$INSTALL_DIR" && $dc --env-file .env.docker ps -q app | head -n1)"
-    if [[ -n "$app_cid" ]]; then
-      log_info "Reset superadmin داخل کانتینر (در صورت پشتیبانی اسکریپت)..."
-      reset_superadmin_credentials "$SUPERADMIN_USER" "$SUPERADMIN_PASS" 2>/dev/null \
-        || log_warn "reset superadmin از هاست ممکن است به مونگو قدیمی وصل شود — از پنل تغییر دهید"
-    fi
-  fi
-
-  installed_after="$(read_installed_version)"
-  log_ok "Update complete — FoodMood v${installed_after} on Docker (WAF فعال، scale=app×${APP_SCALE})"
-  echo ""
-  echo -e "${GREEN}${BOLD}  Open:${NC}  https://${server_ip}/login"
-  echo -e "  ${CYAN}Logs:${NC}  cd /opt/food && docker compose --env-file .env.docker logs -f app"
-  echo -e "  ${CYAN}Scale:${NC} APP_SCALE=3 sudo -E bash deploy/update.sh"
-  echo ""
-
-  {
-    echo ""
-    echo "─── Last update (Docker) ──────────────────────────────────────"
-    echo "  Version     : v${new_version}"
-    echo "  Git commit  : ${source_commit}"
-    echo "  Mode        : docker (WAF + mongo + nginx edge)"
-    echo "  App scale   : ${APP_SCALE}"
-    echo "  Upstream    : 127.0.0.1:${FOOD_DOCKER_HTTP_PORT}"
-    echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
-    echo "  App URL     : https://${server_ip}"
-  } >> "${INSTALL_DIR}/INSTALL_INFO.txt" 2>/dev/null || true
-}
-
 CLONE_DIR=""
 
 main() {
@@ -629,12 +547,8 @@ main() {
   fetch_source
   trap 'rm -rf "$CLONE_DIR"' EXIT
   load_lib "${CLONE_DIR}/deploy/lib.sh"
-  if [[ "$USE_DOCKER" -eq 1 ]]; then
-    apply_update_docker "$CLONE_DIR"
-  else
-    log_warn "حالت --bare-metal: بدون Docker (فقط اضطراری)"
-    apply_update "$CLONE_DIR"
-  fi
+  exit_docker_to_bare_metal_if_needed
+  apply_update "$CLONE_DIR"
 }
 
 main "$@"

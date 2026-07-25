@@ -93,10 +93,6 @@ write_nginx_https_site() {
   local key_path="$2"
   local install_dir="$3"
   local upstream_port=3000
-  # بعد از مهاجرت Docker، اپ پشت 127.0.0.1:8080 است
-  if [[ -f "${install_dir}/.docker-deployed" ]]; then
-    upstream_port=8080
-  fi
   cat > "$NGINX_SITE" <<EOF
 # FoodMood — all traffic on HTTPS (HTTP redirects to HTTPS)
 server {
