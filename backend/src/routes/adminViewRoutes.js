@@ -6,7 +6,7 @@ const { getAdminCapabilities } = require('../helpers/PermissionHelper');
 const { getSettingsLean, adminWorkspaceSettings } = require('../services/SettingsService');
 
 const superadminOnly = roleMiddleware(['superadmin']);
-const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements'];
+const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
 
 async function renderDashboard(req, res, next, activePage) {
   try {
@@ -51,8 +51,8 @@ router.get('/super/security', authMiddleware, superadminOnly, (req, res) => {
   res.render('admin/super-security', { user: req.user, isSuperadmin: true });
 });
 
-router.get('/super/backup', authMiddleware, superadminOnly, (req, res) => {
-  res.render('admin/super-backup', { user: req.user, isSuperadmin: true });
+router.get('/super/backup', authMiddleware, roleMiddleware(['admin', 'superadmin']), (req, res) => {
+  res.redirect(302, '/admin/backup');
 });
 
 module.exports = router;

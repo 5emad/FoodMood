@@ -1,7 +1,7 @@
 const { formatJalaliDate } = require('../helpers/DateHelper');
 const { buildReport, isSuperadminReportUser } = require('../services/ReportService');
 const { clampPercent, splitAmount } = require('../services/UserStatementService');
-const { buildStatementNumber } = require('../helpers/StatementNumberHelper');
+const { buildStatementNumber, normalizePeriodKey } = require('../helpers/StatementNumberHelper');
 const { nextReportNumber } = require('../helpers/ReportNumberHelper');
 
 function userActorFromReportRow(row = {}) {
@@ -14,9 +14,16 @@ function userActorFromReportRow(row = {}) {
 }
 
 function periodKeyFromQuery(query = {}, range = {}, periodType = 'week') {
-  if (query.weekId) return String(query.weekId);
-  if (query.jalaliFrom && query.jalaliTo) return `${query.jalaliFrom}-${query.jalaliTo}`;
-  return `${periodType}:${formatJalaliDate(range.start)}-${formatJalaliDate(range.end)}`;
+  const type = periodType === 'month' ? 'month' : 'week';
+  if (type === 'week') {
+    return normalizePeriodKey('week', query.weekId || '');
+  }
+  const jalaliFrom = query.jalaliFrom || range.jalaliStart || '';
+  const jalaliTo = query.jalaliTo || range.jalaliEnd || '';
+  if (query.jalaliFrom && query.jalaliTo) {
+    return normalizePeriodKey('month', `${query.jalaliFrom}-${query.jalaliTo}`, { jalaliFrom, jalaliTo });
+  }
+  return normalizePeriodKey('month', jalaliFrom || `${type}:${jalaliFrom}-${jalaliTo}`, { jalaliFrom, jalaliTo });
 }
 
 function mapUsersToFinanceRows(byUser = [], settings = {}, periodType = 'week', periodKey = '') {
@@ -24,7 +31,6 @@ function mapUsersToFinanceRows(byUser = [], settings = {}, periodType = 'week', 
   const personalSharePercent = 100 - organizationSharePercent;
 
   const users = (byUser || [])
-    .filter((row) => !isSuperadminReportUser({ role: row.role, username: row.username }))
     .map((row) => {
       const split = splitAmount(row.totalPrice, organizationSharePercent);
       const actor = userActorFromReportRow(row);

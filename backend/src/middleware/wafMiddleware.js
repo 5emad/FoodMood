@@ -1,11 +1,16 @@
 const path = require('path');
-const { createWAF } = require('firewtwall');
 const { startWafLogBridge } = require('../services/WafLogBridge');
+const { isWafRuntimeEnabled } = require('../services/WafStateService');
 const {
   applyFirewtwallPatches,
+  createMultipartSafeRequestSizeMiddleware,
   createWafScrubMiddleware,
   createWafRestoreMiddleware,
 } = require('./firewtwallPatches');
+
+// پچ باید قبل از require('firewtwall') اجرا شود؛ وگرنه factory اصلی در closure می‌ماند
+applyFirewtwallPatches();
+const { createWAF } = require('firewtwall');
 
 const WAF_LOG_PATH = path.join(__dirname, '..', '..', 'logs', 'waf.log');
 
@@ -41,8 +46,8 @@ const WAF_OPTIONS = {
   logPath: WAF_LOG_PATH,
   debug: process.env.WAF_DEBUG === 'true',
 
-  // JSON اپ ۱MB است؛ آپلود تصویر تا ۵MB + سربار multipart
-  maxBodySize: envInt('WAF_MAX_BODY_BYTES', 6 * 1024 * 1024),
+  // JSON اپ ۱MB؛ تصویر تا ۵MB؛ بکاپ تا ۲۰۰MB (مسیر backup هم در bypass است)
+  maxBodySize: envInt('WAF_MAX_BODY_BYTES', 210 * 1024 * 1024),
 
   allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
 
@@ -58,6 +63,19 @@ const WAF_OPTIONS = {
   bypassPaths: [
     '/api/system/health',
     '/api/auth/csrf',
+    // رمز عبور اغلب کاراکترهای خاص دارد و نباید به heuristic/SQLi WAF بخورد
+    '/api/auth/login',
+    '/api/auth/resolve-username',
+    '/api/auth/verify-super-token',
+    '/api/auth/change-password',
+    '/api/auth/register',
+    '/api/auth/logout',
+    '/api/auth/set-fullname',
+    // تست LDAP حاوی رمز عبور bind است
+    '/api/admin/settings/test-ldap',
+    // فایل .fzbackup رمزنگاری‌شده — آنتروپی بالا / حجم زیاد
+    '/api/admin/backup/export',
+    '/api/admin/backup/restore',
     '/favicon.ico',
   ],
 
@@ -172,12 +190,32 @@ function createPathBypassMiddleware(bypassPaths = []) {
   };
 }
 
+/**
+ * WAF Gate — بر اساس وضعیت runtime (از WafStateService) تصمیم می‌گیرد
+ * آیا درخواست از WAF رد شود یا skip شود.
+ * این middleware قبل از WAF stack قرار می‌گیرد.
+ */
+function createWafGateMiddleware() {
+  return function wafGate(req, _res, next) {
+    if (!isWafRuntimeEnabled()) {
+      req.wafTrusted = true;
+    }
+    next();
+  };
+}
+
 function createAppWaf() {
+  // WAF stack همیشه ساخته می‌شود — gate middleware وضعیت runtime را کنترل می‌کند
   applyFirewtwallPatches();
   startWafLogBridge(WAF_LOG_PATH);
-  const stack = createWAF(WAF_OPTIONS);
+  const stack = createWAF(WAF_OPTIONS).map((mw) => (
+    mw && mw.name === 'requestSizeMiddleware'
+      ? createMultipartSafeRequestSizeMiddleware(WAF_OPTIONS)
+      : mw
+  ));
   return [
     createSafeWafResponseMiddleware(),
+    createWafGateMiddleware(),
     createWafScrubMiddleware(),
     createPathBypassMiddleware(WAF_OPTIONS.bypassPaths),
     ...stack,
@@ -186,8 +224,13 @@ function createAppWaf() {
   ];
 }
 
+function isWafEnabled() {
+  return isWafRuntimeEnabled();
+}
+
 module.exports = {
   createAppWaf,
+  isWafEnabled,
   WAF_LOG_PATH,
   WAF_OPTIONS,
 };

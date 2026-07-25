@@ -26,5 +26,3 @@ backend/public/uploads/**
 !backend/public/uploads/.gitkeep
 !backend/public/uploads/foods/
 !backend/public/uploads/foods/.gitkeep
-!backend/public/uploads/portal-slides/
-!backend/public/uploads/portal-slides/.gitkeep

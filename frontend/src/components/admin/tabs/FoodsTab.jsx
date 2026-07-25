@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import { confirmAction } from '../../../hooks/useConfirm';
+import { groupItemsByCategory } from '../../../lib/foodCategories';
 import SectionHeader from '../shared/SectionHeader';
 import Pagination from '../shared/Pagination';
 import AdminSpinner from '../shared/AdminSpinner';
@@ -14,13 +15,17 @@ export default function FoodsTab() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-  const [form, setForm] = useState({ name: '', price: '', category: 'lunch', isType1: false });
+  const [form, setForm] = useState({ name: '', price: '', category: 'lunch' });
   const [edit, setEdit] = useState(null);
   const [catForm, setCatForm] = useState({ name: '' });
   const [catBusy, setCatBusy] = useState(false);
 
   const catLabel = (key) => categories.find((c) => c.key === key)?.name || key;
   const defaultCategory = categories[0]?.key || 'lunch';
+  const foodsByCategory = useMemo(
+    () => groupItemsByCategory(foods, (food) => food.category, categories),
+    [foods, categories],
+  );
 
   async function loadCategories() {
     const data = await api('/api/foods/categories?includeInactive=true');
@@ -78,12 +83,11 @@ export default function FoodsTab() {
         name: form.name,
         price: Number(form.price),
         category: form.category || defaultCategory,
-        isType1: !!form.isType1,
       }),
     });
     if (data.success) {
       toast('غذا اضافه شد', 'success');
-      setForm({ name: '', price: '', category: defaultCategory, isType1: false });
+      setForm({ name: '', price: '', category: defaultCategory });
       load(pagination.page);
     } else toast(data.message || 'خطا', 'error');
   }
@@ -96,7 +100,6 @@ export default function FoodsTab() {
         name: edit.name,
         price: Number(edit.price),
         category: edit.category,
-        isType1: !!edit.isType1,
       }),
     });
     if (data.success) { toast('ویرایش شد', 'success'); setEdit(null); load(pagination.page); }
@@ -144,10 +147,6 @@ export default function FoodsTab() {
             <select className="form-control" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {categories.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
             </select>
-            <label className="form-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-              <input type="checkbox" checked={!!form.isType1} onChange={(e) => setForm({ ...form, isType1: e.target.checked })} />
-              نوع یک
-            </label>
             <button className="btn btn-primary" type="submit"><i className="fas fa-plus" /> افزودن</button>
           </form>
         </div>
@@ -165,10 +164,6 @@ export default function FoodsTab() {
               <select className="form-control" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>
                 {categories.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
               </select>
-              <label className="form-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0, whiteSpace: 'nowrap' }}>
-                <input type="checkbox" checked={!!edit.isType1} onChange={(e) => setEdit({ ...edit, isType1: e.target.checked })} />
-                نوع یک
-              </label>
               <button className="btn btn-primary" type="submit"><i className="fas fa-save" /> ذخیره</button>
             </form>
           </div>
@@ -178,20 +173,29 @@ export default function FoodsTab() {
         {loading ? <AdminSpinner /> : (
           <>
             <table className="table" id="foodsTable">
-              <thead><tr><th>نام</th><th>دسته</th><th>نوع یک</th><th>قیمت</th><th>عملیات</th></tr></thead>
+              <thead><tr><th>نام</th><th>دسته</th><th>قیمت</th><th>عملیات</th></tr></thead>
               <tbody>
-                {foods.map((f) => (
-                  <tr key={f._id}>
-                    <td style={{ fontWeight: 700 }}>{f.name}</td>
-                    <td><span className="badge badge-primary">{catLabel(f.category)}</span></td>
-                    <td>{f.isType1 ? <span className="badge badge-success">بله</span> : <span className="badge badge-gray">خیر</span>}</td>
-                    <td>{money(f.price)}</td>
-                    <TableActions>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => setEdit({ ...f })} title="ویرایش"><i className="fas fa-edit" /></button>
-                      <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(f._id)} title="حذف"><i className="fas fa-trash" /></button>
-                    </TableActions>
-                  </tr>
-                ))}
+                {foodsByCategory.flatMap((group) => [
+                  <tr key={`cat-${group.key}`} className="dept-group-row">
+                    <td colSpan={4} style={{ background: 'var(--primary-bg)', fontWeight: 800, textAlign: 'right', padding: '10px 12px' }}>
+                      {group.name}
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '.82rem', marginRight: 8 }}>
+                        ({group.items.length} غذا)
+                      </span>
+                    </td>
+                  </tr>,
+                  ...group.items.map((f) => (
+                    <tr key={f._id}>
+                      <td style={{ fontWeight: 700 }}>{f.name}</td>
+                      <td><span className="badge badge-primary">{catLabel(f.category)}</span></td>
+                      <td>{money(f.price)}</td>
+                      <TableActions>
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => setEdit({ ...f })} title="ویرایش"><i className="fas fa-edit" /></button>
+                        <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(f._id)} title="حذف"><i className="fas fa-trash" /></button>
+                      </TableActions>
+                    </tr>
+                  )),
+                ])}
               </tbody>
             </table>
             <div id="foodsPagination"><Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} onPage={load} /></div>

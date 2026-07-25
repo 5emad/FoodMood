@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useToast } from '../components/ToastProvider';
 import AppVersionBadge from '../components/AppVersionBadge';
-import UserHeroSlider from '../components/UserHeroSlider';
+import CategoryWeekMenuSlider from '../components/CategoryWeekMenuSlider';
+import PortalProfilePanel from '../components/PortalProfilePanel';
 import { normalizeUserCapabilities } from '../lib/portalCapabilities';
 import { faDigits, jdate, money } from '../utils/format';
 
@@ -14,12 +15,31 @@ function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
 }
 
+function initialsFromName(name, username) {
+  const raw = String(name || username || '').trim();
+  if (!raw) return '؟';
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`;
+  return raw.slice(0, 2);
+}
+
+function getBootstrapData() {
+  try {
+    const el = document.getElementById('app-bootstrap-data');
+    if (!el) return {};
+    return JSON.parse(el.textContent || '{}');
+  } catch {
+    return {};
+  }
+}
+const bootstrapData = getBootstrapData();
+
 export default function UserDashboardPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState('menu');
   const [user, setUser] = useState(null);
   const [version, setVersion] = useState(null);
-  const [caps, setCaps] = useState(normalizeUserCapabilities({}));
+  const [caps, setCaps] = useState(normalizeUserCapabilities(bootstrapData.capabilities || {}));
   const [menu, setMenu] = useState(null);
   const [orders, setOrders] = useState([]);
   const [statements, setStatements] = useState([]);
@@ -28,22 +48,61 @@ export default function UserDashboardPage() {
   const [pendingItems, setPendingItems] = useState(new Set());
   const [stmtSub, setStmtSub] = useState('weekly');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [heroSlides, setHeroSlides] = useState([]);
-  const [heroLoading, setHeroLoading] = useState(true);
+  const [categories, setCategories] = useState([]);
+  const [receipt, setReceipt] = useState(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
-    document.body.className = '';
+    document.body.className = 'user-portal-body';
     bootstrap();
+    return () => {
+      document.body.classList.remove('user-portal-body');
+    };
   }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('ann-drawer-open', drawerOpen || !!receipt || profileOpen);
+    return () => document.body.classList.remove('ann-drawer-open');
+  }, [drawerOpen, receipt, profileOpen]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return undefined;
+    function onDocClick(e) {
+      if (!e.target.closest?.('.portal-user-menu')) setUserMenuOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setUserMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [userMenuOpen]);
+
+  function openProfile() {
+    setUserMenuOpen(false);
+    setProfileOpen(true);
+  }
+
+  function goTab(next) {
+    setUserMenuOpen(false);
+    setProfileOpen(false);
+    setTab(next);
+  }
 
   async function bootstrap() {
     setLoading(true);
     try {
-      const [boot, me, ann, pub] = await Promise.all([
+      const [boot, me, ann, pub, cats] = await Promise.all([
         api('/api/app/user/bootstrap'),
         api('/api/auth/me'),
         api('/api/announcements/active'),
         api('/api/app/public'),
+        api('/api/foods/categories'),
       ]);
       if (boot.success) {
         setCaps(normalizeUserCapabilities({ ...boot.data.portalSettings, ...boot.data.capabilities }));
@@ -51,19 +110,10 @@ export default function UserDashboardPage() {
       if (me.success) setUser(me.user);
       if (pub.success) setVersion(pub.data);
       if (ann.success) setAnnouncements((ann.data || []).filter((a) => a.title && a.body));
-      await Promise.all([loadMenu(), loadHeroSlides()]);
+      if (cats.success) setCategories(cats.data || []);
+      await loadMenu();
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadHeroSlides() {
-    setHeroLoading(true);
-    try {
-      const data = await api('/api/app/user/portal-slider');
-      if (data.success) setHeroSlides(data.data?.slides || []);
-    } finally {
-      setHeroLoading(false);
     }
   }
 
@@ -78,7 +128,6 @@ export default function UserDashboardPage() {
     }
     setMenu(menuRes.data);
     setOrders(ordersRes.success ? ordersRes.data : []);
-    await loadHeroSlides();
     const settings = menuRes.data?.settings || {};
     setCaps((c) => normalizeUserCapabilities({
       ...c,
@@ -137,101 +186,184 @@ export default function UserDashboardPage() {
     await loadMenu();
   }
 
-  const orderedDayIds = new Set(orders.filter((o) => o.status !== 'cancelled').map((o) => String(o.dailyMenuId?._id || o.dailyMenuId || '')));
+  async function openReceipt(row) {
+    setReceiptLoading(true);
+    setReceipt({ preview: row, detail: null });
+    try {
+      let url = '/api/user/statement?';
+      if (row.periodType === 'week' || stmtSub === 'weekly') {
+        url += `weekId=${encodeURIComponent(row.periodKey)}`;
+      } else {
+        url += `jalaliFrom=${encodeURIComponent(row.range?.jalaliStart || '')}&jalaliTo=${encodeURIComponent(row.range?.jalaliEnd || '')}&type=month`;
+      }
+      const data = await api(url);
+      if (!data.success) {
+        toast(data.message || 'دریافت جزئیات صورتحساب ناموفق بود', 'error');
+        setReceipt(null);
+        return;
+      }
+      setReceipt({ preview: row, detail: data.data });
+    } catch {
+      toast('خطا در اتصال', 'error');
+      setReceipt(null);
+    } finally {
+      setReceiptLoading(false);
+    }
+  }
+
+  function closeReceipt() {
+    setReceipt(null);
+    setReceiptLoading(false);
+  }
+
+  const orderedDayCategories = new Set();
   const orderByItem = {};
-  orders.filter((o) => o.status !== 'cancelled' && o.menuItemId).forEach((o) => {
-    orderByItem[String(o.menuItemId._id || o.menuItemId)] = o;
+  orders.filter((o) => o.status !== 'cancelled').forEach((o) => {
+    const dayId = String(o.dailyMenuId?._id || o.dailyMenuId || '');
+    const menuItemId = String(o.menuItemId?._id || o.menuItemId || '');
+    const cat = String(
+      o.foodCategory
+      || o.menuItemId?.foodId?.category
+      || o.items?.[0]?.foodId?.category
+      || 'uncategorized',
+    ).trim().toLowerCase() || 'uncategorized';
+    if (dayId) orderedDayCategories.add(`${dayId}|${cat}`);
+    if (menuItemId) orderByItem[menuItemId] = o;
   });
 
   const showAdminLink = isAdminRole(user?.role);
+  const receiptData = receipt?.detail;
+  const orgName = version?.organizationName || 'سامانه تغذیه';
+  const weekLabel = menu?.weekId?.title
+    || (menu?.weekId?.startDate && menu?.weekId?.endDate
+      ? `${jdate(menu.weekId.startDate)} تا ${jdate(menu.weekId.endDate)}`
+      : 'برنامه غذایی');
 
   return (
     <>
-      <nav className="top-nav">
-        <div className="nav-brand">
-          <div className="nav-brand-icon"><i className="fas fa-utensils" /></div>
-          <div>
-            <div className="nav-brand-title">اتوماسیون تغذیه</div>
-            <span className="nav-brand-sub">پرتال کارکنان</span>
+      <main className="user-portal-shell user-portal-shell--split user-portal-shell--claude">
+        <aside className="user-side-nav" aria-label="منوی پرتال کارکنان">
+          <div className="user-side-nav-brand">
+            <div className="user-side-nav-logo" aria-hidden="true">
+              <i className="fas fa-utensils" />
+            </div>
+            <div>
+              <span className="user-side-nav-head">{orgName}</span>
+              <span className="user-side-nav-sub">پرتال کارکنان</span>
+            </div>
           </div>
-        </div>
-        <div className="nav-user">
-          <div className="nav-user-info">
-            <span className="nav-u-name">{user?.fullName || user?.username || 'همکار گرامی'}</span>
-            <span className="nav-u-dept">{user?.department?.name || 'واحد عمومی'}</span>
-          </div>
-          {showAdminLink && (
-            <Link to="/admin/reports" className="btn-icon admin-portal-btn" title="بازگشت به پنل مدیریت">
-              <i className="fas fa-cogs" />
-            </Link>
-          )}
-          <a href="/logout" className="btn-icon logout-btn" title="خروج"><i className="fas fa-power-off" /></a>
-        </div>
-      </nav>
 
-      <main className="user-portal-shell">
-        <div className="user-portal-main">
-          <UserHeroSlider slides={heroSlides} showPrices={caps.showPrices} loading={heroLoading} />
-
-          <div className="user-tabs">
-            <button type="button" className={`tab-button${tab === 'menu' ? ' active' : ''}`} onClick={() => setTab('menu')}><i className="fas fa-calendar-days" /> منوی هفته</button>
-            <button type="button" className={`tab-button${tab === 'orders' ? ' active' : ''}`} onClick={() => setTab('orders')}><i className="fas fa-receipt" /> سفارش‌های من</button>
+          <nav className="user-tabs user-tabs--vertical" role="tablist" aria-label="بخش‌های پرتال">
+            <button type="button" role="tab" aria-selected={tab === 'menu'} className={`tab-button${tab === 'menu' ? ' active' : ''}`} onClick={() => goTab('menu')}>
+              <span className="tab-button-ico"><i className="fas fa-utensils" /></span>
+              <span className="tab-button-copy">
+                <span className="tab-button-label">رزرو غذا</span>
+                <span className="tab-button-hint">برنامه غذایی</span>
+              </span>
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'orders'} className={`tab-button${tab === 'orders' ? ' active' : ''}`} onClick={() => goTab('orders')}>
+              <span className="tab-button-ico"><i className="fas fa-clipboard-list" /></span>
+              <span className="tab-button-copy">
+                <span className="tab-button-label">سفارش‌های من</span>
+                <span className="tab-button-hint">پیگیری رزروها</span>
+              </span>
+            </button>
             {caps.showStatement && (
-              <button type="button" className={`tab-button${tab === 'statement' ? ' active' : ''}`} onClick={() => setTab('statement')}><i className="fas fa-file-invoice-dollar" /> صورتحساب</button>
+              <button type="button" role="tab" aria-selected={tab === 'statement'} className={`tab-button${tab === 'statement' ? ' active' : ''}`} onClick={() => goTab('statement')}>
+                <span className="tab-button-ico"><i className="fas fa-file-invoice" /></span>
+                <span className="tab-button-copy">
+                  <span className="tab-button-label">صورتحساب</span>
+                  <span className="tab-button-hint">هفتگی و ماهیانه</span>
+                </span>
+              </button>
             )}
-          </div>
+          </nav>
 
-          {loading && <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>}
+          <div className="user-side-nav-foot user-side-nav-foot--minimal">
+            <AppVersionBadge version={version} />
+          </div>
+        </aside>
+
+        <div className="user-portal-main">
+          <header className="portal-topbar">
+            <div className={`portal-user-menu${userMenuOpen ? ' is-open' : ''}`}>
+              <button
+                type="button"
+                className="portal-user-menu-trigger"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                onClick={() => setUserMenuOpen((v) => !v)}
+              >
+                <span className="portal-user-menu-avatar" aria-hidden="true">
+                  {initialsFromName(user?.fullName, user?.username)}
+                </span>
+                <span className="portal-user-menu-trigger-meta">
+                  <span className="portal-user-menu-trigger-name">{user?.fullName || user?.username || 'همکار گرامی'}</span>
+                  <span className="portal-user-menu-trigger-dept">{user?.department?.name || 'واحد عمومی'}</span>
+                </span>
+                <i className={`fas fa-chevron-down portal-user-menu-caret${userMenuOpen ? ' is-open' : ''}`} aria-hidden="true" />
+              </button>
+
+              {userMenuOpen && (
+                <div className="portal-user-menu-panel" role="menu" aria-label="منوی حساب کاربری">
+                  <div className="portal-user-menu-head">
+                    <span className="portal-user-menu-avatar portal-user-menu-avatar--lg" aria-hidden="true">
+                      {initialsFromName(user?.fullName, user?.username)}
+                    </span>
+                    <div className="portal-user-menu-head-copy">
+                      <strong>{user?.fullName || user?.username || 'همکار گرامی'}</strong>
+                      <span>{user?.department?.name || 'واحد عمومی'}</span>
+                      {user?.username ? <em>@{user.username}</em> : null}
+                    </div>
+                  </div>
+                  <div className="portal-user-menu-divider" />
+                  <button type="button" role="menuitem" className="portal-user-menu-item" onClick={openProfile}>
+                    <i className="fas fa-user-gear" />
+                    <span>تنظیمات حساب</span>
+                  </button>
+                  {showAdminLink && (
+                    <Link to="/admin/reports" role="menuitem" className="portal-user-menu-item" onClick={() => setUserMenuOpen(false)}>
+                      <i className="fas fa-cogs" />
+                      <span>پنل مدیریت</span>
+                    </Link>
+                  )}
+                  <a href="/logout" role="menuitem" className="portal-user-menu-item portal-user-menu-item--danger">
+                    <i className="fas fa-power-off" />
+                    <span>خروج</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          </header>
+
+          {loading && <div className="portal-loading"><div className="spinner" /></div>}
 
           {!loading && tab === 'menu' && (
-            <section className="tab-panel active">
-              <div className="menu-grid">
-                {!menu && <div className="empty-state"><i className="fas fa-calendar-xmark" /><p>برنامه غذایی فعالی وجود ندارد.</p></div>}
-                {menu?.days?.map((day) => {
-                  const dayLocked = orderedDayIds.has(String(day._id));
-                  return (
-                    <div key={day._id} className="day-card">
-                      <div className="day-card-header">
-                        <span className="day-name">{day.dayId?.name || ''}</span>
-                        <span className="day-date-badge">{jdate(day.date)}</span>
-                      </div>
-                      <div className="day-card-body">
-                        {day.items?.length ? day.items.map((item) => {
-                          const cap = Number(item.effectiveCapacity) || Number(menu.settings?.defaultMenuItemCapacity) || 0;
-                          const full = cap > 0 && item.reservedCount >= cap;
-                          const order = orderByItem[String(item._id)];
-                          return (
-                            <div key={item._id} className="food-row">
-                              <div>
-                                <div className="food-name">{item.foodId?.name || '-'}</div>
-                                {caps.showPrices && <div className="food-price">{money(item.price)}</div>}
-                              </div>
-                              <div className="menu-actions">
-                                {order ? (
-                                  order.canCancel
-                                    ? <button type="button" className="btn-cancel-order" onClick={() => cancelOrder(order._id)}><i className="fas fa-xmark" /> لغو رزرو</button>
-                                    : <span className="status-confirmed"><i className="fas fa-check" /> تایید شده</span>
-                                ) : dayLocked ? (
-                                  <button type="button" className="btn-reserve" disabled>سفارش دارید</button>
-                                ) : (
-                                  <button type="button" className="btn-reserve" disabled={full || pendingItems.has(item._id)} onClick={() => placeOrder(item._id)}>
-                                    {full ? 'تکمیل' : 'رزرو'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        }) : <div className="day-empty"><p>غذایی برای این روز ثبت نشده</p></div>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <section className="tab-panel active portal-menu-stage">
+              <header className="portal-stage-header">
+                <div>
+                  <h1 className="portal-stage-title">{weekLabel}</h1>
+                  <p className="portal-stage-lead">روز را انتخاب کنید، غذای هر دسته را ببینید و رزرو کنید.</p>
+                </div>
+              </header>
+              <CategoryWeekMenuSlider
+                menu={menu}
+                categories={categories}
+                showPrices={!!caps.showPrices}
+                orderedDayCategories={orderedDayCategories}
+                orderByItem={orderByItem}
+                pendingItems={pendingItems}
+                onPlaceOrder={placeOrder}
+                onCancelOrder={cancelOrder}
+              />
             </section>
           )}
 
           {!loading && tab === 'orders' && (
             <section className="tab-panel active">
+              <header className="portal-stage-header portal-stage-header--compact">
+                <h1 className="portal-stage-title">سفارش‌های من</h1>
+              </header>
               <div className="table-wrap">
                 {!orders.length ? <div className="orders-empty"><i className="fas fa-receipt" /><p>هنوز سفارشی ثبت نکرده‌اید.</p></div> : (
                   <table className="table">
@@ -265,6 +397,9 @@ export default function UserDashboardPage() {
 
           {!loading && tab === 'statement' && caps.showStatement && (
             <section className="tab-panel active">
+              <header className="portal-stage-header portal-stage-header--compact">
+                <h1 className="portal-stage-title">صورتحساب</h1>
+              </header>
               <div className="sub-tabs" style={{ marginBottom: 16 }}>
                 <button type="button" className={`sub-tab-btn${stmtSub === 'weekly' ? ' active' : ''}`} onClick={() => setStmtSub('weekly')}>هفتگی</button>
                 <button type="button" className={`sub-tab-btn${stmtSub === 'monthly' ? ' active' : ''}`} onClick={() => setStmtSub('monthly')}>ماهیانه</button>
@@ -280,12 +415,10 @@ export default function UserDashboardPage() {
                   <table className="table statement-table">
                     <thead>
                       <tr>
-                        <th>شماره</th>
+                        <th>شناسه</th>
                         <th>بازه</th>
-                        <th>وعده</th>
-                        <th>کل</th>
-                        <th>سازمان</th>
-                        <th>شخص</th>
+                        <th>قیمت صورتحساب</th>
+                        <th>عملیات</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -293,13 +426,15 @@ export default function UserDashboardPage() {
                         <tr key={s._id || s.statementNumber}>
                           <td className="statement-number-col">{s.statementNumber || '—'}</td>
                           <td>
-                            {s.title || `${s.range?.jalaliStart || ''} - ${s.range?.jalaliEnd || ''}`}
+                            {`${s.range?.jalaliStart || ''} تا ${s.range?.jalaliEnd || ''}`}
                             {s.isActive && <span className="badge badge-success" style={{ marginRight: 6 }}>جاری</span>}
                           </td>
-                          <td>{faDigits(s.summary?.mealCount || 0)}</td>
-                          <td>{money(s.summary?.grossTotal)}</td>
-                          <td className="statement-org-col">{money(s.summary?.organizationAmount)}</td>
                           <td className="statement-personal-col">{money(s.summary?.personalAmount)}</td>
+                          <td>
+                            <button type="button" className="btn btn-outline btn-sm" onClick={() => openReceipt(s)}>
+                              <i className="fas fa-receipt" /> نمایش بیشتر
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -308,23 +443,32 @@ export default function UserDashboardPage() {
               </div>
             </section>
           )}
+
+          <PortalProfilePanel
+            open={profileOpen}
+            user={user}
+            onClose={() => setProfileOpen(false)}
+            onUserUpdate={(next) => setUser((prev) => ({ ...prev, ...next }))}
+          />
         </div>
-        <AppVersionBadge version={version} />
       </main>
 
       {announcements.length > 0 && (
         <div className="announcements-ui">
-          <button type="button" className="ann-fab" onClick={() => setDrawerOpen(true)}>
+          <button type="button" className="ann-fab" onClick={() => setDrawerOpen(true)} aria-label="اطلاعیه‌ها">
             <i className="fas fa-bullhorn" />
             <span className="ann-fab-count">{faDigits(announcements.length)}</span>
           </button>
           {drawerOpen && (
             <>
               <div className="ann-drawer-overlay" onClick={() => setDrawerOpen(false)} />
-              <div className="ann-drawer is-open">
+              <div className="ann-drawer is-open" role="dialog" aria-modal="true" aria-label="اطلاعیه‌های فعال">
+                <div className="ann-drawer-handle" aria-hidden="true" />
                 <div className="ann-drawer-header">
                   <div className="ann-drawer-title"><i className="fas fa-bullhorn" /> اطلاعیه‌های فعال</div>
-                  <button type="button" className="btn-icon" onClick={() => setDrawerOpen(false)}><i className="fas fa-times" /></button>
+                  <button type="button" className="btn-icon ann-drawer-close" onClick={() => setDrawerOpen(false)} aria-label="بستن">
+                    <i className="fas fa-times" />
+                  </button>
                 </div>
                 <div className="ann-drawer-body">
                   {announcements.map((a) => (
@@ -337,6 +481,95 @@ export default function UserDashboardPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {(receipt || receiptLoading) && (
+        <div className="receipt-modal-root">
+          <div className="receipt-modal-overlay" onClick={closeReceipt} />
+          <div className={`receipt-modal${stmtSub === 'monthly' ? ' receipt-modal--compact' : ''}`} role="dialog" aria-modal="true" aria-label="فیش صورتحساب">
+            <button type="button" className="receipt-modal-close" onClick={closeReceipt} aria-label="بستن">
+              <i className="fas fa-times" />
+            </button>
+            {receiptLoading && !receiptData ? (
+              <div className="receipt-loading"><div className="spinner" /><p>در حال آماده‌سازی فیش...</p></div>
+            ) : (
+              <div className="receipt-paper">
+                <div className="receipt-paper-head">
+                  <div className="receipt-brand">{orgName}</div>
+                  <div className="receipt-kind">فیش صورتحساب {stmtSub === 'monthly' ? 'ماهیانه' : 'هفتگی'}</div>
+                </div>
+                <div className="receipt-dash" />
+                <div className="receipt-meta">
+                  <div className="receipt-meta-row">
+                    <span>شناسه</span>
+                    <strong className="receipt-id">{receipt?.preview?.statementNumber || receiptData?.statementNumber || '—'}</strong>
+                  </div>
+                  <div className="receipt-meta-row">
+                    <span>تاریخ بازه</span>
+                    <strong>
+                      {(receiptData?.range?.jalaliStart || receipt?.preview?.range?.jalaliStart || '—')}
+                      {' تا '}
+                      {(receiptData?.range?.jalaliEnd || receipt?.preview?.range?.jalaliEnd || '—')}
+                    </strong>
+                  </div>
+                  <div className="receipt-meta-row">
+                    <span>نام</span>
+                    <strong>{user?.fullName || user?.username || '—'}</strong>
+                  </div>
+                </div>
+                <div className="receipt-dash" />
+                {stmtSub !== 'monthly' && (
+                  <>
+                    <div className="receipt-items-head">
+                      <span>اقلام</span>
+                      <span>مبلغ</span>
+                    </div>
+                    <div className="receipt-items">
+                      {(receiptData?.items || []).length ? receiptData.items.map((item) => (
+                        <div key={item.orderId || `${item.jalaliDate}-${item.foodName}`} className="receipt-item">
+                          <div className="receipt-item-info">
+                            <div className="receipt-item-name">{item.foodName}</div>
+                            <div className="receipt-item-meta-row">
+                              <span className="receipt-date-box">{item.jalaliDate || '—'}</span>
+                              {item.orderNumber ? <span className="receipt-order-box">#{item.orderNumber}</span> : null}
+                              {item.mealCount > 1 ? <span className="receipt-date-box">{faDigits(item.mealCount)} وعده</span> : null}
+                            </div>
+                          </div>
+                          <div className="receipt-item-price">{money(item.personalAmount ?? item.grossTotal)}</div>
+                        </div>
+                      )) : (
+                        <div className="receipt-empty">جزئیات غذایی ثبت نشده است.</div>
+                      )}
+                    </div>
+                    <div className="receipt-dash" />
+                  </>
+                )}
+                <div className="receipt-totals">
+                  <div className="receipt-total-row">
+                    <span>تعداد غذا / وعده</span>
+                    <strong>{faDigits(receiptData?.summary?.mealCount || receipt?.preview?.summary?.mealCount || 0)}</strong>
+                  </div>
+                  <div className="receipt-total-row">
+                    <span>جمع کل</span>
+                    <strong>{money(receiptData?.summary?.grossTotal ?? receipt?.preview?.summary?.grossTotal)}</strong>
+                  </div>
+                  <div className="receipt-total-row">
+                    <span>سهم سازمان ({faDigits(receiptData?.split?.organizationSharePercent ?? caps.organizationSharePercent)}٪)</span>
+                    <strong>{money(receiptData?.summary?.organizationAmount ?? receipt?.preview?.summary?.organizationAmount)}</strong>
+                  </div>
+                  <div className="receipt-total-row receipt-total-row--pay">
+                    <span>قابل پرداخت شما</span>
+                    <strong>{money(receiptData?.summary?.personalAmount ?? receipt?.preview?.summary?.personalAmount)}</strong>
+                  </div>
+                </div>
+                <div className="receipt-dash receipt-dash--dots" />
+                <div className="receipt-footer">
+                  این فیش صرفاً جهت اطلاع است و جایگزین سند حسابداری رسمی نیست.
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>

@@ -10,7 +10,7 @@ function escapeHtml(value) {
 }
 
 function formatMoney(value) {
-  return `${Number(value || 0).toLocaleString('fa-IR')} تومان`;
+  return `${Number(value || 0).toLocaleString('fa-IR')} ت`;
 }
 
 function renderFinanceStatementHtml(report = {}) {
@@ -56,7 +56,7 @@ function renderFinanceStatementHtml(report = {}) {
   <style>
     @page { size: A4 landscape; margin: 12mm; }
     * { box-sizing: border-box; }
-    body { font-family: Tahoma, Arial, sans-serif; color: #111; font-size: 9.5pt; margin: 0; }
+    body { font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif); color: #111; font-size: 9.5pt; margin: 0; }
     .letterhead { border: 1.2pt solid #000; margin-bottom: 10pt; }
     .lh-top { padding: 8pt 10pt; border-bottom: 1pt solid #000; text-align: center; }
     .lh-org-main { font-size: 13pt; font-weight: 800; }
@@ -114,7 +114,7 @@ function renderFinanceStatementHtml(report = {}) {
     </div>
     <div class="lh-subject">
       <span class="lh-subject-label">موضوع:</span>
-      <span class="lh-subject-val">${escapeHtml(subject)} — ${escapeHtml(report.title || '')}</span>
+      <span class="lh-subject-val">${escapeHtml(report.singleUser ? report.title : `${subject} — ${report.title || ''}`)}</span>
     </div>
   </div>
 

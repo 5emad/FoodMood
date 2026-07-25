@@ -1,8 +1,16 @@
 const AppSetting = require('../models/AppSetting');
 
-function validColor(value, fallback) {
-  return /^#[0-9a-fA-F]{6}$/.test(String(value || '')) ? value : fallback;
-}
+/**
+ * رنگ یکپارچه سامانه — Coloro 125-28-38 (Luminous Blue) → #1B3F8D
+ * (کد Hue-Lightness-Chroma؛ مقادیر 38-28-125 همان سه رقم با ترتیب استاندارد Coloro است)
+ */
+const BRAND = Object.freeze({
+  primary: '#1B3F8D',
+  primaryLight: '#4D73B5',
+  primaryDark: '#122A62',
+  gradientFrom: '#0B1A3D',
+  gradientTo: '#1B3F8D',
+});
 
 function resolveUiFont(value) {
   return String(value || '').trim() === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn';
@@ -15,26 +23,14 @@ function fontStack(uiFont) {
   return "'Vazirmatn', Tahoma, sans-serif";
 }
 
-/**
- * علامت تومان یکان‌بخ (راهنمای فونت‌ایران): کاراکتر همزه «ء» به‌جای واژه «تومان».
- * در وزیرمتن همان واژه «تومان» نمایش داده می‌شود.
- */
-function tomanSuffixCss(uiFont) {
-  if (uiFont === 'yekanbakh') {
-    // کاراکتر واقعی NBSP + همزه (نه escape متنی) تا JS و CSS درست بخوانند
-    return `"${'\u00A0\u0621'}"`;
-  }
-  return '" تومان"';
+function tomanSuffixCss() {
+  return `"${'\u00A0ت'}"`;
 }
 
 class ThemeController {
   static async variables(_req, res) {
     const settings = await AppSetting.findOne({ key: 'default' }).lean().catch(() => null);
-    const primary = validColor(settings?.themePrimary, '#8E2A3F');
-    const primaryLight = validColor(settings?.themePrimaryLight, '#B84A62');
-    const primaryDark = validColor(settings?.themePrimaryDark, '#5A1624');
-    const gradientFrom = validColor(settings?.themeGradientFrom, '#3D0F18');
-    const gradientTo = validColor(settings?.themeGradientTo, '#5A1624');
+    const { primary, primaryLight, primaryDark, gradientFrom, gradientTo } = BRAND;
     const uiFont = resolveUiFont(settings?.uiFont);
 
     res.type('text/css');
@@ -44,34 +40,58 @@ class ThemeController {
       `  --primary: ${primary};`,
       `  --primary-light: ${primaryLight};`,
       `  --primary-dark: ${primaryDark};`,
-      `  --primary-glow: color-mix(in srgb, ${primary} 40%, transparent);`,
-      `  --primary-bg: color-mix(in srgb, ${primary} 8%, transparent);`,
+      `  --primary-glow: color-mix(in srgb, ${primary} 42%, transparent);`,
+      `  --primary-bg: color-mix(in srgb, ${primary} 9%, transparent);`,
       `  --primary-bg-soft: color-mix(in srgb, ${primary} 5%, transparent);`,
-      `  --primary-bg-strong: color-mix(in srgb, ${primary} 15%, transparent);`,
-      `  --border-accent: color-mix(in srgb, ${primary} 30%, transparent);`,
-      `  --glow-primary: 0 0 32px color-mix(in srgb, ${primary} 25%, transparent);`,
-      `  --text-main: color-mix(in srgb, ${primaryDark} 28%, #111827);`,
-      `  --text-sub: color-mix(in srgb, ${primaryDark} 34%, #374151);`,
-      `  --text-muted: color-mix(in srgb, ${primary} 26%, #64748B);`,
-      `  --text-dim: color-mix(in srgb, ${primary} 18%, #94A3B8);`,
-      `  --surface-card: color-mix(in srgb, ${primary} 6%, transparent);`,
-      `  --sidebar-bg: linear-gradient(180deg, color-mix(in srgb, ${primaryDark} 38%, #07111F) 0%, color-mix(in srgb, ${gradientFrom} 55%, #08111D) 48%, color-mix(in srgb, ${gradientTo} 42%, #050B14) 100%);`,
-      `  --sidebar-text: color-mix(in srgb, ${primaryLight} 72%, #FFFFFF);`,
-      `  --sidebar-muted: color-mix(in srgb, ${primaryLight} 48%, #90A4BA);`,
-      `  --sidebar-dim: color-mix(in srgb, ${primaryLight} 28%, #64748B);`,
-      `  --menu-hover-bg: color-mix(in srgb, ${primary} 12%, transparent);`,
-      `  --menu-active-bg: linear-gradient(135deg, color-mix(in srgb, ${primary} 30%, transparent), color-mix(in srgb, ${primaryDark} 18%, transparent));`,
+      `  --primary-bg-strong: color-mix(in srgb, ${primary} 16%, transparent);`,
+      `  --border-accent: color-mix(in srgb, ${primary} 32%, transparent);`,
+      `  --glow-primary: 0 0 32px color-mix(in srgb, ${primary} 28%, transparent);`,
+      `  --text-main: #0A1628;`,
+      `  --text-sub: #1C3550;`,
+      `  --text-muted: #5A738C;`,
+      `  --text-dim: #8A9DB0;`,
+      `  --surface-card: color-mix(in srgb, ${primary} 4%, #ffffff);`,
+      `  --sidebar-bg: linear-gradient(185deg, #0B1A3D 0%, #0A1530 55%, #060E1F 100%);`,
+      `  --sidebar-text: #E8F1F8;`,
+      `  --sidebar-muted: #7EB3D9;`,
+      `  --sidebar-dim: #4A7A9E;`,
+      `  --menu-hover-bg: color-mix(in srgb, ${primary} 14%, transparent);`,
+      `  --menu-active-bg: linear-gradient(135deg, color-mix(in srgb, ${primary} 38%, transparent), color-mix(in srgb, ${primaryDark} 24%, transparent));`,
       `  --font-family: ${fontStack(uiFont)};`,
-      `  --toman-suffix: ${tomanSuffixCss(uiFont)};`,
+      `  --toman-suffix: ${tomanSuffixCss()};`,
       '}',
-      'html, body, button, input, select, textarea, .table, .sidebar, .top-nav, .top-header {',
-      '  font-family: var(--font-family);',
+      'html, body {',
+      '  font-family: var(--font-family) !important;',
+      '  font-weight: 400 !important;',
+      '}',
+      'body *:not(i):not(.fas):not(.far):not(.fab):not(.fa):not([class*="fa-"]) {',
+      '  font-family: inherit !important;',
+      '}',
+      'body, p, span, a, label, li, td, th, input, select, textarea, button, .btn, .form-control,',
+      '.sidebar-link, .card-title, .section-title, .table, .badge, .food-name, .day-name,',
+      '.nav-brand-title, .nav-u-name, .modal-title, .auth-card-title, .feature-title {',
+      '  font-weight: 400 !important;',
+      '}',
+      'strong, b, .fw-bold, .ph-title, h1, h2, h3 {',
+      '  font-weight: 600 !important;',
+      '}',
+      '.swal2-popup, [data-sonner-toaster], [data-sonner-toast] {',
+      '  font-family: var(--font-family) !important;',
+      '  font-weight: 400 !important;',
       '}',
       '.page-header, .day-card-header, .auth-side, .home-hero, .table thead th {',
       `  background: linear-gradient(135deg, ${gradientFrom}, ${gradientTo}) !important;`,
+      '}',
+      'body.admin-body .sidebar.sidebar-nav-panel {',
+      '  background: var(--sidebar-bg) !important;',
+      '}',
+      'body.admin-body .sidebar-nav-sub-link.is-active {',
+      `  background: color-mix(in srgb, ${primary} 28%, transparent) !important;`,
+      `  border-color: color-mix(in srgb, ${primary} 45%, transparent) !important;`,
       '}',
     ].join('\n'));
   }
 }
 
 module.exports = ThemeController;
+module.exports.BRAND = BRAND;

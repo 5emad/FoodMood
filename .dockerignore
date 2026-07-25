@@ -18,7 +18,6 @@ agent-transcripts
 backend/public/uploads/**
 !backend/public/uploads/.gitkeep
 !backend/public/uploads/foods/.gitkeep
-!backend/public/uploads/portal-slides/.gitkeep
 deploy/*.tar.gz
 *.md
 !README.md

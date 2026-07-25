@@ -7,7 +7,6 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import SuperSettingsPanel from './components/admin/super/SuperSettingsPanel';
 import SuperSecurityPanel from './components/admin/super/SuperSecurityPanel';
-import SuperBackupPanel from './components/admin/super/SuperBackupPanel';
 import UnavailablePage from './pages/UnavailablePage';
 import NotFoundPage from './pages/NotFoundPage';
 import { adminTabPath, isAdminTab } from './lib/adminPaths';
@@ -51,7 +50,7 @@ export default function App() {
         <Route index element={<Navigate to="/admin/reports" replace />} />
         <Route path="super/settings" element={<SuperSettingsPanel />} />
         <Route path="super/security" element={<SuperSecurityPanel />} />
-        <Route path="super/backup" element={<SuperBackupPanel />} />
+        <Route path="super/backup" element={<Navigate to="/admin/backup" replace />} />
         <Route path=":tab" element={<AdminDashboardPage />} />
       </Route>
       <Route path="/admin/dashboard" element={<AdminLegacyUrlRedirect />} />

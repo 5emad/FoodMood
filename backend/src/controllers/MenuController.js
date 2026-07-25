@@ -28,7 +28,11 @@ async function attachMenuItems(dailyMenus, settings) {
         ...item,
         price: item.customPrice ?? item.foodId?.price,
         reservedCount: countMap.get(String(item._id)) || 0,
-        effectiveCapacity: resolveEffectiveCapacity(item.maxCapacity, defaultCapacity),
+        effectiveCapacity: resolveEffectiveCapacity(
+          item.maxCapacity,
+          defaultCapacity,
+          settings?.enableCapacityLimit !== false,
+        ),
       })),
     };
   }));
@@ -63,6 +67,7 @@ class MenuController {
             showPricesToUsers: capabilities.showPrices,
             showFinancialStatementToUsers: capabilities.showStatement !== false,
             defaultMenuItemCapacity: settings.defaultMenuItemCapacity ?? defaultSettings.defaultMenuItemCapacity,
+            enableCapacityLimit: settings.enableCapacityLimit !== false,
           },
           days: await attachMenuItems(dailyMenus, settings),
         };

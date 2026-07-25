@@ -8,6 +8,7 @@ export const ADMIN_TAB_NAMES = [
   'finance',
   'guests',
   'announcements',
+  'backup',
 ];
 
 export function isAdminTab(name) {

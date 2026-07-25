@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import { confirmAction } from '../../../hooks/useConfirm';
+import { readJalaliInputValue, useJalaliDatepicker } from '../../../hooks/useJalaliDatepicker';
+import { groupItemsByCategory } from '../../../lib/foodCategories';
 import SectionHeader from '../shared/SectionHeader';
 import AdminSpinner from '../shared/AdminSpinner';
 import { faDigits, faYear, jdate, jdateParts } from '../../../utils/format';
@@ -19,24 +21,45 @@ function weekDateLabel(w) {
 
 export default function WeeksTab() {
   const { toast } = useToast();
+  const currentJYear = jdateParts(new Date()).year;
   const [weeks, setWeeks] = useState([]);
   const [foods, setFoods] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(new Set());
   const [openEditor, setOpenEditor] = useState(null);
   const [menuDays, setMenuDays] = useState([]);
   const [checked, setChecked] = useState({});
+  const [capacities, setCapacities] = useState({});
+  const [defaultCapacity, setDefaultCapacity] = useState(20);
   const [menuLoading, setMenuLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [filterYear, setFilterYear] = useState(currentJYear);
+  const [weekForm, setWeekForm] = useState({
+    jalaliYear: currentJYear,
+    startDate: '',
+    endDate: '',
+    weekNumber: '',
+    name: '',
+    activate: false,
+  });
+  const [createBusy, setCreateBusy] = useState(false);
+  const startDateRef = useRef(null);
+  const endDateRef = useRef(null);
+
+  useJalaliDatepicker(showCreate);
 
   async function load() {
     setLoading(true);
-    const [w, f] = await Promise.all([
+    const [w, f, c] = await Promise.all([
       api('/api/admin/weeks?noSync=true'),
       api('/api/foods?includeInactive=true'),
+      api('/api/foods/categories'),
     ]);
     const weekList = w.success ? w.data : [];
     setWeeks(weekList);
     setFoods(f.success ? f.data : []);
+    setCategories(c.success ? (c.data || []) : []);
     setLoading(false);
   }
 
@@ -52,25 +75,59 @@ export default function WeeksTab() {
     });
   }, [weeks]);
 
-  async function createCurrent() {
+  async function createWeekManual(e) {
+    e.preventDefault();
+    const startDate = readJalaliInputValue(startDateRef.current);
+    const endDate = readJalaliInputValue(endDateRef.current);
+    if (!startDate || !endDate) {
+      toast('تاریخ شروع و پایان را انتخاب کنید', 'error');
+      return;
+    }
+    setCreateBusy(true);
     try {
-      const data = await api('/api/admin/weeks/current', { method: 'POST', body: JSON.stringify({ count: 5 }) });
+      const payload = {
+        startDate,
+        endDate,
+        isActive: weekForm.activate,
+      };
+      if (weekForm.weekNumber) payload.weekNumber = Number(weekForm.weekNumber);
+      if (weekForm.name.trim()) payload.name = weekForm.name.trim();
+
+      const data = await api('/api/admin/weeks', { method: 'POST', body: JSON.stringify(payload) });
       if (data.success) {
-        const n = Array.isArray(data.data) ? data.data.length : 0;
-        toast(n ? `${n} هفته جاری/آینده آماده شد` : (data.message || 'هفته ساخته شد'), 'success');
+        toast(data.message || 'هفته ایجاد شد', 'success');
+        setShowCreate(false);
+        setWeekForm({
+          jalaliYear: filterYear,
+          startDate: '',
+          endDate: '',
+          weekNumber: '',
+          name: '',
+          activate: false,
+        });
+        if (data.data?.startDate) {
+          const y = jdateParts(data.data.startDate).year;
+          setFilterYear(y);
+        }
         load();
       } else {
-        toast(data.message || 'خطا در ساخت هفته', 'error');
+        toast(data.message || 'خطا در ایجاد هفته', 'error');
       }
     } catch (err) {
-      toast(err?.message || 'خطا در ساخت هفته جاری', 'error');
+      toast(err?.message || 'خطا در ایجاد هفته', 'error');
+    } finally {
+      setCreateBusy(false);
     }
   }
 
   async function activate(id) {
-    const data = await api(`/api/admin/weeks/${id}/activate`, { method: 'POST' });
-    if (data.success) { toast('هفته فعال شد', 'success'); load(); }
-    else toast(data.message || 'خطا', 'error');
+    try {
+      const data = await api(`/api/admin/weeks/${id}/activate`, { method: 'POST' });
+      if (data.success) { toast('هفته فعال شد', 'success'); load(); }
+      else toast(data.message || 'خطا در فعال‌سازی هفته', 'error');
+    } catch (err) {
+      toast(err?.message || 'خطا در فعال‌سازی هفته', 'error');
+    }
   }
 
   async function remove(id) {
@@ -85,13 +142,21 @@ export default function WeeksTab() {
     const data = await api(`/api/menu/weeks/${weekId}`);
     const days = data.success ? data.data?.days || [] : [];
     setMenuDays(days);
+    setDefaultCapacity(Number(data.data?.settings?.defaultMenuItemCapacity ?? 20));
     const map = {};
+    const capMap = {};
     days.forEach((d) => {
       (d.items || []).forEach((item) => {
-        map[`${d._id}:${item.foodId?._id || item.foodId}`] = item._id;
+        const foodId = item.foodId?._id || item.foodId;
+        const key = `${d._id}:${foodId}`;
+        map[key] = item._id;
+        capMap[key] = Number(item.maxCapacity) > 0
+          ? Number(item.maxCapacity)
+          : Number(item.effectiveCapacity || data.data?.settings?.defaultMenuItemCapacity || 20);
       });
     });
     setChecked(map);
+    setCapacities(capMap);
     setMenuLoading(false);
   }
 
@@ -112,13 +177,27 @@ export default function WeeksTab() {
       else next[key] = true;
       return next;
     });
+    setCapacities((c) => {
+      const next = { ...c };
+      if (next[key] == null) next[key] = defaultCapacity;
+      return next;
+    });
+  }
+
+  function setCapacity(dayId, foodId, value) {
+    const key = `${dayId}:${foodId}`;
+    setCapacities((c) => ({ ...c, [key]: value }));
   }
 
   async function saveMenu(weekId) {
     const original = {};
+    const originalCap = {};
     menuDays.forEach((d) => {
       (d.items || []).forEach((item) => {
-        original[`${d._id}:${item.foodId?._id || item.foodId}`] = item._id;
+        const foodId = item.foodId?._id || item.foodId;
+        const key = `${d._id}:${foodId}`;
+        original[key] = item._id;
+        originalCap[key] = Number(item.maxCapacity || 0);
       });
     });
     let cancelledTotal = 0;
@@ -127,8 +206,14 @@ export default function WeeksTab() {
         const key = `${day._id}:${food._id}`;
         const was = original[key];
         const now = checked[key];
+        const capVal = Math.max(Number(capacities[key] || 0), 0);
+        // 0 = inherit default; positive = override for this day/food
+        const maxCapacity = capVal === defaultCapacity ? 0 : capVal;
         if (!was && now) {
-          await api('/api/admin/menu-items', { method: 'POST', body: JSON.stringify({ dailyMenuId: day._id, foodId: food._id, maxCapacity: 0 }) });
+          await api('/api/admin/menu-items', {
+            method: 'POST',
+            body: JSON.stringify({ dailyMenuId: day._id, foodId: food._id, maxCapacity }),
+          });
         } else if (was && !now) {
           const res = await api(`/api/admin/menu-items/${was}`, { method: 'DELETE' });
           if (res.success) {
@@ -136,6 +221,11 @@ export default function WeeksTab() {
           } else {
             toast(res.message || 'حذف آیتم منو ناموفق بود', 'error');
           }
+        } else if (was && now && Number(originalCap[key] || 0) !== Number(maxCapacity)) {
+          await api(`/api/admin/menu-items/${was}`, {
+            method: 'PUT',
+            body: JSON.stringify({ maxCapacity }),
+          });
         }
       }
     }
@@ -156,8 +246,25 @@ export default function WeeksTab() {
     });
   }
 
+  const filteredWeeks = useMemo(() => {
+    if (!filterYear) return weeks;
+    return weeks.filter((w) => jdateParts(w.startDate).year === Number(filterYear));
+  }, [weeks, filterYear]);
+
+  const foodsByCategory = useMemo(
+    () => groupItemsByCategory(foods, (food) => food.category, categories),
+    [foods, categories],
+  );
+
+  const availableYears = useMemo(() => {
+    const years = new Set(weeks.map((w) => jdateParts(w.startDate).year));
+    years.add(currentJYear);
+    years.add(Number(filterYear));
+    return [...years].sort((a, b) => b - a);
+  }, [weeks, currentJYear, filterYear]);
+
   const tree = new Map();
-  weeks.forEach((w) => {
+  filteredWeeks.forEach((w) => {
     const { year, month } = jalaliYearMonth(w.startDate);
     if (!tree.has(year)) tree.set(year, new Map());
     const months = tree.get(year);
@@ -169,12 +276,117 @@ export default function WeeksTab() {
     <section id="tab-weeks" className="tab-pane active">
       <SectionHeader
         title="مدیریت هفته‌ها"
-        sub="برای هر هفته منو تعریف کنید. با حذف یا عوض کردن غذا، سفارش‌های همان غذا خودکار لغو و از گزارش خارج می‌شوند."
-        actions={<button type="button" className="btn btn-primary btn-sm" onClick={createCurrent}><i className="fas fa-sync-alt" /> ساخت هفته جاری</button>}
+        sub="هفته را با سال و بازه زمانی دلخواه تعریف کنید و برای هر هفته منو بچینید."
+        actions={(
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowCreate((v) => !v)}>
+            <i className="fas fa-plus" /> {showCreate ? 'بستن فرم' : 'ایجاد هفته جدید'}
+          </button>
+        )}
       />
+
+      {showCreate && (
+        <div className="card">
+          <div className="card-header"><div className="card-title">ایجاد هفته با بازه دلخواه</div></div>
+          <div className="card-body">
+            <form className="week-create-form" onSubmit={createWeekManual}>
+              <div className="week-create-grid">
+                <label className="form-label">
+                  <span>سال شمسی</span>
+                  <input
+                    className="form-control"
+                    type="number"
+                    min={1300}
+                    max={1500}
+                    value={weekForm.jalaliYear}
+                    onChange={(e) => {
+                      const y = Number(e.target.value) || currentJYear;
+                      setWeekForm((f) => ({ ...f, jalaliYear: y }));
+                      setFilterYear(y);
+                    }}
+                  />
+                </label>
+                <label className="form-label">
+                  <span>تاریخ شروع</span>
+                  <input
+                    key="week-start-jdp"
+                    ref={startDateRef}
+                    className="form-control"
+                    data-jdp
+                    data-jdp-only-date
+                    autoComplete="off"
+                    placeholder="مثال: ۱۴۰۴/۰۱/۰۱"
+                    defaultValue=""
+                    required
+                  />
+                </label>
+                <label className="form-label">
+                  <span>تاریخ پایان</span>
+                  <input
+                    key="week-end-jdp"
+                    ref={endDateRef}
+                    className="form-control"
+                    data-jdp
+                    data-jdp-only-date
+                    autoComplete="off"
+                    placeholder="مثال: ۱۴۰۴/۰۱/۰۷"
+                    defaultValue=""
+                    required
+                  />
+                </label>
+                <label className="form-label">
+                  <span>شماره هفته (اختیاری)</span>
+                  <input
+                    className="form-control"
+                    type="number"
+                    min={1}
+                    placeholder="خودکار"
+                    value={weekForm.weekNumber}
+                    onChange={(e) => setWeekForm((f) => ({ ...f, weekNumber: e.target.value }))}
+                  />
+                </label>
+                <label className="form-label">
+                  <span>عنوان (اختیاری)</span>
+                  <input
+                    className="form-control"
+                    placeholder="مثال: هفته اول"
+                    value={weekForm.name}
+                    onChange={(e) => setWeekForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </label>
+                <label className="form-label week-create-check">
+                  <input
+                    type="checkbox"
+                    checked={weekForm.activate}
+                    onChange={(e) => setWeekForm((f) => ({ ...f, activate: e.target.checked }))}
+                  />
+                  {' '}فعال‌سازی همزمان این هفته
+                </label>
+              </div>
+              <p className="form-hint" style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: '.85rem' }}>
+                بازه حداکثر ۷ روز. تاریخ‌ها را با تقویم شمسی انتخاب کنید.
+              </p>
+              <div style={{ marginTop: 12, textAlign: 'left' }}>
+                <button type="submit" className="btn btn-primary" disabled={createBusy}>
+                  <i className="fas fa-save" /> {createBusy ? 'در حال ایجاد...' : 'ثبت هفته'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="week-year-filter" style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontWeight: 700 }}>نمایش سال:</span>
+          <select className="form-control" style={{ width: 140 }} value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))}>
+            {availableYears.map((y) => <option key={y} value={y}>{faYear(y)}</option>)}
+          </select>
+        </label>
+      </div>
+
       <div id="weeksListWrap">
-        {loading ? <AdminSpinner /> : !weeks.length ? (
-          <div className="empty-state"><i className="fas fa-calendar-times" /><p>هیچ هفته‌ای تعریف نشده است.</p></div>
+        {loading ? <AdminSpinner /> : !filteredWeeks.length ? (
+          <div className="empty-state"><i className="fas fa-calendar-times" /><p>برای این سال هفته‌ای تعریف نشده است.</p></div>
         ) : (
           <div className="week-tree">
             {[...tree.keys()].sort((a, b) => b - a).map((year) => {
@@ -228,6 +440,9 @@ export default function WeeksTab() {
                                   </div>
                                 </div>
                                 <div className="week-menu-editor" id={`weditor-${w._id}`} style={{ display: openEditor === w._id ? 'block' : 'none' }}>
+                                  <p className="section-sub" style={{ marginBottom: 12 }}>
+                                    ظرفیت هر غذا برای هر روز قابل تنظیم است. پیش‌فرض سامانه: {faDigits(defaultCapacity)}
+                                  </p>
                                   <div className="day-checkboxes" id={`wdays-${w._id}`}>
                                     {openEditor === w._id && menuLoading ? (
                                       <div style={{ textAlign: 'center', padding: 20 }}><div className="spinner" /></div>
@@ -235,15 +450,37 @@ export default function WeeksTab() {
                                       <div key={day._id} className="day-box">
                                         <div className="day-box-head">{day.dayId?.name || ''} — {jdate(day.date)}</div>
                                         <div className="day-box-body" data-daily-menu-id={day._id}>
-                                          {foods.map((food) => {
-                                            const key = `${day._id}:${food._id}`;
-                                            return (
-                                              <label key={food._id} className="food-check-label">
-                                                <input type="checkbox" checked={!!checked[key]} onChange={() => toggleCheck(day._id, food._id)} />
-                                                {' '}{food.name}
-                                              </label>
-                                            );
-                                          })}
+                                          {foodsByCategory.map((group) => (
+                                            <div key={group.key} className="week-food-cat-block">
+                                              <div className="week-food-cat-title">{group.name}</div>
+                                              {group.items.map((food) => {
+                                                const key = `${day._id}:${food._id}`;
+                                                const isOn = !!checked[key];
+                                                return (
+                                                  <div key={food._id} className={`food-check-row${isOn ? ' is-on' : ''}`}>
+                                                    <label className="food-check-label">
+                                                      <input type="checkbox" checked={isOn} onChange={() => toggleCheck(day._id, food._id)} />
+                                                      {' '}{food.name}
+                                                    </label>
+                                                    {isOn && (
+                                                      <label className="food-cap-label">
+                                                        <span>ظرفیت</span>
+                                                        <input
+                                                          type="number"
+                                                          min={1}
+                                                          className="food-cap-input"
+                                                          dir="ltr"
+                                                          value={capacities[key] ?? defaultCapacity}
+                                                          onChange={(e) => setCapacity(day._id, food._id, e.target.value)}
+                                                          title="ظرفیت این غذا در این روز"
+                                                        />
+                                                      </label>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     ))}

@@ -47,11 +47,10 @@ function compactMoney(v) {
   return Number(v || 0).toLocaleString('fa-IR');
 }
 function money(v) {
-  var suffix = ' تومان';
+  var suffix = '\u00A0ت';
   try {
     var raw = getComputedStyle(document.documentElement).getPropertyValue('--toman-suffix').trim().replace(/^["']|["']$/g, '');
     if (raw) suffix = raw;
-    else if (document.documentElement.dataset.appFont === 'yekanbakh') suffix = '\u00A0\u0621';
   } catch (e) { /* ignore */ }
   return compactMoney(v) + suffix;
 }
@@ -334,14 +333,11 @@ function groupReportUsersByDepartment(users) {
 
 function renderWeeklyTable(r) {
   const wrap = document.getElementById('weeklyReportWrap');
-  const isSuperadminReportUser = (window.PortalCapabilities && window.PortalCapabilities.isSuperadminReportUser)
-    || ((u) => String(u?.role || '').toLowerCase() === 'superadmin'
-      || String(u?.username || '').toLowerCase() === 'superadmin'
-      || String(u?.fullName || '').toLowerCase() === 'superadmin');
-  const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
+  const byUser = (r.byUser || []).filter((u) => Number(u.total || 0) > 0);
   const reportDays = r.days || byUser[0]?.days || [];
   const dayHeaders = reportDays.map(d => `<th>${d.jalaliDate}</th>`).join('');
   const colSpan = reportDays.length + 4;
+  const foodLabel = (food) => (food && typeof food === 'object' ? (food.name || '-') : food);
   const rows = groupReportUsersByDepartment(byUser).flatMap(([dept, users]) => {
     const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
     const header = `<tr class="dept-group-row"><td colspan="${colSpan}" style="background:var(--primary-bg);font-weight:800;text-align:right;padding:10px 12px">${esc(dept)} <span style="font-weight:600;color:var(--text-muted);font-size:.82rem">(${sorted.length.toLocaleString('fa-IR')} نفر)</span></td></tr>`;
@@ -352,7 +348,7 @@ function renderWeeklyTable(r) {
       ${reportDays.map(reportDay => {
         const day = (u.days || []).find(d => d.jalaliDate === reportDay.jalaliDate);
         if (!day?.foods?.length) return '<td class="report-day-cell">-</td>';
-        return `<td class="report-day-cell">${day.foods.map((food) => `<div class="report-food-item">${esc(food)}</div>`).join('')}</td>`;
+        return `<td class="report-day-cell">${day.foods.map((food) => `<div class="report-food-item">${esc(foodLabel(food))}</div>`).join('')}</td>`;
       }).join('')}
       <td class="col-total"><strong>${Number(u.total || 0).toLocaleString('fa-IR')}</strong></td>
       <td class="col-price" title="${money(u.totalPrice || 0)}">${compactMoney(u.totalPrice || 0)}</td>
@@ -367,7 +363,7 @@ function renderWeeklyTable(r) {
   }
   const mainTable = rows ? `<div class="table-wrap report-table-scroll">
     <table class="report-table report-table-wide">
-      <thead><tr><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+      <thead><tr><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : '<div class="empty-state"><p>برای این بازه سفارشی ثبت نشده است.</p></div>';
   wrap.innerHTML = mainTable + missingTable + guestTable;
@@ -401,7 +397,7 @@ function renderGuestWeeklyTable(r) {
     <div class="card-body" style="padding:0">
       <div class="table-wrap report-table-scroll" style="border:none;border-radius:0;background:transparent">
         <table class="report-table report-table-wide">
-          <thead><tr><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+          <thead><tr><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th>${dayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
           <tbody>${rows || `<tr><td colspan="${colSpan}" class="empty-cell">سفارش مهمان ثبت نشده</td></tr>`}</tbody>
         </table>
       </div>
@@ -496,11 +492,7 @@ async function loadMonthlyBySelect() {
 
 function renderMonthlyTable(r) {
   const wrap = document.getElementById('monthlyReportWrap');
-  const isSuperadminReportUser = (window.PortalCapabilities && window.PortalCapabilities.isSuperadminReportUser)
-    || ((u) => String(u?.role || '').toLowerCase() === 'superadmin'
-      || String(u?.username || '').toLowerCase() === 'superadmin'
-      || String(u?.fullName || '').toLowerCase() === 'superadmin');
-  const byUser = (r.byUser || []).filter((u) => !isSuperadminReportUser(u));
+  const byUser = (r.byUser || []);
   const rows = byUser
     .map((u) => ({
       name: u.fullName || u.username || '-',
@@ -534,7 +526,7 @@ function renderMonthlyTable(r) {
   const guestTotalPrice = guestRows.reduce((s, guest) => s + guest.price, 0);
   wrap.innerHTML = `<div class="table-wrap report-table-scroll">
     <table class="report-table">
-      <thead><tr><th>#</th><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+      <thead><tr><th>#</th><th class="col-name" style="text-align:right">نام فرد</th><th>واحد</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
       <tbody>
         ${rows.map((u, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td class="col-name" style="text-align:right;font-weight:700">${esc(u.name)}</td><td>${esc(u.department)}</td><td class="col-total">${u.count.toLocaleString('fa-IR')}</td><td class="col-price" title="${money(u.price)}">${compactMoney(u.price)}</td></tr>`).join('')}
         <tr class="report-total-row">
@@ -551,7 +543,7 @@ function renderMonthlyTable(r) {
       <div class="card-body" style="padding:0">
         <div class="table-wrap report-table-scroll" style="border:none;border-radius:0;background:transparent">
           <table class="report-table">
-            <thead><tr><th>#</th><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (تومان)</th></tr></thead>
+            <thead><tr><th>#</th><th>کد مهمان</th><th class="col-name" style="text-align:right">نام مهمان</th><th>نوع</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
             <tbody>
               ${guestRows.map((guest, i) => `<tr><td>${(i + 1).toLocaleString('fa-IR')}</td><td><span class="guest-code-badge">${esc(guest.code)}</span></td><td class="col-name" style="text-align:right;font-weight:700">${esc(guest.name)}</td><td>${esc(guest.type)}</td><td class="col-total">${guest.count.toLocaleString('fa-IR')}</td><td class="col-price" title="${money(guest.price)}">${compactMoney(guest.price)}</td></tr>`).join('')}
               <tr class="report-total-row">

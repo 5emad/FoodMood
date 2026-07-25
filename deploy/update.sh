@@ -220,6 +220,13 @@ migrate_env_keys() {
   # فقط لوپ‌بک — nginx روی همان سرور؛ شبکه‌های داکر را روی bare-metal ست نکنید
   ensure_env_default TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_default WAF_TRUSTED_PROXIES '127.0.0.1,::1'
+  # WAF_ENABLED=false برای خاموش کردن فایروال وب (فقط در صورت نیاز)
+  if ! grep -q '^WAF_ENABLED=' "$env_file" 2>/dev/null; then
+    echo 'WAF_ENABLED=true' >> "$env_file"
+    chown "$APP_USER:$APP_USER" "$env_file"
+    chmod 600 "$env_file"
+    log_info "Added WAF_ENABLED=true to .env (set false to disable WAF)"
+  fi
 }
 
 migrate_systemd_service() {
@@ -286,7 +293,6 @@ apply_update() {
   log_info "Syncing application files (keeping .env, uploads, certs)..."
   # آپلودها و گواهی سفارشی هرگز با --delete پاک نمی‌شوند
   mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
-           "${INSTALL_DIR}/backend/public/uploads/portal-slides" \
            "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
     --exclude node_modules \
@@ -460,7 +466,6 @@ apply_update_docker() {
 
   log_info "Syncing application files (keeping .env, uploads, certs, docker volumes data)..."
   mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
-           "${INSTALL_DIR}/backend/public/uploads/portal-slides" \
            "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
     --exclude node_modules \

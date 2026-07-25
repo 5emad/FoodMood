@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const AdminController = require('../controllers/AdminController');
 const AnnouncementController = require('../controllers/AnnouncementController');
 const GuestController = require('../controllers/GuestController');
@@ -16,10 +15,15 @@ const restoreIds = createWafParamsRestoreMiddleware();
 router.param('id', (req, res, next) => restoreIds(req, res, next));
 const backupUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    if (ext === '.fzbackup') return cb(null, true);
+    const name = String(file.originalname || '').toLowerCase();
+    const ext = path.extname(name);
+    if (ext === '.fzbackup' || name.endsWith('.fzbackup')) return cb(null, true);
+    // بعضی مرورگرها originalname خالی می‌فرستند؛ نوع octet-stream را می‌پذیریم و در سرویس اعتبارسنجی می‌کنیم
+    if (!name && /octet-stream|application\/zip|application\/x-msdownload/i.test(String(file.mimetype || ''))) {
+      return cb(null, true);
+    }
     cb(new Error('فقط فایل پشتیبان سامانه با پسوند .fzbackup قابل قبول است.'));
   },
 });
@@ -27,20 +31,6 @@ const backupUpload = multer({
 const sslUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
-});
-
-const portalSlideDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'portal-slides');
-fs.mkdirSync(portalSlideDir, { recursive: true });
-
-const {
-  createImageDiskUpload,
-  assertUploadedImageMagic,
-} = require('../helpers/ImageUploadHelper');
-
-const portalSlideUpload = createImageDiskUpload({
-  destDir: portalSlideDir,
-  maxSizeMb: 5,
-  filenamePrefix: 'slide',
 });
 
 router.use(authMiddleware, roleMiddleware(['admin', 'superadmin']));
@@ -77,22 +67,12 @@ router.post('/settings/ssl-certificate', roleMiddleware(['superadmin']), (req, r
     next();
   });
 }, AdminController.uploadSslCertificate);
-router.post('/settings/portal-slide-image', roleMiddleware(['superadmin']), (req, res, next) => {
-  portalSlideUpload.single('image')(req, res, (err) => {
-    if (err) {
-      const message = err.code === 'LIMIT_FILE_SIZE'
-        ? 'حجم تصویر بیش از حد مجاز است'
-        : (err.message || 'خطا در آپلود تصویر');
-      return res.status(400).json({ success: false, message });
-    }
-    next();
-  });
-}, assertUploadedImageMagic, AdminController.uploadPortalSlideImage);
 router.get('/system/logs', roleMiddleware(['superadmin']), AdminController.getSystemLogs);
 router.get('/security/summary', roleMiddleware(['superadmin']), AdminController.getSecuritySummary);
 router.post('/security/users/:id/unlock', roleMiddleware(['superadmin']), AdminController.unlockUser);
 router.post('/security/super-token/reset', roleMiddleware(['superadmin']), AdminController.resetOwnSuperToken);
 router.post('/security/logs/purge', roleMiddleware(['superadmin']), AdminController.purgeLogs);
+router.post('/security/waf/toggle', roleMiddleware(['superadmin']), AdminController.toggleWaf);
 
 router.get('/users', AdminController.getUsers);
 router.post('/users', AdminController.createUser);
@@ -127,13 +107,20 @@ router.post('/menu-items', MenuController.addItem);
 router.put('/menu-items/:id', MenuController.updateItem);
 router.delete('/menu-items/:id', MenuController.deleteItem);
 
-router.get('/backup/export', roleMiddleware(['superadmin']), AdminController.exportBackup);
-router.post('/backup/restore', roleMiddleware(['superadmin']), backupRestoreLimiter, (req, res, next) => {
+router.get('/backup/export', roleMiddleware(['admin', 'superadmin']), AdminController.exportBackup);
+router.post('/backup/restore', roleMiddleware(['admin', 'superadmin']), backupRestoreLimiter, (req, res, next) => {
   backupUpload.single('backupFile')(req, res, (err) => {
     if (err) {
       let message = 'خطا در آپلود فایل پشتیبان';
-      if (err.code === 'LIMIT_FILE_SIZE') message = 'حجم فایل پشتیبان بیش از حد مجاز است';
-      else if (/fzbackup/i.test(String(err.message || ''))) message = err.message;
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        message = 'حجم فایل پشتیبان بیش از حد مجاز است (حداکثر ۲۰۰ مگابایت)';
+      } else if (/unexpected end of form/i.test(String(err.message || ''))) {
+        message = 'آپلود ناقص ماند. صفحه را تازه کنید و دوباره فایل را انتخاب و ارسال کنید.';
+      } else if (/fzbackup/i.test(String(err.message || ''))) {
+        message = err.message;
+      } else if (err.message) {
+        message = err.message;
+      }
       return res.status(400).json({ success: false, message });
     }
     next();

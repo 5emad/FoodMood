@@ -14,16 +14,55 @@ function renderSupplierReportHtml(report) {
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
   const days = report.byDayPrep || [];
   const prepTotals = report.prepTotals || { totalMeals: 0, userMeals: 0, guestMeals: 0 };
+  const categories = report.categories || [];
+
+  function normalizeCategoryKey(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return key || 'uncategorized';
+  }
+
+  function categoryLabel(key) {
+    const k = normalizeCategoryKey(key);
+    const hit = categories.find((c) => normalizeCategoryKey(c.key) === k);
+    if (hit?.name) return hit.name;
+    const fallback = { lunch: 'ناهار', breakfast: 'صبحانه', dinner: 'شام', snack: 'میان وعده', uncategorized: 'بدون دسته' };
+    return fallback[k] || k;
+  }
+
+  function groupFoods(foods) {
+    const map = new Map();
+    for (const food of foods || []) {
+      const key = normalizeCategoryKey(food.category);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(food);
+    }
+    const ordered = [];
+    for (const cat of categories) {
+      const k = normalizeCategoryKey(cat.key);
+      if (map.has(k)) ordered.push(k);
+    }
+    for (const k of map.keys()) {
+      if (!ordered.includes(k)) ordered.push(k);
+    }
+    return ordered.map((key) => ({ key, name: categoryLabel(key), items: map.get(key) || [] }));
+  }
 
   const daySections = days.map((day) => {
-    const rows = (day.foods || []).map((food, index) => `
+    const groups = groupFoods(day.foods || []);
+    let index = 0;
+    const rows = groups.flatMap((group) => [
+      `<tr class="cat-row"><td colspan="4">${escapeHtml(group.name)}</td></tr>`,
+      ...group.items.map((food) => {
+        index += 1;
+        return `
       <tr>
-        <td class="col-idx">${(index + 1).toLocaleString('fa-IR')}</td>
+        <td class="col-idx">${index.toLocaleString('fa-IR')}</td>
         <td class="col-food">${escapeHtml(food.foodName)}</td>
         <td class="col-count">${Number(food.count || 0).toLocaleString('fa-IR')}</td>
         <td class="col-note"></td>
-      </tr>
-    `).join('');
+      </tr>`;
+      }),
+    ]).join('');
 
     return `
     <div class="day-block">
@@ -62,13 +101,13 @@ function renderSupplierReportHtml(report) {
     @page { size: A4; margin: 12mm 10mm 14mm 10mm;
       @bottom-center {
         content: "صفحه " counter(page) " از " counter(pages);
-        font-family: Vazirmatn, Tahoma, sans-serif;
+        font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
         font-size: 8pt; color: #444; direction: rtl;
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Vazirmatn, Tahoma, sans-serif;
+      font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
       direction: rtl; color: #111; background: #fff;
       font-size: 10pt; line-height: 1.45;
     }
@@ -134,6 +173,7 @@ function renderSupplierReportHtml(report) {
     .col-count { width: 14%; text-align: center; font-weight: 700; }
     .col-note { width: 32%; }
     .total-row td { font-weight: 700; background: #f7f7f7; border-top: 1pt solid #000; }
+    .cat-row td { font-weight: 700; background: #eee; text-align: right; }
     .empty-cell { text-align: center; padding: 8pt; color: #666; }
 
     .doc-footer {
@@ -158,7 +198,7 @@ function renderSupplierReportHtml(report) {
         <div class="lh-cell-val">${generatedAt}</div>
       </div>
       <div class="lh-cell">
-        <div class="lh-cell-label">بازه هفته</div>
+        <div class="lh-cell-label">بازه گزارش</div>
         <div class="lh-cell-val">${escapeHtml(report.range.jalaliStart)} تا ${escapeHtml(report.range.jalaliEnd)}</div>
       </div>
       <div class="lh-cell">

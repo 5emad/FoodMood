@@ -11,7 +11,6 @@ function scrubObjectIds(obj, backups) {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
     if (typeof val === 'string' && isIdParamName(key) && OBJECT_ID_RE.test(val)) {
-      // نام موقت نباید به Id / _id ختم شود تا semantic-id-injection نگیرد
       const hide = `__fmox_${key}_val`;
       backups.push({ type: 'field', obj, key, hide, val });
       obj[hide] = val;
@@ -22,10 +21,6 @@ function scrubObjectIds(obj, backups) {
   }
 }
 
-/**
- * ObjectId کامل ۲۴ هگز را داخل یک UUID v4-مانند جا می‌دهد تا WAF رد نکند
- * و در صورت نیاز بتوان id را از توکن بازیابی کرد (restore URL اولویت دارد).
- */
 function toSafeUuidToken(id) {
   const hex = String(id).toLowerCase();
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-8${hex.slice(15, 18)}-${hex.slice(18, 24)}00`;
@@ -78,7 +73,6 @@ function restoreScrubs(backups, req) {
   backups.length = 0;
 }
 
-/** بعد از match شدن روت، params ممکن است هنوز توکن UUID داشته باشد — به ObjectId برگردان */
 function restoreParamsObjectIds(req) {
   if (!req?.params || typeof req.params !== 'object') return;
   for (const key of Object.keys(req.params)) {
@@ -90,10 +84,6 @@ function restoreParamsObjectIds(req) {
   }
 }
 
-/**
- * قبل از WAF: ObjectIdهای مونگو را موقتاً مخفی می‌کند.
- * بعد از WAF (قبل از روت‌ها): حتماً باید restore شود وگرنه weekId/id در هندلر گم می‌شود.
- */
 function createWafScrubMiddleware() {
   return function wafScrub(req, res, next) {
     if (!req._fmoxWafBackups) req._fmoxWafBackups = [];
@@ -131,13 +121,11 @@ function createWafRestoreMiddleware() {
     if (req._fmoxCookieSaved && req._fmoxSavedCookie !== undefined) {
       req.headers.cookie = req._fmoxSavedCookie;
     }
-    // params معمولاً هنوز خالی است؛ بعد از روت هم یک‌بار چک می‌کنیم
     restoreParamsObjectIds(req);
     next();
   };
 }
 
-/** بعد از روت‌ها — اگر به هر دلیل params هنوز توکن باشد، ObjectId را برگردان */
 function createWafParamsRestoreMiddleware() {
   return function wafParamsRestore(req, _res, next) {
     restoreParamsObjectIds(req);
@@ -145,17 +133,87 @@ function createWafParamsRestoreMiddleware() {
   };
 }
 
-/** @deprecated — سازگاری با importهای قبلی */
 function createWafCompatMiddleware() {
   return createWafScrubMiddleware();
 }
 
+/**
+ * firewtwall/requestSize با req.on('data') استریم را flowing می‌کند و قبل از multer
+ * بدنه multipart را می‌خورد → "Unexpected end of form".
+ * برای multipart / مسیرهای trusted فقط Content-Length را چک می‌کنیم.
+ */
+function createMultipartSafeRequestSizeMiddleware(config) {
+  const maxBytes = Number(config?.maxBodySize) || (6 * 1024 * 1024);
+  return function requestSizeMiddleware(req, res, next) {
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    if (!Number.isNaN(contentLength) && contentLength > maxBytes) {
+      return res.status(413).json({
+        blocked: true,
+        rule: 'request-size',
+        message: 'Request entity too large',
+      });
+    }
+
+    const contentType = String(req.headers['content-type'] || '');
+    // Multer needs an untouched stream; flowing data listeners break multipart parsing.
+    if (req.wafTrusted || contentType.includes('multipart/form-data')) {
+      return next();
+    }
+
+    let received = 0;
+    let aborted = false;
+    req.on('data', (chunk) => {
+      if (aborted) return;
+      received += chunk.length;
+      if (received > maxBytes) {
+        aborted = true;
+        req.destroy();
+        if (!res.headersSent) {
+          res.status(413).json({
+            blocked: true,
+            rule: 'request-size',
+            message: 'Request entity too large',
+          });
+        }
+      }
+    });
+    return next();
+  };
+}
+
+/**
+ * توجه: firewtwall فقط "." را export می‌کند؛ require.resolve('firewtwall/middleware/...')
+ * با ERR_PACKAGE_PATH_NOT_EXPORTED شکست می‌خورد — باید از مسیر فایل مطلق استفاده کرد.
+ * این پچ باید قبل از اولین require('firewtwall') صدا زده شود.
+ */
+function patchRequestSizeForMultipart() {
+  const path = require('path');
+  let requestSizePath;
+  try {
+    const wafRoot = path.dirname(require.resolve('firewtwall'));
+    requestSizePath = path.join(wafRoot, 'middleware', 'requestSize.js');
+  } catch {
+    return;
+  }
+
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  const original = require(requestSizePath);
+  if (original?.__fmoxMultipartSafe) return;
+
+  const factory = function createRequestSizeMiddleware(config) {
+    return createMultipartSafeRequestSizeMiddleware(config);
+  };
+  factory.__fmoxMultipartSafe = true;
+  require.cache[requestSizePath].exports = factory;
+}
+
 function applyFirewtwallPatches() {
-  // no-op
+  patchRequestSizeForMultipart();
 }
 
 module.exports = {
   applyFirewtwallPatches,
+  createMultipartSafeRequestSizeMiddleware,
   createWafCompatMiddleware,
   createWafScrubMiddleware,
   createWafRestoreMiddleware,

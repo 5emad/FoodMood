@@ -55,46 +55,55 @@ async function buildOrderFromMenuItem(menuItemId, actor) {
   }
 
   const dailyMenuId = menuItem.dailyMenuId._id || menuItem.dailyMenuId;
+  const foodCategory = String(menuItem.foodId?.category || '').trim().toLowerCase() || 'uncategorized';
   const ownerFilter = orderOwnerFilter(
     actor.ldapUsername
       ? { authSource: 'ldap', username: actor.ldapUsername }
-      : { authSource: 'local', id: actor.userId },
+      : { authSource: 'local', id: actor.userId, username: actor.username },
   );
   if (actor.userId || actor.ldapUsername) {
     const existing = await Order.findOne({
       ...ownerFilter,
       dailyMenuId,
+      foodCategory,
       status: { $ne: 'cancelled' },
     }).select('_id').lean();
     if (existing) {
-      throw duplicateDayError('شما برای این روز قبلا غذا رزرو کرده اید');
+      throw duplicateDayError('شما برای این وعده در این روز قبلاً غذا رزرو کرده اید');
     }
   }
 
   const settings = await AppSetting.findOne({ key: 'default' }).lean();
+  const capacityEnabled = settings?.enableCapacityLimit !== false;
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? 20);
-  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity);
+  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity, capacityEnabled);
   const resolvedMenuItemId = menuItem._id;
   const orderQuantity = 1;
 
-  await claimCapacity(resolvedMenuItemId, orderQuantity, effectiveCapacity);
+  if (capacityEnabled && effectiveCapacity > 0) {
+    await claimCapacity(resolvedMenuItemId, orderQuantity, effectiveCapacity);
+  }
 
   const price = menuItem.customPrice ?? menuItem.foodId.price;
-  return {
+  const payload = {
     userId: actor.userId || null,
     ldapUsername: actor.ldapUsername || null,
     orderUserName: actor.orderUserName || null,
     orderUserDepartment: actor.orderUserDepartment || null,
     menuItemId: resolvedMenuItemId,
     dailyMenuId,
+    foodCategory,
     weekId: menuItem.dailyMenuId.weekId,
     quantity: orderQuantity,
     totalPrice: price * orderQuantity,
     status: 'pending',
     orderDate: new Date(),
     items: [{ foodId: menuItem.foodId._id, quantity: orderQuantity, price }],
-    _capacityClaimed: { menuItemId: resolvedMenuItemId, quantity: orderQuantity },
   };
+  if (capacityEnabled && effectiveCapacity > 0) {
+    payload._capacityClaimed = { menuItemId: resolvedMenuItemId, quantity: orderQuantity };
+  }
+  return payload;
 }
 
 function orderListResponse(orders, showPrices) {
@@ -146,7 +155,7 @@ class OrderController {
         await releaseCapacity(claimed.menuItemId, claimed.quantity).catch(() => {});
       }
       if (isDuplicateKeyError(error)) {
-        return res.status(409).json({ message: 'شما برای این روز قبلا غذا رزرو کرده اید' });
+        return res.status(409).json({ message: 'شما برای این وعده در این روز قبلاً غذا رزرو کرده اید' });
       }
       next(error);
     }

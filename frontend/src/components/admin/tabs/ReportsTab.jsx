@@ -1,15 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, apiBlob, downloadBlob } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import SectionHeader from '../shared/SectionHeader';
 import AdminSpinner from '../shared/AdminSpinner';
 import { adminTabPath } from '../../../lib/adminPaths';
-import { DailyStatsGrid, MonthlyReport, SupplierReportView, WeeklyPersonnelReport } from '../reports/WeeklyReportViews';
+import { DailyStatsGrid, MonthlyReport, SupplierReportView, WeeklyPersonnelByFoodReport, WeeklyPersonnelReport } from '../reports/WeeklyReportViews';
 
 function weekSelectLabel(w) {
   const prefix = w.isActive ? 'فعال - ' : '';
   return `${prefix}${w.jalaliStart} تا ${w.jalaliEnd}`;
+}
+
+function weeklyFetchKey(tab) {
+  if (tab === 'supplier') return 'supplier';
+  return 'personnel'; // personnel + personnel2 یک API مشترک دارند
 }
 
 export default function ReportsTab() {
@@ -20,7 +25,6 @@ export default function ReportsTab() {
   const [months, setMonths] = useState([]);
   const [subTab, setSubTab] = useState('weekly');
   const [weeklyTab, setWeeklyTab] = useState('personnel');
-  const [personnelCellMode, setPersonnelCellMode] = useState('names');
   const [weekId, setWeekId] = useState('');
   const [monthVal, setMonthVal] = useState('');
   const [report, setReport] = useState(null);
@@ -28,6 +32,8 @@ export default function ReportsTab() {
   const [reportLoading, setReportLoading] = useState(false);
   const [printWeekly, setPrintWeekly] = useState('');
   const [printMonthly, setPrintMonthly] = useState('');
+  const loadSeq = useRef(0);
+  const lastFetchKey = useRef('');
 
   useEffect(() => {
     (async () => {
@@ -47,16 +53,35 @@ export default function ReportsTab() {
     })();
   }, []);
 
+  // گزارش پرسنلی ۲ همیشه روی هفته فعال
+  useEffect(() => {
+    if (!weeks.length || weeklyTab !== 'personnel2') return;
+    const activeId = weeks.find((w) => w.isActive)?._id;
+    if (activeId && weekId !== activeId) setWeekId(activeId);
+  }, [weeklyTab, weeks, weekId]);
+
   useEffect(() => {
     if (!access.allowed || loading) return;
-    loadReport();
+    const fetchKey = subTab === 'monthly'
+      ? `month:${monthVal}`
+      : `week:${weekId}:${weeklyFetchKey(weeklyTab)}`;
+    if (fetchKey === lastFetchKey.current && report) return;
+    loadReport(fetchKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, weeklyTab, weekId, monthVal, access.allowed, loading]);
 
-  async function loadReport() {
+  async function loadReport(fetchKey) {
+    const seq = ++loadSeq.current;
     setReportLoading(true);
     let url = '/api/admin/reports';
     if (subTab === 'monthly') {
-      if (!monthVal) { setReport(null); setReportLoading(false); return; }
+      if (!monthVal) {
+        if (seq === loadSeq.current) {
+          setReport(null);
+          setReportLoading(false);
+        }
+        return;
+      }
       const [from, to] = monthVal.split('|');
       url += `?jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`;
     } else if (weeklyTab === 'supplier') {
@@ -64,15 +89,29 @@ export default function ReportsTab() {
     } else {
       url += `?${weekId ? `weekId=${weekId}` : 'type=week'}`;
     }
-    const data = await api(url);
-    const payload = data.success ? data.data : null;
-    setReport(payload);
-    if (payload?.range) {
-      const label = `گزارش ${subTab === 'monthly' ? 'ماهیانه' : 'هفتگی'} — ${payload.range.jalaliStart} تا ${payload.range.jalaliEnd}`;
-      if (subTab === 'monthly') setPrintMonthly(label);
-      else setPrintWeekly(label);
+    try {
+      const data = await api(url);
+      if (seq !== loadSeq.current) return;
+      if (!data.success) {
+        setReport(null);
+        toast(data.message || 'خطا در دریافت گزارش', 'error');
+        return;
+      }
+      const payload = data.data || null;
+      setReport(payload);
+      lastFetchKey.current = fetchKey || lastFetchKey.current;
+      if (payload?.range) {
+        const label = `گزارش ${subTab === 'monthly' ? 'ماهیانه' : 'هفتگی'} — ${payload.range.jalaliStart} تا ${payload.range.jalaliEnd}`;
+        if (subTab === 'monthly') setPrintMonthly(label);
+        else setPrintWeekly(label);
+      }
+    } catch (err) {
+      if (seq !== loadSeq.current) return;
+      setReport(null);
+      toast(err.message || 'خطا در دریافت گزارش', 'error');
+    } finally {
+      if (seq === loadSeq.current) setReportLoading(false);
     }
-    setReportLoading(false);
   }
 
   async function downloadPdf() {
@@ -82,11 +121,10 @@ export default function ReportsTab() {
       url += `jalaliFrom=${encodeURIComponent(from)}&jalaliTo=${encodeURIComponent(to)}`;
     } else if (weeklyTab === 'supplier') {
       url = `/api/admin/reports/supplier/pdf?${weekId ? `weekId=${weekId}` : 'type=week'}`;
+    } else if (weeklyTab === 'personnel2') {
+      url += `${weekId ? `weekId=${weekId}` : 'type=week'}&variant=personnel2`;
     } else {
       url += weekId ? `weekId=${weekId}` : 'type=week';
-      if (weeklyTab === 'personnel' && personnelCellMode === 'type1') {
-        url += '&cellMode=type1';
-      }
     }
     try {
       const res = await apiBlob(url);
@@ -124,12 +162,26 @@ export default function ReportsTab() {
                   <button type="button" className={`sub-tab-btn${subTab === 'monthly' ? ' active' : ''}`} data-sub="monthly" onClick={() => setSubTab('monthly')}><i className="fas fa-calendar" /> ماهیانه</button>
                 </div>
                 {subTab === 'weekly' && (
-                  <select className="form-control" id="reportWeekSelect" style={{ width: 240 }} value={weekId} onChange={(e) => setWeekId(e.target.value)}>
+                  <select
+                    className="form-control"
+                    id="reportWeekSelect"
+                    style={{ width: 240 }}
+                    value={weekId}
+                    disabled={weeklyTab === 'personnel2'}
+                    title={weeklyTab === 'personnel2' ? 'گزارش پرسنلی ۲ فقط هفته فعال را نشان می‌دهد' : undefined}
+                    onChange={(e) => setWeekId(e.target.value)}
+                  >
                     {weeks.map((w) => <option key={w._id} value={w._id}>{weekSelectLabel(w)}</option>)}
                   </select>
                 )}
                 <button type="button" className="btn btn-primary btn-sm" id="pdfBtn" onClick={downloadPdf}>
-                  <i className="fas fa-file-pdf" /> {subTab === 'weekly' && weeklyTab === 'supplier' ? 'PDF تامین‌کننده' : 'دانلود PDF'}
+                  <i className="fas fa-file-pdf" /> {
+                    subTab === 'weekly' && weeklyTab === 'supplier'
+                      ? 'PDF تامین‌کننده'
+                      : subTab === 'weekly' && weeklyTab === 'personnel2'
+                        ? 'PDF پرسنلی ۲'
+                        : 'دانلود PDF'
+                  }
                 </button>
               </div>
             )}
@@ -138,20 +190,27 @@ export default function ReportsTab() {
           <div id="sub-weekly" className={`sub-pane${subTab === 'weekly' ? ' active' : ''}`} style={{ display: subTab === 'weekly' ? 'block' : 'none' }}>
             <div className="weekly-report-tabs no-print">
               <button type="button" className={`weekly-report-tab${weeklyTab === 'personnel' ? ' active' : ''}`} onClick={() => setWeeklyTab('personnel')}><i className="fas fa-users" /> گزارش پرسنلی</button>
+              <button type="button" className={`weekly-report-tab${weeklyTab === 'personnel2' ? ' active' : ''}`} onClick={() => setWeeklyTab('personnel2')}><i className="fas fa-utensils" /> گزارش پرسنلی ۲</button>
               <button type="button" className={`weekly-report-tab${weeklyTab === 'supplier' ? ' active' : ''}`} onClick={() => setWeeklyTab('supplier')}><i className="fas fa-kitchen-set" /> گزارش تامین‌کننده</button>
             </div>
-            {weeklyTab === 'personnel' && (
-              <div className="weekly-report-tabs no-print" style={{ marginTop: 8 }}>
-                <button type="button" className={`weekly-report-tab${personnelCellMode === 'names' ? ' active' : ''}`} onClick={() => setPersonnelCellMode('names')}><i className="fas fa-utensils" /> نام غذا</button>
-                <button type="button" className={`weekly-report-tab${personnelCellMode === 'type1' ? ' active' : ''}`} onClick={() => setPersonnelCellMode('type1')}><i className="fas fa-check-double" /> نوع یک (بله/خیر)</button>
-              </div>
-            )}
             {reportLoading ? <AdminSpinner /> : (
               <>
                 <div id="weeklyPersonnelPane" hidden={weeklyTab !== 'personnel'}>
                   <div className="print-title" id="printTitleWeekly">{printWeekly}</div>
-                  <div id="weeklyReportWrap"><WeeklyPersonnelReport report={weeklyTab === 'personnel' ? report : null} cellMode={personnelCellMode} /></div>
+                  <div id="weeklyReportWrap"><WeeklyPersonnelReport report={weeklyTab === 'personnel' ? report : null} /></div>
                   <DailyStatsGrid report={weeklyTab === 'personnel' ? report : null} />
+                </div>
+                <div id="weeklyPersonnel2Pane" hidden={weeklyTab !== 'personnel2'}>
+                  <div className="print-title" id="printTitlePersonnel2">
+                    {printWeekly ? printWeekly.replace('گزارش هفتگی', 'گزارش پرسنلی ۲') : 'گزارش پرسنلی ۲'}
+                  </div>
+                  <div className="section-header no-print" style={{ marginTop: 0 }}>
+                    <div>
+                      <div className="section-title">گزارش پرسنلی ۲</div>
+                      <div className="section-sub">هفته فعال — غذاهای هر روز به تفکیک روز (غذا ← واحد ← نام)</div>
+                    </div>
+                  </div>
+                  <WeeklyPersonnelByFoodReport report={weeklyTab === 'personnel2' ? report : null} />
                 </div>
                 <div id="weeklySupplierPane" hidden={weeklyTab !== 'supplier'}>
                   <div className="supplier-report-head no-print">

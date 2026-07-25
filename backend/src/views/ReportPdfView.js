@@ -10,26 +10,78 @@ function escapeHtml(value) {
 }
 
 function formatMoney(value) {
-  return `${Number(value || 0).toLocaleString('fa-IR')} تومان`;
+  return `${Number(value || 0).toLocaleString('fa-IR')} ت`;
 }
 
 function compactMoney(value) {
   return Number(value || 0).toLocaleString('fa-IR');
 }
 
-function renderFoodCell(foods, cellMode = 'names') {
+function renderFoodCell(foods, categories = []) {
   if (!foods?.length) return '<span class="food-empty">-</span>';
-  if (cellMode === 'type1') {
-    const isType1 = foods.some((food) => {
-      if (food && typeof food === 'object') return !!food.isType1;
-      return false;
-    });
-    return `<div class="food-item">${isType1 ? 'بله' : 'خیر'}</div>`;
+  const map = new Map();
+  for (const food of foods) {
+    const key = foodCategoryOf(food);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(food);
   }
-  return foods.map((food) => {
-    const label = food && typeof food === 'object' ? (food.name || '-') : food;
-    return `<div class="food-item">${escapeHtml(label)}</div>`;
+  const orderedKeys = [];
+  for (const cat of categories || []) {
+    const k = normalizeCategoryKey(cat.key);
+    if (map.has(k)) orderedKeys.push(k);
+  }
+  for (const k of map.keys()) {
+    if (!orderedKeys.includes(k)) orderedKeys.push(k);
+  }
+  const multi = orderedKeys.length > 1;
+  return orderedKeys.map((key) => {
+    const items = (map.get(key) || []).map((food) => {
+      const label = food && typeof food === 'object' ? (food.name || '-') : food;
+      return `<div class="food-item">${escapeHtml(label)}</div>`;
+    }).join('');
+    if (!multi) return items;
+    return `<div class="food-cat-group"><div class="food-cat-label">${escapeHtml(categoryLabel(categories, key))}</div>${items}</div>`;
   }).join('');
+}
+
+function normalizeCategoryKey(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return key || 'uncategorized';
+}
+
+function categoryLabel(categories, key) {
+  const k = normalizeCategoryKey(key);
+  const hit = (categories || []).find((c) => normalizeCategoryKey(c.key) === k);
+  if (hit?.name) return hit.name;
+  const fallback = { lunch: 'ناهار', breakfast: 'صبحانه', dinner: 'شام', snack: 'میان وعده', uncategorized: 'بدون دسته' };
+  return fallback[k] || k;
+}
+
+function foodCategoryOf(food) {
+  if (food && typeof food === 'object') return normalizeCategoryKey(food.category);
+  return 'uncategorized';
+}
+
+function groupFoodsByCategory(foods, categories = []) {
+  const map = new Map();
+  for (const food of foods || []) {
+    const key = normalizeCategoryKey(food.category);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(food);
+  }
+  const orderedKeys = [];
+  for (const cat of categories || []) {
+    const k = normalizeCategoryKey(cat.key);
+    if (map.has(k)) orderedKeys.push(k);
+  }
+  for (const k of map.keys()) {
+    if (!orderedKeys.includes(k)) orderedKeys.push(k);
+  }
+  return orderedKeys.map((key) => ({
+    key,
+    name: categoryLabel(categories, key),
+    items: map.get(key) || [],
+  }));
 }
 
 function renderSignatureSection() {
@@ -58,6 +110,48 @@ function groupUsersByDepartment(users) {
   return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'fa'));
 }
 
+/** غذای غالب یک کاربر در هفته */
+function userPrimaryFoodName(user) {
+  const counts = new Map();
+  for (const day of user.days || []) {
+    for (const food of day.foods || []) {
+      const name = food && typeof food === 'object' ? (food.name || '') : String(food || '');
+      if (name && name !== '-') counts.set(name, (counts.get(name) || 0) + 1);
+    }
+  }
+  if (!counts.size) return '\uFFFF';
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fa'))[0][0];
+}
+
+function userPrimaryCategory(user) {
+  const counts = new Map();
+  for (const day of user.days || []) {
+    for (const food of day.foods || []) {
+      const cat = foodCategoryOf(food);
+      counts.set(cat, (counts.get(cat) || 0) + 1);
+    }
+  }
+  if (!counts.size) return '\uFFFF';
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fa'))[0][0];
+}
+
+function sortUsersByFoodThenName(users, categories = []) {
+  const orderIndex = new Map(
+    (categories || []).map((c, i) => [normalizeCategoryKey(c.key), Number(c.sortOrder ?? i)]),
+  );
+  return users.slice().sort((a, b) => {
+    const ca = userPrimaryCategory(a);
+    const cb = userPrimaryCategory(b);
+    const oa = orderIndex.has(ca) ? orderIndex.get(ca) : 999;
+    const ob = orderIndex.has(cb) ? orderIndex.get(cb) : 999;
+    if (oa !== ob) return oa - ob;
+    if (ca !== cb) return ca.localeCompare(cb, 'fa');
+    const foodCmp = userPrimaryFoodName(a).localeCompare(userPrimaryFoodName(b), 'fa');
+    if (foodCmp !== 0) return foodCmp;
+    return String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa');
+  });
+}
+
 function buildGuestWeeklyColgroup(dayCount) {
   const dayWidth = dayCount > 0 ? Math.max(8, Math.floor(50 / dayCount)) : 10;
   const dayCols = Array.from({ length: dayCount }, () => `<col class="col-day" style="width:${dayWidth}%">`).join('');
@@ -74,8 +168,8 @@ function buildGuestWeeklyColgroup(dayCount) {
 }
 
 function renderGuestWeeklyRows(report) {
-  const cellMode = report.cellMode === 'type1' ? 'type1' : 'names';
-  const dayCount = report.byGuest?.[0]?.days?.length || report.byUser[0]?.days?.length || 0;
+  const categories = report.categories || [];
+  const dayCount = report.byGuest?.[0]?.days?.length || report.byUser[0]?.days?.length || report.days?.length || 0;
   const dayHeaders = (report.byGuest?.[0]?.days || report.days || []).map((day) => `<th class="col-day">${escapeHtml(day.jalaliDate)}</th>`).join('');
   let rowIndex = 0;
   const rows = (report.byGuest || []).map((guest) => {
@@ -86,7 +180,7 @@ function renderGuestWeeklyRows(report) {
       <td class="col-code">${escapeHtml(guest.guestCode)}</td>
       <td class="col-name">${escapeHtml(guest.fullName)}</td>
       <td class="col-type">${escapeHtml(guest.guestTypeLabel || (guest.guestType === 'permanent' ? 'دائم' : 'موقت'))}</td>
-      ${guest.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, cellMode)}</td>`).join('')}
+      ${guest.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, categories)}</td>`).join('')}
       <td class="col-total">${Number(guest.total || 0).toLocaleString('fa-IR')}</td>
       <td class="col-price" title="${formatMoney(guest.totalPrice)}">${compactMoney(guest.totalPrice)}</td>
     </tr>`;
@@ -132,23 +226,20 @@ function buildWeeklyColgroup(dayCount) {
 
 function renderReportHtml(report) {
   const isMonthlyReport = report.type === 'month';
-  const cellMode = report.cellMode === 'type1' ? 'type1' : 'names';
   const generatedAt = escapeHtml(formatJalaliDate(new Date()));
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
-  const dayCount = report.byUser[0]?.days?.length || 0;
-  const weeklySecTitle = cellMode === 'type1'
-    ? 'گزارش پرسنلی — نوع یک هر روز (بله/خیر)'
-    : 'گزارش پرسنلی — تفکیک روزانه سفارشات هفته';
+  const categories = report.categories || [];
+  const dayCount = report.days?.length || report.byUser[0]?.days?.length || report.byGuest?.[0]?.days?.length || 0;
+  const weeklySecTitle = 'گزارش پرسنلی — تفکیک روزانه سفارشات هفته';
 
-  const userDayHeaders = report.byUser[0]?.days?.map((day) => `<th class="col-day">${escapeHtml(day.jalaliDate)}</th>`).join('') || '';
+  const daySource = report.days?.length
+    ? report.days
+    : (report.byUser[0]?.days || report.byGuest?.[0]?.days || []);
+  const userDayHeaders = daySource.map((day) => `<th class="col-day">${escapeHtml(day.jalaliDate)}</th>`).join('');
   let rowIndex = 0;
-  const userRows = groupUsersByDepartment(report.byUser).flatMap(([department, users]) => {
-    const sorted = users.slice().sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
+  const userDeptBlocks = groupUsersByDepartment(report.byUser).map(([department, users]) => {
+    const sorted = sortUsersByFoodThenName(users, categories);
     const colSpan = dayCount + 5;
-    const header = `
-    <tr class="dept-group-row">
-      <td colspan="${colSpan}">${escapeHtml(department)} (${sorted.length.toLocaleString('fa-IR')} نفر)</td>
-    </tr>`;
     const body = sorted.map((user) => {
       rowIndex += 1;
       return `
@@ -156,14 +247,26 @@ function renderReportHtml(report) {
       <td class="col-idx">${rowIndex.toLocaleString('fa-IR')}</td>
       <td class="col-name">${escapeHtml(user.fullName)}</td>
       <td class="col-dept">${escapeHtml(user.department)}</td>
-      ${user.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, cellMode)}</td>`).join('')}
+      ${user.days.map((day) => `<td class="col-day">${renderFoodCell(day.foods, categories)}</td>`).join('')}
       <td class="col-total">${Number(user.total || 0).toLocaleString('fa-IR')}</td>
       <td class="col-price" title="${formatMoney(user.totalPrice)}">${compactMoney(user.totalPrice)}</td>
     </tr>`;
     }).join('');
-    return header + body;
+    return `
+  <div class="dept-block">
+    <div class="tbl-wrap wide">
+      <table class="report-grid">
+        ${buildWeeklyColgroup(dayCount)}
+        <thead><tr><th class="col-idx">#</th><th class="col-name">نام و نام خانوادگی</th><th class="col-dept">واحد</th>${userDayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
+        <tbody>
+          <tr class="dept-group-row"><td colspan="${colSpan}">${escapeHtml(department)} (${sorted.length.toLocaleString('fa-IR')} نفر)</td></tr>
+          ${body || `<tr><td colspan="${colSpan}" class="empty-cell">—</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
   }).join('');
-
+  const userRows = userDeptBlocks;
   const missingRows = Object.entries(report.missingUsers || {})
     .sort((a, b) => a[0].localeCompare(b[0], 'fa'))
     .map(([department, names]) => `
@@ -184,23 +287,16 @@ function renderReportHtml(report) {
       </tr>
     `).join('');
 
-  const weeklyColSpan = dayCount + 5;
   const guestWeekly = renderGuestWeeklyRows(report);
   const weeklyBody = `
   <div class="stats stats-weekly">
     <div class="stat"><span class="stat-val">${report.totals.totalOrders.toLocaleString('fa-IR')}</span> <span class="stat-label">سفارش تاییدشده</span></div>
     <div class="stat"><span class="stat-val">${(report.totals.totalMeals || report.totals.totalOrders || 0).toLocaleString('fa-IR')}</span> <span class="stat-label">جمع وعده</span></div>
-    <div class="stat"><span class="stat-val">${compactMoney(report.totals.totalPrice)}</span> <span class="stat-label">مبلغ کل (تومان)</span></div>
+    <div class="stat"><span class="stat-val">${compactMoney(report.totals.totalPrice)}</span> <span class="stat-label">مبلغ کل (ت)</span></div>
   </div>
 
   <div class="sec-title">${weeklySecTitle}</div>
-  <div class="tbl-wrap wide">
-    <table class="report-grid">
-      ${buildWeeklyColgroup(dayCount)}
-      <thead><tr><th class="col-idx">#</th><th class="col-name">نام و نام خانوادگی</th><th class="col-dept">واحد</th>${userDayHeaders}<th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
-      <tbody>${userRows || `<tr><td colspan="${weeklyColSpan}" class="empty-cell">سفارش تاییدشده‌ای ثبت نشده است</td></tr>`}</tbody>
-    </table>
-  </div>
+  ${userRows || `<div class="tbl-wrap wide"><table class="report-grid"><tbody><tr><td class="empty-cell">سفارش تاییدشده‌ای ثبت نشده است</td></tr></tbody></table></div>`}
 
   <div class="sec-title">پرسنل فاقد سفارش</div>
   <div class="tbl-wrap">
@@ -239,6 +335,32 @@ function renderReportHtml(report) {
   </div>
 
   ${(() => {
+    const foodGroups = groupFoodsByCategory(report.byFood || [], categories);
+    if (!foodGroups.length) return '';
+    let foodIndex = 0;
+    const foodRows = foodGroups.flatMap((group) => [
+      `<tr class="dept-group-row"><td colspan="4">${escapeHtml(group.name)}</td></tr>`,
+      ...group.items.map((food) => {
+        foodIndex += 1;
+        return `<tr>
+          <td>${foodIndex.toLocaleString('fa-IR')}</td>
+          <td class="col-name">${escapeHtml(food.foodName)}</td>
+          <td class="col-total">${Number(food.count || 0).toLocaleString('fa-IR')}</td>
+          <td class="col-price">${compactMoney(food.totalPrice)}</td>
+        </tr>`;
+      }),
+    ]).join('');
+    return `
+  <div class="sec-title">خلاصه غذاها بر اساس دسته</div>
+  <div class="tbl-wrap">
+    <table class="report-grid monthly-grid">
+      <thead><tr><th>#</th><th class="col-name">نام غذا</th><th class="col-total">جمع وعده</th><th class="col-price">هزینه (ت)</th></tr></thead>
+      <tbody>${foodRows}</tbody>
+    </table>
+  </div>`;
+  })()}
+
+  ${(() => {
     const guestMonthly = renderGuestMonthlyRows(report);
     return `
   <div class="sec-title">گزارش ماهیانه مهمان — خلاصه وعده‌ها و هزینه</div>
@@ -273,13 +395,13 @@ function renderReportHtml(report) {
     ${pageRule}
       @bottom-center {
         content: "صفحه " counter(page) " از " counter(pages);
-        font-family: Vazirmatn, Tahoma, sans-serif;
+        font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
         font-size: 8pt; color: #444; direction: rtl;
       }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Vazirmatn, Tahoma, sans-serif;
+      font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
       direction: rtl; color: #111;
       background: #fff;
       font-size: 9.5pt;
@@ -372,10 +494,18 @@ function renderReportHtml(report) {
     tbody td:last-child { border-left: none; }
     tbody tr:last-child td { border-bottom: none; }
     .dept-group-row td {
-      background: #f0f4ff;
+      background: #f3f3f3;
       font-weight: 700;
       padding: 4pt 6pt;
       page-break-after: avoid;
+    }
+    .dept-block {
+      page-break-inside: auto;
+      break-inside: auto;
+      margin-bottom: 8pt;
+    }
+    .dept-block + .dept-block {
+      page-break-before: auto;
     }
     .col-idx, .col-total, .col-price { text-align: center; white-space: nowrap; }
     .col-price { direction: ltr; font-size: 7pt; }
@@ -383,6 +513,9 @@ function renderReportHtml(report) {
     .col-day { font-size: 6.8pt; line-height: 1.25; }
     .food-item { margin-bottom: 1.5pt; }
     .food-item:last-child { margin-bottom: 0; }
+    .food-cat-group { margin-bottom: 3pt; }
+    .food-cat-group:last-child { margin-bottom: 0; }
+    .food-cat-label { font-size: 7.5pt; font-weight: 700; margin-bottom: 1pt; }
     .food-empty { color: #666; }
     .missing-names { text-align: right; }
     .total-row td { font-weight: 700; border-top: 1pt solid #000; background: #f7f7f7; }
@@ -464,4 +597,254 @@ function renderReportHtml(report) {
 </html>`;
 }
 
-module.exports = { renderReportHtml };
+function foodNameOf(food) {
+  if (food && typeof food === 'object') return food.name || '';
+  return String(food || '');
+}
+
+/** درخت یک روز: دسته → غذا → واحد → افراد */
+function buildCategoryFoodTreeFromEntries(entries, categories = []) {
+  const catMap = new Map();
+  for (const { foodName, category, department, fullName } of entries) {
+    const food = String(foodName || '').trim();
+    if (!food || food === '-') continue;
+    const catKey = normalizeCategoryKey(category);
+    const dept = department || 'بدون واحد';
+    const name = fullName || '—';
+    if (!catMap.has(catKey)) catMap.set(catKey, { key: catKey, foods: new Map() });
+    const catRow = catMap.get(catKey);
+    if (!catRow.foods.has(food)) catRow.foods.set(food, { foodName: food, total: 0, depts: new Map() });
+    const foodRow = catRow.foods.get(food);
+    foodRow.total += 1;
+    if (!foodRow.depts.has(dept)) foodRow.depts.set(dept, { department: dept, people: new Map() });
+    const deptRow = foodRow.depts.get(dept);
+    const person = deptRow.people.get(name) || { fullName: name, count: 0 };
+    person.count += 1;
+    deptRow.people.set(name, person);
+  }
+
+  const ordered = [];
+  for (const cat of categories || []) {
+    const k = normalizeCategoryKey(cat.key);
+    if (catMap.has(k)) ordered.push(k);
+  }
+  for (const k of catMap.keys()) {
+    if (!ordered.includes(k)) ordered.push(k);
+  }
+
+  return ordered.map((key) => {
+    const catRow = catMap.get(key);
+    const foods = [...catRow.foods.values()]
+      .map((food) => {
+        const departments = [...food.depts.values()]
+          .map((dept) => ({
+            department: dept.department,
+            people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
+          }))
+          .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
+        const rowCount = departments.reduce((s, d) => s + Math.max(d.people.length, 1), 0);
+        return {
+          foodName: food.foodName,
+          total: food.total,
+          departments,
+          rowCount,
+        };
+      })
+      .sort((a, b) => a.foodName.localeCompare(b.foodName, 'fa'));
+    return {
+      key,
+      name: categoryLabel(categories, key),
+      foods,
+      total: foods.reduce((s, f) => s + f.total, 0),
+      rowCount: foods.reduce((s, f) => s + f.rowCount, 0),
+    };
+  });
+}
+
+function buildPersonnel2ByDay(report) {
+  const dayOrder = [];
+  const dayMap = new Map();
+  const categories = report.categories || [];
+
+  const ensureDay = (jalaliDate) => {
+    const key = String(jalaliDate || '').trim() || '—';
+    if (!dayMap.has(key)) {
+      dayMap.set(key, []);
+      dayOrder.push(key);
+    }
+    return dayMap.get(key);
+  };
+
+  for (const d of report.days || []) {
+    if (d?.jalaliDate) ensureDay(d.jalaliDate);
+  }
+
+  for (const user of report.byUser || []) {
+    for (const day of user.days || []) {
+      for (const food of day.foods || []) {
+        const name = foodNameOf(food).trim();
+        if (!name || name === '-') continue;
+        ensureDay(day.jalaliDate).push({
+          foodName: name,
+          category: foodCategoryOf(food),
+          department: user.department || 'بدون واحد',
+          fullName: user.fullName || '—',
+        });
+      }
+    }
+  }
+  for (const guest of report.byGuest || []) {
+    for (const day of guest.days || []) {
+      for (const food of day.foods || []) {
+        const name = foodNameOf(food).trim();
+        if (!name || name === '-') continue;
+        ensureDay(day.jalaliDate).push({
+          foodName: name,
+          category: foodCategoryOf(food),
+          department: guest.department || 'مهمان',
+          fullName: `${guest.fullName || '—'} (مهمان)`,
+        });
+      }
+    }
+  }
+
+  return dayOrder
+    .map((jalaliDate) => {
+      const cats = buildCategoryFoodTreeFromEntries(dayMap.get(jalaliDate) || [], categories);
+      const total = cats.reduce((s, c) => s + c.total, 0);
+      const foodCount = cats.reduce((s, c) => s + c.foods.length, 0);
+      return { jalaliDate, categories: cats, total, foodCount };
+    })
+    .filter((day) => day.categories.length > 0);
+}
+
+function renderDayTableRows(day) {
+  const rows = [];
+  for (const cat of day.categories) {
+    let catRendered = false;
+    for (const food of cat.foods) {
+      let foodRendered = false;
+      for (const dept of food.departments) {
+        const people = dept.people.length ? dept.people : [{ fullName: '—', count: 0 }];
+        people.forEach((person, personIdx) => {
+          const catCell = !catRendered
+            ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
+            : '';
+          const foodCell = !foodRendered
+            ? `<td class="col-food" rowspan="${food.rowCount}">${escapeHtml(food.foodName)}</td>`
+            : '';
+          const deptCell = personIdx === 0
+            ? `<td class="col-dept" rowspan="${people.length}">${escapeHtml(dept.department)}</td>`
+            : '';
+          const countTxt = person.count > 1 ? ` (${person.count.toLocaleString('fa-IR')})` : '';
+          rows.push(`
+          <tr>
+            ${catCell}
+            ${foodCell}
+            ${deptCell}
+            <td class="col-name">${escapeHtml(person.fullName)}${countTxt}</td>
+          </tr>`);
+          catRendered = true;
+          foodRendered = true;
+        });
+      }
+    }
+  }
+  return rows.join('');
+}
+
+function renderPersonnel2ReportHtml(report) {
+  const generatedAt = escapeHtml(formatJalaliDate(new Date()));
+  const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
+  const days = buildPersonnel2ByDay(report);
+  const totalMeals = days.reduce((sum, day) => sum + day.total, 0);
+
+  const daySections = days.map((day) => `
+    <section class="day-block">
+      <div class="day-head">
+        <span class="day-title">${escapeHtml(day.jalaliDate)}</span>
+        <span class="day-meta">${day.total.toLocaleString('fa-IR')} پرس · ${day.foodCount.toLocaleString('fa-IR')} غذا</span>
+      </div>
+      <table class="p2">
+        <thead>
+          <tr>
+            <th>دسته</th>
+            <th>غذاها</th>
+            <th>واحد</th>
+            <th>نام و نام خانوادگی</th>
+          </tr>
+        </thead>
+        <tbody>${renderDayTableRows(day)}</tbody>
+      </table>
+    </section>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(report.title || 'گزارش پرسنلی ۲')}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
+      font-size: 10pt; color: #000; direction: rtl;
+    }
+    .head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 12pt; border-bottom: 1.5pt solid #000; padding-bottom: 6pt; margin-bottom: 10pt;
+    }
+    .head-title { font-size: 13pt; font-weight: 700; }
+    .head-meta { font-size: 8.5pt; text-align: left; line-height: 1.5; }
+    .day-block { margin-bottom: 12pt; page-break-inside: avoid; }
+    .day-head {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 8pt; padding: 5pt 8pt; margin-bottom: 0;
+      border: 1pt solid #000; border-bottom: none; background: #e8e8e8;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .day-title { font-size: 11pt; font-weight: 700; }
+    .day-meta { font-size: 8pt; white-space: nowrap; }
+    table.p2 {
+      width: 100%; border-collapse: collapse; table-layout: fixed;
+    }
+    table.p2 th, table.p2 td {
+      border: 1pt solid #000; padding: 5pt 7pt; vertical-align: middle;
+    }
+    table.p2 th {
+      background: #eee; font-weight: 700; text-align: center;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    table.p2 thead { display: table-header-group; }
+    table.p2 tr { page-break-inside: avoid; }
+    .col-cat { width: 14%; text-align: center; font-weight: 700; background: #f0f0f0; }
+    .col-food { width: 22%; text-align: center; font-weight: 700; background: #f5f5f5; }
+    .col-dept { width: 20%; text-align: center; font-weight: 700; background: #fafafa; }
+    .col-name { width: 44%; text-align: right; font-weight: 700; }
+    .empty { text-align: center; padding: 16pt; border: 1pt solid #000; }
+    .foot {
+      margin-top: 8pt; padding-top: 5pt; border-top: 1pt solid #000;
+      font-size: 8pt; display: flex; justify-content: space-between; gap: 8pt;
+    }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div class="head-title">گزارش پرسنلی ۲ — ${orgName}</div>
+    <div class="head-meta">
+      <div>${escapeHtml(report.range?.jalaliStart || '—')} تا ${escapeHtml(report.range?.jalaliEnd || '—')}</div>
+      <div>${generatedAt}</div>
+    </div>
+  </div>
+  ${daySections || '<div class="empty">سفارش تاییدشده‌ای ثبت نشده است</div>'}
+  <div class="foot">
+    <span>جمع هفته: ${totalMeals.toLocaleString('fa-IR')} پرس در ${days.length.toLocaleString('fa-IR')} روز</span>
+    <span>${escapeHtml(report.reportNumber || '')}</span>
+  </div>
+</body>
+</html>`;
+}
+
+module.exports = { renderReportHtml, renderPersonnel2ReportHtml };
+

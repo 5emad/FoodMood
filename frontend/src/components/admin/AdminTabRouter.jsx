@@ -7,6 +7,7 @@ import DepartmentsTab from './tabs/DepartmentsTab';
 import FinanceTab from './tabs/FinanceTab';
 import GuestsTab from './tabs/GuestsTab';
 import AnnouncementsTab from './tabs/AnnouncementsTab';
+import BackupTab from './tabs/BackupTab';
 
 const TABS = {
   reports: ReportsTab,
@@ -18,6 +19,7 @@ const TABS = {
   finance: FinanceTab,
   guests: GuestsTab,
   announcements: AnnouncementsTab,
+  backup: BackupTab,
 };
 
 export default function AdminTabRouter({ tab, boot, onReportsAccessChange }) {

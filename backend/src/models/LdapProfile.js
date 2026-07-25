@@ -39,6 +39,11 @@ const ldapProfileSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active',
   },
+  /** Set when the user chooses a local app password and leaves AD auth. */
+  convertedToLocal: {
+    type: Boolean,
+    default: false,
+  },
   role: {
     type: String,
     enum: ['user', 'admin'],

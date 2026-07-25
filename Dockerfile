@@ -43,7 +43,7 @@ COPY --from=build --chown=foodmood:foodmood /app/node_modules ./node_modules
 COPY --from=build --chown=foodmood:foodmood /app/backend ./backend
 COPY docker/app/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
- && mkdir -p /app/backend/logs /app/backend/public/uploads/foods /app/backend/public/uploads/portal-slides \
+ && mkdir -p /app/backend/logs /app/backend/public/uploads/foods \
  && chown -R foodmood:foodmood /app/backend/logs /app/backend/public/uploads
 
 USER foodmood

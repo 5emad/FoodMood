@@ -63,6 +63,14 @@ const orderSchema = new mongoose.Schema({
     default: null,
     index: true,
   },
+  /** کلید دسته غذا در زمان رزرو — یک رزرو فعال به ازای هر دسته در هر روز */
+  foodCategory: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: 'uncategorized',
+    index: true,
+  },
   quantity: {
     type: Number,
     default: 1,
@@ -95,37 +103,37 @@ const orderSchema = new mongoose.Schema({
   },
 });
 
-// یک رزرو فعال به ازای هر کاربر/مهمان در هر روز
+// یک رزرو فعال به ازای هر کاربر/مهمان در هر روز و هر دسته غذا
 orderSchema.index(
-  { userId: 1, dailyMenuId: 1 },
+  { userId: 1, dailyMenuId: 1, foodCategory: 1 },
   {
     unique: true,
     partialFilterExpression: {
       userId: { $type: 'objectId' },
       dailyMenuId: { $type: 'objectId' },
-      status: { $ne: 'cancelled' },
+      status: { $in: ['pending', 'confirmed', 'ready', 'completed'] },
     },
   },
 );
 orderSchema.index(
-  { ldapUsername: 1, dailyMenuId: 1 },
+  { ldapUsername: 1, dailyMenuId: 1, foodCategory: 1 },
   {
     unique: true,
     partialFilterExpression: {
       ldapUsername: { $type: 'string' },
       dailyMenuId: { $type: 'objectId' },
-      status: { $ne: 'cancelled' },
+      status: { $in: ['pending', 'confirmed', 'ready', 'completed'] },
     },
   },
 );
 orderSchema.index(
-  { guestId: 1, dailyMenuId: 1 },
+  { guestId: 1, dailyMenuId: 1, foodCategory: 1 },
   {
     unique: true,
     partialFilterExpression: {
       guestId: { $type: 'objectId' },
       dailyMenuId: { $type: 'objectId' },
-      status: { $ne: 'cancelled' },
+      status: { $in: ['pending', 'confirmed', 'ready', 'completed'] },
     },
   },
 );

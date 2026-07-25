@@ -1,6 +1,5 @@
 const AppSetting = require('../models/AppSetting');
 const { isEnabledFlag } = require('../helpers/SettingFlags');
-const { defaultPortalSlider, normalizePortalSliderConfig } = require('../helpers/PortalSliderDefaults');
 
 const defaultSettings = {
   key: 'default',
@@ -11,11 +10,12 @@ const defaultSettings = {
   publicUrl: '',
   maxActiveReservations: 0,
   defaultMenuItemCapacity: 20,
-  themePrimary: '#9B6DFF',
-  themePrimaryLight: '#C4A8FF',
-  themePrimaryDark: '#6C3FD4',
-  themeGradientFrom: '#1A0E38',
-  themeGradientTo: '#2D1460',
+  enableCapacityLimit: true,
+  themePrimary: '#1B3F8D',
+  themePrimaryLight: '#4D73B5',
+  themePrimaryDark: '#122A62',
+  themeGradientFrom: '#0B1A3D',
+  themeGradientTo: '#1B3F8D',
   uiFont: 'vazirmatn',
   ldapEnabled: false,
   ldapUrl: '',
@@ -25,7 +25,6 @@ const defaultSettings = {
   ldapBaseDn: '',
   ldapBindDn: '',
   ldapUserFilter: '(sAMAccountName={{username}})',
-  portalSlider: defaultPortalSlider,
 };
 
 function publicSettings(settings) {
@@ -34,15 +33,16 @@ function publicSettings(settings) {
   const caPem = raw.ldapCaCertPem || '';
   delete raw.ldapBindPasswordEnc;
   delete raw.ldapCaCertPem;
+  delete raw.portalSlider;
   return {
     ...raw,
     showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true),
     showFinancialStatementToUsers: isEnabledFlag(raw.showFinancialStatementToUsers, true),
+    enableCapacityLimit: isEnabledFlag(raw.enableCapacityLimit, true),
     hasLdapBindPassword: Boolean(storedEnc || process.env.LDAP_BIND_PASSWORD),
     ldapBindPasswordStored: Boolean(storedEnc),
     ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
     hasLdapCaCert: Boolean(caPem || raw.ldapCaCertPath),
-    portalSlider: normalizePortalSliderConfig(raw.portalSlider),
   };
 }
 

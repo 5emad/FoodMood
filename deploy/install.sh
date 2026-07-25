@@ -833,7 +833,6 @@ deploy_application() {
   fi
   mkdir -p "$INSTALL_DIR"
   mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
-           "${INSTALL_DIR}/backend/public/uploads/portal-slides" \
            "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
     --exclude node_modules \

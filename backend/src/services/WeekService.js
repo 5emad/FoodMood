@@ -51,37 +51,71 @@ async function ensureDays() {
 
 async function ensureDailyMenus(week) {
   const days = await ensureDays();
-  const base = startOfDay(getPersianWeekStart(week.startDate));
-  const dates = days.map((_, offset) => {
-    const date = new Date(base);
-    date.setDate(base.getDate() + offset);
-    return date;
-  });
+  const dayByIndex = new Map(days.map((d) => [d.index, d]));
+  const start = startOfDay(week.startDate);
+  const end = startOfDay(week.endDate);
+  if (end < start) return;
 
-  // ایجاد رکوردها در صورت نبود
-  for (let i = 0; i < days.length; i += 1) {
+  const persianDayIndex = (date) => ((startOfDay(date).getDay() + 1) % 7) + 1;
+
+  /** جفت‌های dayId+date در بازهٔ هفته */
+  const planned = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    const date = startOfDay(new Date(cursor));
+    const day = dayByIndex.get(persianDayIndex(date));
+    if (!day) continue;
+    planned.push({ day, date });
+  }
+
+  // اگر در یک بازه بیش از یک روز با همان weekday بیاید (بازه > ۷)، آخرین تاریخ همان روز می‌ماند
+  const byDayId = new Map();
+  for (const row of planned) {
+    byDayId.set(String(row.day._id), row);
+  }
+  const uniquePlanned = [...byDayId.values()];
+
+  // ۱) اطمینان از وجود رکورد برای هر روز هفته (بر اساس dayId یکتا)
+  for (const { day, date } of uniquePlanned) {
     await DailyMenu.findOneAndUpdate(
-      { weekId: week._id, dayId: days[i]._id },
-      { $setOnInsert: { weekId: week._id, dayId: days[i]._id, date: dates[i] } },
+      { weekId: week._id, dayId: day._id },
+      { $setOnInsert: { weekId: week._id, dayId: day._id, date } },
       { upsert: true },
     );
   }
 
-  // دو مرحله‌ای تا با unique(weekId, date) تداخل نداشته باشد
-  for (let i = 0; i < days.length; i += 1) {
-    const temp = new Date(base);
+  // ۲) دو مرحله‌ای برای جلوگیری از تداخل unique(weekId, date)
+  for (let i = 0; i < uniquePlanned.length; i += 1) {
+    const temp = new Date(start);
     temp.setFullYear(temp.getFullYear() + 50);
     temp.setDate(temp.getDate() + i);
     await DailyMenu.updateOne(
-      { weekId: week._id, dayId: days[i]._id },
+      { weekId: week._id, dayId: uniquePlanned[i].day._id },
       { $set: { date: temp, updatedAt: new Date() } },
     );
   }
-  for (let i = 0; i < days.length; i += 1) {
+  for (const { day, date } of uniquePlanned) {
     await DailyMenu.updateOne(
-      { weekId: week._id, dayId: days[i]._id },
-      { $set: { date: dates[i], updatedAt: new Date() } },
+      { weekId: week._id, dayId: day._id },
+      { $set: { date, updatedAt: new Date() } },
     );
+  }
+
+  // ۳) حذف منوهای روزهایی که دیگر در بازه نیستند (+ لغو سفارش‌های وابسته)
+  const keepDayIds = uniquePlanned.map((p) => p.day._id);
+  const obsolete = await DailyMenu.find({
+    weekId: week._id,
+    dayId: { $nin: keepDayIds },
+  });
+  if (obsolete.length) {
+    const { cancelOrdersForMenuItems } = require('../helpers/OrderStatusHelper');
+    const dailyMenuIds = obsolete.map((m) => m._id);
+    const menuItems = await MenuItem.find({ dailyMenuId: { $in: dailyMenuIds } }).select('_id');
+    const menuItemIds = menuItems.map((item) => item._id);
+    if (menuItemIds.length) {
+      await cancelOrdersForMenuItems(menuItemIds);
+      await MenuItem.deleteMany({ _id: { $in: menuItemIds } });
+    }
+    await DailyMenu.deleteMany({ _id: { $in: dailyMenuIds } });
   }
 }
 

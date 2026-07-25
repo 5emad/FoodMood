@@ -155,32 +155,36 @@ async function buildUserStatement(user, query = {}, settings = {}) {
     organizationSharePercent,
   );
 
-  const items = orders.map((order) => {
-    const grossTotal = Number(order.totalPrice || 0);
-    const split = splitAmount(grossTotal, organizationSharePercent);
-    const reportDate = reportDateOfOrder(order);
-    return {
-      orderId: order._id,
-      orderNumber: order.orderNumber || null,
-      date: reportDate,
-      jalaliDate: formatJalaliDate(reportDate),
-      foodName: orderFoodName(order),
-      mealCount: orderMealCount(order),
-      grossTotal: split.total,
-      organizationAmount: split.organizationAmount,
-      personalAmount: split.personalAmount,
-      status: order.status,
-    };
-  });
+  const items = type === 'month'
+    ? []
+    : orders.map((order) => {
+      const grossTotal = Number(order.totalPrice || 0);
+      const split = splitAmount(grossTotal, organizationSharePercent);
+      const reportDate = reportDateOfOrder(order);
+      return {
+        orderId: order._id,
+        orderNumber: order.orderNumber || null,
+        date: reportDate,
+        jalaliDate: formatJalaliDate(reportDate),
+        foodName: orderFoodName(order),
+        mealCount: orderMealCount(order),
+        grossTotal: split.total,
+        organizationAmount: split.organizationAmount,
+        personalAmount: split.personalAmount,
+        status: order.status,
+      };
+    });
 
-  const periodKey = query.weekId
-    ? `week:${query.weekId}`
-    : (query.jalaliFrom && query.jalaliTo
-      ? `month:${query.jalaliFrom}-${query.jalaliTo}`
-      : `${type}:${formatJalaliDate(range.start)}-${formatJalaliDate(range.end)}`);
+  const periodType = type === 'month' ? 'month' : 'week';
+  const periodKey = periodType === 'week'
+    ? String(query.weekId || '')
+    : (query.jalaliFrom || formatJalaliDate(range.start));
 
   return {
-    statementNumber: buildStatementNumber(user, type === 'month' ? 'month' : 'week', periodKey),
+    statementNumber: buildStatementNumber(user, periodType, periodKey, {
+      jalaliFrom: query.jalaliFrom || formatJalaliDate(range.start),
+      jalaliTo: query.jalaliTo || formatJalaliDate(range.end),
+    }),
     type,
     title,
     range: {
@@ -296,7 +300,7 @@ async function getUserStatementWeeks(user) {
 
   return weeks.map((week) => ({
     weekId: week._id,
-    label: week.name || `${formatJalaliDate(week.startDate)} تا ${formatJalaliDate(week.endDate)}`,
+    label: `${formatJalaliDate(week.startDate)} تا ${formatJalaliDate(week.endDate)}`,
     jalaliStart: formatJalaliDate(week.startDate),
     jalaliEnd: formatJalaliDate(week.endDate),
     startDate: week.startDate,

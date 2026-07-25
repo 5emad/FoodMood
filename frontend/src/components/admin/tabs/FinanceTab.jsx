@@ -145,9 +145,9 @@ export default function FinanceTab() {
                 <div className="mini-card"><div className="stat-label">کاربران</div><div className="stat-value">{faDigits(summary.userCount || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">مهمان</div><div className="stat-value">{faDigits(summary.guestCount || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">وعده</div><div className="stat-value">{faDigits(summary.mealCount || 0)}</div></div>
-                <div className="mini-card"><div className="stat-label">جمع کل</div><div className="stat-value">{faDigits(summary.grossTotal || 0)}</div></div>
-                <div className="mini-card"><div className="stat-label">سهم سازمان ({faDigits(orgSplit)}٪)</div><div className="stat-value">{faDigits(summary.organizationAmount || 0)}</div></div>
-                <div className="mini-card"><div className="stat-label">سهم شخص ({faDigits(personalSplit)}٪)</div><div className="stat-value">{faDigits(summary.personalAmount || 0)}</div></div>
+                <div className="mini-card"><div className="stat-label">جمع کل</div><div className="stat-value">{money(summary.grossTotal || 0)}</div></div>
+                <div className="mini-card"><div className="stat-label">سهم سازمان ({faDigits(orgSplit)}٪)</div><div className="stat-value">{money(summary.organizationAmount || 0)}</div></div>
+                <div className="mini-card"><div className="stat-label">سهم شخص ({faDigits(personalSplit)}٪)</div><div className="stat-value">{money(summary.personalAmount || 0)}</div></div>
               </>
             )}
           </div>

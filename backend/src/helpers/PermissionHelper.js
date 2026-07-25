@@ -2,7 +2,7 @@ const { getReportsAccessForUser } = require('./ReportsAccessHelper');
 const { getSettingsLean } = require('../services/SettingsService');
 const { isEnabledFlag } = require('./SettingFlags');
 
-const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements'];
+const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
 const STATEMENT_DISABLED_MESSAGE = 'در حال حاضر در دسترس نیست';
 
 function isSuperadmin(user = {}) {
@@ -26,10 +26,11 @@ function canAccessTab(user, tabName) {
 async function getAdminCapabilities(user) {
   const reportsAccess = await getReportsAccessForUser(user);
   const superadmin = isSuperadmin(user);
+  const admin = isAdminPortalUser(user);
   return {
     role: user?.role || '',
     isSuperadmin: superadmin,
-    isAdmin: isAdminPortalUser(user),
+    isAdmin: admin,
     reportsAccess,
     tabs: ADMIN_TABS.reduce((acc, tab) => {
       acc[tab] = canAccessTab(user, tab);
@@ -37,10 +38,10 @@ async function getAdminCapabilities(user) {
     }, {}),
     features: {
       superSettings: superadmin,
-      backup: superadmin,
+      backup: admin,
       security: superadmin,
-      financePdf: isAdminPortalUser(user),
-      guestManagement: isAdminPortalUser(user),
+      financePdf: admin,
+      guestManagement: admin,
     },
   };
 }

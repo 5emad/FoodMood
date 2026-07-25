@@ -76,8 +76,8 @@ const superTokenLimiter = createLimiter({
 
 const backupRestoreLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
-  max: 3,
-  message: { success: false, message: 'تعداد بازیابی پشتیبان در ساعت بیش از حد مجاز است.' },
+  max: Number(process.env.BACKUP_RESTORE_RATE_LIMIT_MAX || 20),
+  message: { success: false, message: 'تعداد بازیابی پشتیبان در ساعت بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.' },
   keyGenerator: (req) => `${resolveClientIp(req)}:${req.user?.id || req.session?.userId || 'anon'}`,
 });
 

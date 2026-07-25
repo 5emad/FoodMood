@@ -126,7 +126,7 @@ function toFileUrl(filePath) {
   return `file://${normalized}`;
 }
 
-async function htmlToPdfBuffer(html) {
+async function htmlToPdfBuffer(html, options = {}) {
   const chromePath = await findChrome();
   const runtimeRoot = pdfCacheRoot();
   await ensurePdfRuntimeDirs(runtimeRoot);
@@ -135,8 +135,19 @@ async function htmlToPdfBuffer(html) {
   const pdfPath = path.join(dir, 'report.pdf');
 
   try {
-    const fontPrefix = await copyFontsToDir(dir);
-    const fontCss = getReportFontCss({ relativePrefix: fontPrefix });
+    let uiFont = options.uiFont;
+    if (!uiFont) {
+      try {
+        const AppSetting = require('../models/AppSetting');
+        const settings = await AppSetting.findOne({ key: 'default' }).lean();
+        uiFont = settings?.uiFont;
+      } catch { /* ignore */ }
+    }
+    const { resolveUiFont } = require('./ReportFontHelper');
+    uiFont = resolveUiFont(uiFont);
+
+    const fontPrefix = await copyFontsToDir(dir, uiFont);
+    const fontCss = getReportFontCss({ relativePrefix: fontPrefix, uiFont });
     const htmlWithFonts = injectLocalFonts(html, fontCss);
     await fs.writeFile(htmlPath, htmlWithFonts, 'utf8');
     const fileUrl = toFileUrl(htmlPath);

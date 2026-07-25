@@ -16,11 +16,6 @@ const foodSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  /** وعده نوع یک — برای گزارش هفتگی بله/خیر */
-  isType1: {
-    type: Boolean,
-    default: false,
-  },
   image: {
     type: String,
   },

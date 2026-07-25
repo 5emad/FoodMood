@@ -8,18 +8,27 @@ function orderOwnerFilter(user = {}) {
   if (isLdapAuth(user)) {
     return { ldapUsername: user.username };
   }
+  // Converted AD→local users still have historical orders under ldapUsername
+  if (user.username) {
+    return { $or: [{ userId: user.id }, { ldapUsername: user.username }] };
+  }
   return { userId: user.id };
 }
 
 async function buildOrderOwnerFilter(user = {}) {
-  if (!isLdapAuth(user)) {
-    return { userId: user.id };
+  if (isLdapAuth(user)) {
+    const clauses = [{ ldapUsername: user.username }];
+    const legacyUser = await User.findOne({ username: user.username }).select('_id').lean();
+    if (legacyUser?._id) {
+      clauses.push({ userId: legacyUser._id });
+    }
+    return clauses.length === 1 ? clauses[0] : { $or: clauses };
   }
 
-  const clauses = [{ ldapUsername: user.username }];
-  const legacyUser = await User.findOne({ username: user.username }).select('_id').lean();
-  if (legacyUser?._id) {
-    clauses.push({ userId: legacyUser._id });
+  // Local (incl. converted AD→local): match new userId orders and historical ldapUsername orders
+  const clauses = [{ userId: user.id }];
+  if (user.username) {
+    clauses.push({ ldapUsername: user.username });
   }
   return clauses.length === 1 ? clauses[0] : { $or: clauses };
 }
@@ -46,7 +55,10 @@ function orderActorFromRequest(req) {
       orderUserDepartment: user.department || null,
     };
   }
-  return { userId: user.id };
+  return {
+    userId: user.id,
+    username: user.username || null,
+  };
 }
 
 function orderUserDisplay(order = {}) {

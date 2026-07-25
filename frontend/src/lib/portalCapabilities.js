@@ -18,7 +18,7 @@ export function normalizeAdminCapabilities(raw, fallback = {}) {
   const caps = raw || {};
   const fb = fallback || {};
   const tabs = caps.tabs || {};
-  const defaultTabs = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements'];
+  const defaultTabs = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
   const resolvedTabs = Object.keys(tabs).length
     ? tabs
     : defaultTabs.reduce((acc, tab) => { acc[tab] = true; return acc; }, {});
@@ -30,7 +30,7 @@ export function normalizeAdminCapabilities(raw, fallback = {}) {
     tabs: resolvedTabs,
     features: {
       superSettings: Boolean(caps.isSuperadmin ?? fb.isSuperadmin),
-      backup: Boolean(caps.isSuperadmin ?? fb.isSuperadmin),
+      backup: Boolean(caps.features?.backup ?? caps.isAdmin ?? fb.isAdmin ?? caps.isSuperadmin ?? fb.isSuperadmin ?? true),
       security: Boolean(caps.isSuperadmin ?? fb.isSuperadmin),
       financePdf: true,
       guestManagement: true,

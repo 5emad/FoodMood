@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, apiForm } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import { confirmAction } from '../../../hooks/useConfirm';
 import SectionHeader from '../shared/SectionHeader';
 import AdminSpinner from '../shared/AdminSpinner';
-import PortalSlidesPanel from './PortalSlidesPanel';
 import { applyAppFont, refreshThemeVars } from '../../../lib/appFont';
 
 const FONT_OPTIONS = [
@@ -12,37 +11,16 @@ const FONT_OPTIONS = [
   { id: 'yekanbakh', label: 'یکان‌بخ' },
 ];
 
-const THEME_PRESETS = [
-  { id: 'purple', label: 'تم بنفش', themePrimary: '#9B6DFF', themePrimaryLight: '#C4A8FF', themePrimaryDark: '#6C3FD4', themeGradientFrom: '#1A0E38', themeGradientTo: '#2D1460' },
-  { id: 'blue', label: 'تم آبی', themePrimary: '#3B82F6', themePrimaryLight: '#93C5FD', themePrimaryDark: '#2563EB', themeGradientFrom: '#1D4ED8', themeGradientTo: '#3B82F6' },
-  { id: 'classic', label: 'تم کلاسیک', themePrimary: '#1E3A5F', themePrimaryLight: '#C9A227', themePrimaryDark: '#0F1F33', themeGradientFrom: '#0B1726', themeGradientTo: '#1E3A5F' },
-  { id: 'green', label: 'تم سبز', themePrimary: '#10B981', themePrimaryLight: '#6EE7B7', themePrimaryDark: '#047857', themeGradientFrom: '#063F31', themeGradientTo: '#0F766E' },
-  { id: 'orange', label: 'تم نارنجی', themePrimary: '#F97316', themePrimaryLight: '#FDBA74', themePrimaryDark: '#C2410C', themeGradientFrom: '#431407', themeGradientTo: '#9A3412' },
-  { id: 'red', label: 'تم قرمز', themePrimary: '#8E2A3F', themePrimaryLight: '#C96F82', themePrimaryDark: '#5C1526', themeGradientFrom: '#2A070F', themeGradientTo: '#6E1F31' },
-  { id: 'yellow', label: 'تم زرد', themePrimary: '#EAB308', themePrimaryLight: '#FDE047', themePrimaryDark: '#A16207', themeGradientFrom: '#422006', themeGradientTo: '#854D0E' },
-];
-
 const DEBOUNCE_MS = 700;
-
-function currentThemeId(form) {
-  const norm = (v) => String(v || '').toLowerCase();
-  const match = THEME_PRESETS.find((p) => ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo']
-    .every((k) => norm(form[k]) === norm(p[k])));
-  return match?.id || '';
-}
 
 const GENERAL_SAVE_KEYS = [
   'organizationName',
   'publicUrl',
   'maxActiveReservations',
   'defaultMenuItemCapacity',
+  'enableCapacityLimit',
   'showPricesToUsers',
   'uiFont',
-  'themePrimary',
-  'themePrimaryLight',
-  'themePrimaryDark',
-  'themeGradientFrom',
-  'themeGradientTo',
 ];
 
 const LDAP_SAVE_KEYS = [
@@ -64,23 +42,6 @@ function buildSaveBody(form, extras = {}) {
     for (const key of LDAP_SAVE_KEYS) {
       if (form[key] !== undefined) body[key] = form[key];
     }
-  }
-
-  if (extras.includePortalSlider && form.portalSlider) {
-    body.portalSlider = {
-      weekHeroImage: form.portalSlider.weekHeroImage || '',
-      weekHeroEnabled: form.portalSlider.weekHeroEnabled === true,
-      showAnnouncementSlides: form.portalSlider.showAnnouncementSlides === true,
-      showMenuFoodSlides: form.portalSlider.showMenuFoodSlides === true,
-      showcaseSlides: (form.portalSlider.showcaseSlides || []).map((slide) => ({
-        title: slide?.title || '',
-        description: slide?.description || '',
-        imageUrl: slide?.imageUrl || '',
-        tags: Array.isArray(slide?.tags) ? slide.tags : [],
-        badge: slide?.badge || 'اسلاید',
-        enabled: slide?.enabled === true,
-      })),
-    };
   }
 
   if (extras.ldapBindPassword) body.ldapBindPassword = extras.ldapBindPassword;
@@ -132,8 +93,6 @@ export default function SuperSettingsPanel() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
-  const activeTheme = useMemo(() => currentThemeId(form), [form]);
-
   function refreshThemeCss() {
     refreshThemeVars();
   }
@@ -183,11 +142,6 @@ export default function SuperSettingsPanel() {
       }
       return next;
     });
-  }
-
-  function selectTheme(preset) {
-    const { id, label, ...colors } = preset;
-    updateFields(colors, { immediate: true });
   }
 
   async function testLdap() {
@@ -280,7 +234,8 @@ export default function SuperSettingsPanel() {
           {saveBadge && <span className={`badge ${saveBadge.cls}`}>{saveBadge.text}</span>}
         </div>
         <div className="card-body">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 14 }}>
+          <div className="settings-grid">
+            <div className="settings-section-title">اطلاعات سازمان و محدودیت‌ها</div>
             <div className="form-group">
               <label className="form-label">نام سازمان</label>
               <input className="form-control" value={form.organizationName || ''} onChange={(e) => updateFields({ organizationName: e.target.value })} placeholder="مثال: شرکت فرازمان" />
@@ -293,9 +248,21 @@ export default function SuperSettingsPanel() {
               <label className="form-label">حداکثر رزرو فعال هر کاربر</label>
               <input className="form-control" type="number" min={0} dir="ltr" style={{ textAlign: 'right' }} value={form.maxActiveReservations ?? ''} onChange={(e) => updateFields({ maxActiveReservations: e.target.value })} placeholder="0 = بدون محدودیت" />
             </div>
+            <div className="settings-section-title">ظرفیت و نمایش</div>
             <div className="form-group">
               <label className="form-label">ظرفیت پیش‌فرض هر غذا در هر روز</label>
               <input className="form-control" type="number" min={0} dir="ltr" style={{ textAlign: 'right' }} value={form.defaultMenuItemCapacity ?? ''} onChange={(e) => updateFields({ defaultMenuItemCapacity: e.target.value })} placeholder="مثلا 50" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">محدودیت ظرفیت غذا</label>
+              <select
+                className="form-control"
+                value={String(form.enableCapacityLimit !== false)}
+                onChange={(e) => updateFields({ enableCapacityLimit: e.target.value === 'true' }, { immediate: true })}
+              >
+                <option value="true">فعال — ظرفیت اعمال شود</option>
+                <option value="false">غیرفعال — بدون سقف ظرفیت</option>
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">نمایش قیمت برای کاربران</label>
@@ -317,29 +284,11 @@ export default function SuperSettingsPanel() {
                       updateFields({ uiFont: opt.id }, { immediate: true });
                     }}
                   >
-                    <span style={{ fontFamily: opt.id === 'yekanbakh' ? "'Yekan Bakh FaNum', Tahoma, sans-serif" : "'Vazirmatn', Tahoma, sans-serif", fontWeight: 700 }}>
+                    <span style={{ fontFamily: opt.id === 'yekanbakh' ? "'Yekan Bakh FaNum', Tahoma, sans-serif" : "'Vazirmatn', Tahoma, sans-serif", fontWeight: 400 }}>
                       {opt.label}
                     </span>
                   </button>
                 ))}
-              </div>
-            </div>
-            <div className="form-group theme-picker">
-              <label className="form-label">رنگ‌بندی سامانه</label>
-              <div className="theme-options" role="radiogroup" aria-label="رنگ‌بندی سامانه">
-                {THEME_PRESETS.map((preset) => (
-                  <button key={preset.id} type="button" className={`theme-option${activeTheme === preset.id ? ' active' : ''}`} onClick={() => selectTheme(preset)}>
-                    <span className="theme-swatch" style={{ background: `linear-gradient(135deg,${preset.themeGradientFrom},${preset.themePrimary})` }} />
-                    <span>{preset.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="theme-color-fields">
-                <input type="color" value={form.themePrimary || '#9B6DFF'} onChange={(e) => updateFields({ themePrimary: e.target.value }, { immediate: true })} />
-                <input type="color" value={form.themePrimaryLight || '#C4A8FF'} onChange={(e) => updateFields({ themePrimaryLight: e.target.value }, { immediate: true })} />
-                <input type="color" value={form.themePrimaryDark || '#6C3FD4'} onChange={(e) => updateFields({ themePrimaryDark: e.target.value }, { immediate: true })} />
-                <input type="color" value={form.themeGradientFrom || '#1A0E38'} onChange={(e) => updateFields({ themeGradientFrom: e.target.value }, { immediate: true })} />
-                <input type="color" value={form.themeGradientTo || '#2D1460'} onChange={(e) => updateFields({ themeGradientTo: e.target.value }, { immediate: true })} />
               </div>
             </div>
           </div>
@@ -418,17 +367,6 @@ export default function SuperSettingsPanel() {
             </div>
           </div>
 
-          <PortalSlidesPanel
-            slider={form.portalSlider}
-            onChange={(portalSlider) => {
-              setForm((f) => {
-                const next = { ...f, portalSlider };
-                formRef.current = next;
-                return next;
-              });
-            }}
-            onSaveStatus={setSaveStatus}
-          />
         </div>
       </div>
 

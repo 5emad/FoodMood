@@ -15,7 +15,7 @@ function parseLdapUserId(id) {
 
 function isValidPersianFullName(fullName) {
   const value = String(fullName || '').trim();
-  return PERSIAN_NAME_PATTERN.test(value) && value.split(/\s+/).filter(Boolean).length >= 2;
+  return value.length >= 2;
 }
 
 async function findProfile(username) {
@@ -33,7 +33,33 @@ async function needsProfileSetup(username) {
 
 async function isProfileActive(username) {
   const profile = await findProfile(username);
-  return !profile || profile.status !== 'inactive';
+  if (!profile) return true;
+  if (profile.convertedToLocal) return false;
+  return profile.status !== 'inactive';
+}
+
+/**
+ * Mark LDAP profile inactive after the user converts to a local password account.
+ * Subsequent LDAP binds for this username are rejected by isProfileActive.
+ */
+async function markConvertedToLocal(username) {
+  const ldapUsername = normalizeUsername(username);
+  if (!ldapUsername) return null;
+  return LdapProfile.findOneAndUpdate(
+    { ldapUsername },
+    {
+      $set: {
+        status: 'inactive',
+        convertedToLocal: true,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        ldapUsername,
+        fullName: ldapUsername,
+      },
+    },
+    { upsert: true, new: true, lean: true },
+  );
 }
 
 async function saveFullName(username, fullName, departmentId = null) {
@@ -157,6 +183,7 @@ module.exports = {
   findProfile,
   needsProfileSetup,
   isProfileActive,
+  markConvertedToLocal,
   saveFullName,
   updateProfileAdmin,
   deleteProfile,

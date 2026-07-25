@@ -1,49 +1,58 @@
 import { createContext, useCallback, useContext, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Toaster, toast as sonnerToast } from 'sonner';
+import 'sonner/dist/styles.css';
 
 const ToastContext = createContext(null);
 
 function showToast(message, type = 'success') {
+  const text = String(message || '').trim() || 'پیام سامانه';
   const opts = {
-    duration: type === 'error' ? 5000 : 3500,
+    duration: type === 'error' ? 5600 : 4000,
+    id: `${type}:${text}`,
   };
 
   switch (type) {
     case 'error':
-      return sonnerToast.error(message, opts);
+      return sonnerToast.error(text, opts);
     case 'warning':
-      return sonnerToast.warning(message, opts);
+      return sonnerToast.warning(text, opts);
     case 'info':
-      return sonnerToast.info(message, opts);
+      return sonnerToast.info(text, opts);
     default:
-      return sonnerToast.success(message, opts);
+      return sonnerToast.success(text, opts);
   }
 }
 
 export function ToastProvider({ children }) {
   const toast = useCallback((message, type = 'success') => showToast(message, type), []);
-
   const value = useMemo(() => ({ toast }), [toast]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <Toaster
-        dir="rtl"
-        position="bottom-left"
-        richColors
-        closeButton
-        expand
-        visibleToasts={4}
-        toastOptions={{
-          classNames: {
-            toast: 'sonner-toast-root',
-            title: 'sonner-toast-title',
-            description: 'sonner-toast-desc',
-            closeButton: 'sonner-toast-close',
-          },
-        }}
-      />
+      {typeof document !== 'undefined'
+        && createPortal(
+          <Toaster
+            dir="rtl"
+            theme="light"
+            position="top-center"
+            richColors
+            closeButton
+            expand
+            gap={12}
+            offset={24}
+            visibleToasts={4}
+            toastOptions={{
+              classNames: {
+                toast: 'app-sonner-toast',
+                title: 'app-sonner-title',
+                closeButton: 'app-sonner-close',
+              },
+            }}
+          />,
+          document.body,
+        )}
     </ToastContext.Provider>
   );
 }

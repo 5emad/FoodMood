@@ -13,6 +13,7 @@ const TYPE_LABEL = {
   super_token_success: 'توکن موفق', super_token_failed: 'توکن ناموفق',
   backup_export: 'خروجی پشتیبان', backup_restore: 'بازیابی پشتیبان',
   logs_purged: 'پاک‌سازی لاگ‌ها', waf_blocked: 'مسدودسازی WAF',
+  waf_toggled: 'تغییر وضعیت WAF',
 };
 
 const SYSTEM_LEVEL = { error: 'خطا', warn: 'هشدار', info: 'اطلاع' };
@@ -34,6 +35,7 @@ export default function SuperSecurityPanel() {
   const [logsPage, setLogsPage] = useState(1);
   const [sysPage, setSysPage] = useState(1);
   const [level, setLevel] = useState('');
+  const [wafToggling, setWafToggling] = useState(false);
 
   const loadSummary = useCallback(async (fp = failedPage, lp = logsPage) => {
     const data = await api(`/api/admin/security/summary?failedPage=${fp}&failedLimit=15&logsPage=${lp}&logsLimit=15`);
@@ -120,6 +122,47 @@ export default function SuperSecurityPanel() {
     else toast(data.message || 'تست در دسترس نیست', 'error');
   }
 
+  async function toggleWaf() {
+    const currentlyEnabled = summary?.waf?.enabled !== false;
+    const action = currentlyEnabled ? 'غیرفعال' : 'فعال';
+    const confirmMsg = currentlyEnabled
+      ? 'با غیرفعال کردن WAF، محافظت در برابر حملات SQLi، XSS، DDoS و … برداشته می‌شود. آیا مطمئنید؟'
+      : 'فایروال وب (WAF) فعال خواهد شد و درخواست‌های مشکوک مسدود می‌شوند.';
+    if (!(await confirmAction({
+      title: `${action} کردن فایروال وب (WAF)؟`,
+      text: confirmMsg,
+      confirmText: `بله، ${action} کن`,
+      icon: currentlyEnabled ? 'warning' : 'info',
+    }))) return;
+
+    setWafToggling(true);
+    try {
+      let data = await api('/api/admin/security/waf/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: !currentlyEnabled }),
+      });
+      // یک‌بار با CSRF تازه در صورت 403
+      if (!data.success && /csrf|مجاز|forbidden/i.test(String(data.message || ''))) {
+        const { resetCsrf } = await import('../../../api/client');
+        resetCsrf();
+        data = await api('/api/admin/security/waf/toggle', {
+          method: 'POST',
+          body: JSON.stringify({ enabled: !currentlyEnabled }),
+        });
+      }
+      if (data.success) {
+        toast(data.message || `WAF ${action} شد`, 'success');
+        await loadSummary(failedPage, logsPage);
+      } else {
+        toast(data.message || 'خطا در تغییر وضعیت WAF', 'error');
+      }
+    } catch (err) {
+      toast(err?.message || 'خطا در تغییر وضعیت WAF', 'error');
+    } finally {
+      setWafToggling(false);
+    }
+  }
+
   if (loading && !summary) return <AdminSpinner />;
 
   const lifecycle = systemLogs?.lifecycle || {};
@@ -164,14 +207,38 @@ export default function SuperSecurityPanel() {
       <div className="card">
         <div className="card-header">
           <div className="card-title"><i className="fas fa-shield-halved" style={{ marginLeft: 8, color: 'var(--primary)' }} /> فایروال وب (WAF)</div>
-          <span className={`badge ${summary?.waf?.enabled ? 'badge-success' : 'badge-danger'}`}>
-            {summary?.waf?.enabled ? `فعال · ${summary?.waf?.engine || 'firewtwall'} · استاندارد` : 'غیرفعال'}
-          </span>
+          <div className="d-flex gap-2" style={{ alignItems: 'center' }}>
+            <span className={`badge ${summary?.waf?.enabled ? 'badge-success' : 'badge-danger'}`}>
+              {summary?.waf?.enabled ? `فعال · ${summary?.waf?.engine || 'firewtwall'} · استاندارد` : 'غیرفعال'}
+            </span>
+            <button
+              type="button"
+              id="wafToggleBtn"
+              className={`btn btn-sm ${summary?.waf?.enabled ? 'btn-danger' : 'btn-success'}`}
+              onClick={toggleWaf}
+              disabled={wafToggling}
+              style={{ minWidth: 120 }}
+            >
+              {wafToggling ? (
+                <><i className="fas fa-spinner fa-spin" /> در حال تغییر…</>
+              ) : summary?.waf?.enabled ? (
+                <><i className="fas fa-shield-xmark" /> غیرفعال‌سازی</>
+              ) : (
+                <><i className="fas fa-shield-halved" /> فعال‌سازی</>
+              )}
+            </button>
+          </div>
         </div>
         <div className="card-body">
           <p className="section-sub" style={{ marginBottom: 12 }}>
             موتور firewtwall — مسدودسازی SQLi، XSS، Path Traversal، NoSQL/LDAP، فازیگ، burst و جعل هدر؛ بدون اعتماد به X-Forwarded-For جعلی.
           </p>
+          {!summary?.waf?.enabled && (
+            <div style={{ background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, color: '#ef4444', fontSize: '.85rem' }}>
+              <i className="fas fa-exclamation-triangle" style={{ marginLeft: 6 }} />
+              <strong>هشدار:</strong> فایروال وب غیرفعال است. سامانه در برابر حملات XSS، SQLi، DDoS و حملات تزریقی محافظت نمی‌شود.
+            </div>
+          )}
           <div className="table-wrap">
             <table className="table">
               <thead>

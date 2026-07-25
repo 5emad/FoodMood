@@ -4,9 +4,12 @@ const LdapProfile = require('../models/LdapProfile');
 const Week = require('../models/Week');
 const DailyMenu = require('../models/DailyMenu');
 const MenuItem = require('../models/MenuItem');
+const FoodCategory = require('../models/FoodCategory');
+const { ensureDefaultCategories } = require('../controllers/FoodCategoryController');
 // Registered for the populate() calls below (departmentId, items.foodId).
 require('../models/Department');
 require('../models/Food');
+require('../models/Guest');
 const {
   startOfDay,
   addDays,
@@ -87,21 +90,24 @@ function orderFoodName(order) {
     || '-';
 }
 
-/** برای گزارش: نام غذا + پرچم نوع‌یک */
+/** برای گزارش: نام و دسته غذا */
+function foodEntryFromDoc(food) {
+  if (!food?.name) return null;
+  return {
+    name: food.name,
+    category: String(food.category || '').trim() || 'uncategorized',
+  };
+}
+
 function orderFoodEntries(order) {
   const menuFood = order.menuItemId?.foodId;
-  if (menuFood?.name) {
-    return [{ name: menuFood.name, isType1: !!menuFood.isType1 }];
-  }
+  const fromMenu = foodEntryFromDoc(menuFood);
+  if (fromMenu) return [fromMenu];
   const fromItems = (order.items || [])
-    .map((item) => {
-      const food = item.foodId;
-      if (!food?.name) return null;
-      return { name: food.name, isType1: !!food.isType1 };
-    })
+    .map((item) => foodEntryFromDoc(item.foodId))
     .filter(Boolean);
   if (fromItems.length) return fromItems;
-  return [{ name: '-', isType1: false }];
+  return [{ name: '-', category: 'uncategorized' }];
 }
 
 function pushFoodEntries(day, order) {
@@ -205,14 +211,14 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
       select: 'username fullName departmentId role',
       populate: { path: 'departmentId', select: 'name' },
     })
-    .populate('items.foodId', 'name isType1')
+    .populate('items.foodId', 'name category')
     .populate({
       path: 'guestId',
       select: 'guestCode fullName guestType department status validUntil',
     })
     .populate({
       path: 'menuItemId',
-      populate: [{ path: 'foodId', select: 'name isType1' }, { path: 'dailyMenuId', select: 'date weekId' }],
+      populate: [{ path: 'foodId', select: 'name category' }, { path: 'dailyMenuId', select: 'date weekId' }],
     });
 }
 
@@ -240,11 +246,10 @@ async function buildReport(rangeStartInput, rangeEndInput) {
 
   const reportDateOfOrder = (order) => startOfDay(order.menuItemId?.dailyMenuId?.date || order.orderDate);
   const ordersInRange = candidateOrders.filter((order) => {
-    const actor = orderUserDisplay(order);
-    if (isSuperadminReportUser(actor)) return false;
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
   });
+  // سفارش‌های سوپرادمین هم در آمار می‌آیند؛ فقط از لیست «فاقد سفارش» حذف می‌شوند
   const orders = ordersInRange.filter(isConfirmedReportOrder);
 
   const totals = orders.reduce((acc, order) => {
@@ -264,7 +269,8 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     const reportDate = reportDateOfOrder(order);
     const dayKey = formatJalaliDate(reportDate);
     const mealCount = orderMealCount(order);
-    const foodName = orderFoodName(order);
+    const foodEntries = orderFoodEntries(order);
+    const primaryEntry = foodEntries[0] || { name: orderFoodName(order), category: 'uncategorized' };
 
     const dayRow = byDayMap.get(dayKey) || { date: reportDate, jalaliDate: dayKey, count: 0, totalPrice: 0 };
     dayRow.count += 1;
@@ -282,7 +288,15 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     prepRow.totalMeals += mealCount;
     if (isGuestOrder(order)) prepRow.guestMeals += mealCount;
     else prepRow.userMeals += mealCount;
-    prepRow.foodCounts.set(foodName, (prepRow.foodCounts.get(foodName) || 0) + mealCount);
+    const perEntryMeals = foodEntries.length <= 1
+      ? mealCount
+      : 1;
+    for (const entry of foodEntries) {
+      const prepKey = `${entry.category}|${entry.name}`;
+      const prev = prepRow.foodCounts.get(prepKey) || { foodName: entry.name, category: entry.category, count: 0 };
+      prev.count += perEntryMeals;
+      prepRow.foodCounts.set(prepKey, prev);
+    }
     byDayPrepMap.set(dayKey, prepRow);
 
     const actor = orderUserDisplay(order);
@@ -295,8 +309,9 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     for (const item of order.items || []) {
       const foodId = String(item.foodId?._id || item.foodId || order.menuItemId?.foodId?._id || '');
       if (!foodId) continue;
-      const foodName = item.foodId?.name || order.menuItemId?.foodId?.name || '-';
-      const foodRow = byFoodMap.get(foodId) || { foodId, foodName, count: 0, totalPrice: 0 };
+      const itemName = item.foodId?.name || order.menuItemId?.foodId?.name || '-';
+      const itemCategory = String(item.foodId?.category || order.menuItemId?.foodId?.category || primaryEntry.category || 'uncategorized');
+      const foodRow = byFoodMap.get(foodId) || { foodId, foodName: itemName, category: itemCategory, count: 0, totalPrice: 0 };
       foodRow.count += Number(item.quantity || 1);
       foodRow.totalPrice += Number(item.price || 0) * Number(item.quantity || 1);
       byFoodMap.set(foodId, foodRow);
@@ -354,7 +369,22 @@ async function buildReport(rangeStartInput, rangeEndInput) {
         row.fullName = order.orderUserName;
       }
     } else {
-      ownerKey = String(order.userId?._id || order.userId);
+      ownerKey = String(order.userId?._id || order.userId || '');
+      if (!ownerKey || ownerKey === 'undefined' || ownerKey === 'null') continue;
+      if (!byUserMap.has(ownerKey)) {
+        const user = order.userId || {};
+        // کاربر خارج از لیست عادی (مثل سوپرادمین با سفارش تست) — فقط اگر سفارش دارد در گزارش بیاید
+        byUserMap.set(ownerKey, {
+          userId: user._id || ownerKey,
+          fullName: user.fullName || user.username || order.orderUserName || 'کاربر',
+          username: user.username || '',
+          role: user.role || 'user',
+          department: user.departmentId?.name || order.orderUserDepartment || 'بدون واحد',
+          total: 0,
+          totalPrice: 0,
+          days: reportDates.map((date) => ({ ...date, foods: [] })),
+        });
+      }
       row = byUserMap.get(ownerKey);
     }
 
@@ -370,6 +400,7 @@ async function buildReport(rangeStartInput, rangeEndInput) {
 
   const byUser = [...byUserMap.values()].filter((item) => item.total > 0);
   const missingUsers = [...byUserMap.values()]
+    .filter((item) => !isSuperadminReportUser(item))
     .filter((item) => !orderedUserIds.has(String(item.userId)))
     .reduce((acc, item) => {
       if (!acc[item.department]) acc[item.department] = [];
@@ -424,8 +455,8 @@ async function buildReport(rangeStartInput, rangeEndInput) {
       totalMeals: prep.totalMeals,
       userMeals: prep.userMeals,
       guestMeals: prep.guestMeals,
-      foods: [...prep.foodCounts.entries()]
-        .map(([foodName, count]) => ({ foodName, count }))
+      foods: [...prep.foodCounts.values()]
+        .map((row) => ({ foodName: row.foodName, category: row.category, count: row.count }))
         .sort((a, b) => b.count - a.count || String(a.foodName).localeCompare(String(b.foodName), 'fa')),
     };
   });
@@ -437,10 +468,29 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     return acc;
   }, { totalMeals: 0, userMeals: 0, guestMeals: 0 });
 
+  const categories = await FoodCategory.find({ status: 'active' })
+    .select('key name sortOrder')
+    .sort({ sortOrder: 1, name: 1 })
+    .lean();
+
+  if (!categories.length) {
+    await ensureDefaultCategories();
+  }
+
+  const categoryRows = (categories.length
+    ? categories
+    : await FoodCategory.find({ status: 'active' }).select('key name sortOrder').sort({ sortOrder: 1, name: 1 }).lean()
+  ).map((c) => ({
+    key: c.key,
+    name: c.name,
+    sortOrder: Number(c.sortOrder || 0),
+  }));
+
   return {
     totals,
     prepTotals,
     days: reportDates,
+    categories: categoryRows,
     byDay: [...byDayMap.values()].sort((a, b) => a.date - b.date),
     byDayPrep,
     byFood: [...byFoodMap.values()].sort((a, b) => b.count - a.count).slice(0, 10),
@@ -465,10 +515,6 @@ async function getAvailableReportMonths() {
   const monthMap = new Map();
 
   for (const order of orders) {
-    const actor = order.ldapUsername
-      ? { role: 'user', username: order.ldapUsername }
-      : order.userId;
-    if (isSuperadminReportUser(actor)) continue;
     if (!isConfirmedReportOrder(order)) continue;
     const reportDate = order.menuItemId?.dailyMenuId?.date || order.orderDate;
     const { year, month } = getJalaliYearMonth(reportDate);

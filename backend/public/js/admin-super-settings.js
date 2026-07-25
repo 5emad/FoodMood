@@ -3,11 +3,11 @@ let pendingLdapCaCertPem = null;
 let clearLdapCaCertPending = false;
 const themePresets = [
   { id: 'purple', label: 'تم بنفش', themePrimary: '#9B6DFF', themePrimaryLight: '#C4A8FF', themePrimaryDark: '#6C3FD4', themeGradientFrom: '#1A0E38', themeGradientTo: '#2D1460' },
-  { id: 'blue', label: 'تم آبی', themePrimary: '#3B82F6', themePrimaryLight: '#93C5FD', themePrimaryDark: '#2563EB', themeGradientFrom: '#1D4ED8', themeGradientTo: '#3B82F6' },
+  { id: 'blue', label: 'تم آبی Coloro 125-28-38', themePrimary: '#1B3F8D', themePrimaryLight: '#4D73B5', themePrimaryDark: '#122A62', themeGradientFrom: '#0B1A3D', themeGradientTo: '#1B3F8D' },
   { id: 'classic', label: 'تم کلاسیک', themePrimary: '#1E3A5F', themePrimaryLight: '#C9A227', themePrimaryDark: '#0F1F33', themeGradientFrom: '#0B1726', themeGradientTo: '#1E3A5F' },
   { id: 'green', label: 'تم سبز', themePrimary: '#10B981', themePrimaryLight: '#6EE7B7', themePrimaryDark: '#047857', themeGradientFrom: '#063F31', themeGradientTo: '#0F766E' },
   { id: 'orange', label: 'تم نارنجی', themePrimary: '#F97316', themePrimaryLight: '#FDBA74', themePrimaryDark: '#C2410C', themeGradientFrom: '#431407', themeGradientTo: '#9A3412' },
-  { id: 'red', label: 'تم قرمز', themePrimary: '#8E2A3F', themePrimaryLight: '#C96F82', themePrimaryDark: '#5C1526', themeGradientFrom: '#2A070F', themeGradientTo: '#6E1F31' },
+  { id: 'red', label: 'تم قرمز', themePrimary: '#DC2626', themePrimaryLight: '#F87171', themePrimaryDark: '#B91C1C', themeGradientFrom: '#7F1D1D', themeGradientTo: '#DC2626' },
   { id: 'yellow', label: 'تم زرد', themePrimary: '#EAB308', themePrimaryLight: '#FDE047', themePrimaryDark: '#A16207', themeGradientFrom: '#422006', themeGradientTo: '#854D0E' },
 ];
 

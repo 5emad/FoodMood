@@ -145,35 +145,44 @@ async function buildGuestOrderFromMenuItem(menuItemId, guest) {
   }
 
   const dailyMenuId = menuItem.dailyMenuId._id || menuItem.dailyMenuId;
+  const foodCategory = String(menuItem.foodId?.category || '').trim().toLowerCase() || 'uncategorized';
   const existingDayOrder = await Order.findOne({
     guestId: guest._id,
     dailyMenuId,
+    foodCategory,
     status: { $ne: 'cancelled' },
   }).select('_id').lean();
   if (existingDayOrder) {
-    throw duplicateDayError('این مهمان برای این روز قبلاً غذا رزرو کرده است');
+    throw duplicateDayError('این مهمان برای این وعده در این روز قبلاً غذا رزرو کرده است');
   }
 
   const settings = await AppSetting.findOne({ key: 'default' }).lean();
+  const capacityEnabled = settings?.enableCapacityLimit !== false;
   const defaultCapacity = Number(settings?.defaultMenuItemCapacity ?? 20);
-  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity);
-  await claimCapacity(menuItem._id, 1, effectiveCapacity);
+  const effectiveCapacity = resolveEffectiveCapacity(menuItem.maxCapacity, defaultCapacity, capacityEnabled);
+  if (capacityEnabled && effectiveCapacity > 0) {
+    await claimCapacity(menuItem._id, 1, effectiveCapacity);
+  }
 
   const price = menuItem.customPrice ?? menuItem.foodId.price;
-  return {
+  const payload = {
     guestId: guest._id,
     orderUserName: guest.fullName,
     orderUserDepartment: guest.department || 'مهمان',
     menuItemId: menuItem._id,
     dailyMenuId,
+    foodCategory,
     weekId: menuItem.dailyMenuId.weekId,
     quantity: 1,
     totalPrice: price,
     status: 'confirmed',
     orderDate: new Date(),
     items: [{ foodId: menuItem.foodId._id, quantity: 1, price }],
-    _capacityClaimed: { menuItemId: menuItem._id, quantity: 1 },
   };
+  if (capacityEnabled && effectiveCapacity > 0) {
+    payload._capacityClaimed = { menuItemId: menuItem._id, quantity: 1 };
+  }
+  return payload;
 }
 
 async function reserveForGuest(guestId, menuItemId) {
@@ -195,7 +204,7 @@ async function reserveForGuest(guestId, menuItemId) {
       await releaseCapacity(claimed.menuItemId, claimed.quantity).catch(() => {});
     }
     if (isDuplicateKeyError(error)) {
-      throw duplicateDayError('این مهمان برای این روز قبلاً غذا رزرو کرده است');
+      throw duplicateDayError('این مهمان برای این وعده در این روز قبلاً غذا رزرو کرده است');
     }
     throw error;
   }

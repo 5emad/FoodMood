@@ -67,7 +67,7 @@
     <button class="tab-button" data-tab="orders">
       <i class="fas fa-receipt"></i> سفارش‌های من
     </button>
-    <button class="tab-button" data-tab="statement" id="statementTabBtn">
+    <button class="tab-button" data-tab="statement" id="statementTabBtn" <%- (typeof capabilities !== 'undefined' && capabilities && !capabilities.showStatement) ? 'style="display:none;"' : '' %>>
       <i class="fas fa-file-invoice-dollar"></i> صورتحساب
     </button>
   </div>
@@ -204,7 +204,7 @@ function toast(message, type = 'success') {
   if (window.AppToast) return window.AppToast.show(message, type);
 }
 
-function money(value) { return Number(value || 0).toLocaleString('fa-IR') + ' تومان'; }
+function money(value) { return Number(value || 0).toLocaleString('fa-IR') + ' ت'; }
 function jdate(value) { return new Date(value).toLocaleDateString('fa-IR-u-ca-persian'); }
 function esc(value) {
   return String(value ?? '')
@@ -444,9 +444,8 @@ function renderMenu() {
           <span class="day-date-badge">${jdate(day.date)}</span>
         </div>
         <div class="day-card-body">${day.items.length ? day.items.map(item => {
-          const capacity = Number(item.effectiveCapacity) > 0
-            ? Number(item.effectiveCapacity)
-            : Number(defaultMenuItemCapacity) || 0;
+          const capacity = Number(item.effectiveCapacity) || 0;
+          const enableCapacity = menuCache.settings?.enableCapacityLimit;
           const full = capacity > 0 && item.reservedCount >= capacity;
           const selectedItem = orderedItemIds.has(String(item._id));
           const order = menuItemToOrder[String(item._id)];
@@ -455,10 +454,12 @@ function renderMenu() {
               <div>
                 <div class="food-name">${esc(item.foodId?.name || '-')}</div>
                 ${showPricesToUsers ? `<div class="food-price">${money(item.price)}</div>` : ''}
+                ${enableCapacity && capacity > 0 ? `
                 <div class="capacity-note">
-                  <i class="fas fa-users" style="font-size:.7rem"></i>
-                  رزرو: ${item.reservedCount || 0}${capacity ? ' از ' + capacity : ''}
+                  <i class="fas fa-users" style="font-size:.6rem"></i>
+                  <span>رزرو شده: ${item.reservedCount || 0} از ${capacity}</span>
                 </div>
+                ` : ''}
               </div>
               <div class="menu-actions">
                 ${selectedItem

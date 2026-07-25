@@ -1,7 +1,7 @@
 {
-  "name": "food-ordering-system",
+  "name": "foodmood-backend",
   "version": "1.8.0",
-  "description": "سیستم رزرو و سفارش غذا",
+  "description": "Backend (Express) — وابستگی‌های سرور؛ فرانت در frontend/",
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
@@ -11,7 +11,6 @@
     "vendor:sync": "node backend/scripts/sync-vendor.js",
     "build:client": "node backend/scripts/build-client-js.js",
     "build:spa": "cd frontend && npm install && npm run build",
-    "seed:portal-slides": "node backend/scripts/download-portal-slide-images.js",
     "build": "npm run build:client && npm run build:spa",
     "postinstall": "node backend/scripts/sync-vendor.js",
     "test:outage": "node backend/scripts/test-db-outage.js",

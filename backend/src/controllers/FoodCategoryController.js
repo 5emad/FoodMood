@@ -121,3 +121,4 @@ class FoodCategoryController {
 }
 
 module.exports = FoodCategoryController;
+module.exports.ensureDefaultCategories = ensureDefaultCategories;

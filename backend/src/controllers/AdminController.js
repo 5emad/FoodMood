@@ -18,19 +18,18 @@ const SecurityLog = require('../models/SecurityLog');
 const { hashPassword, escapeRegex, hashSensitiveToken, validatePasswordPolicy } = require('../helpers/SecurityHelper');
 const { testConnection: testLdapConn, validateConfig: validateLdapConfig, ldapConfig } = require('../helpers/LdapHelper');
 const { mergeLdapSettings, ldapFieldsFromBody, parseBoolean } = require('../helpers/LdapSettingsHelper');
-const { startOfDay, formatJalaliDate, parseJalaliDate, endOfJalaliDay } = require('../helpers/DateHelper');
+const { startOfDay, formatJalaliDate, parseJalaliDate, endOfJalaliDay, getJalaliWeekTitle } = require('../helpers/DateHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
 const { htmlToPdfBuffer } = require('../helpers/PdfHelper');
 const { paginationFromQuery, paginationMeta } = require('../helpers/PaginationHelper');
 const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSettings, updateAppSettings, getSettingsLean } = require('../services/SettingsService');
-const { portalSliderFromBody, normalizePortalSliderConfig } = require('../helpers/PortalSliderDefaults');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
 const { nextReportNumber, nextSupplierReportNumber } = require('../helpers/ReportNumberHelper');
 const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/ReportsAccessHelper');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
-const { renderReportHtml } = require('../views/ReportPdfView');
+const { renderPersonnel2ReportHtml, renderReportHtml } = require('../views/ReportPdfView');
 const { renderSupplierReportHtml } = require('../views/SupplierReportPdfView');
 const { clampPercent } = require('../services/UserStatementService');
 const { buildAdminFinanceReport, buildAdminFinancePdfPayload } = require('../services/AdminFinanceService');
@@ -38,6 +37,7 @@ const { renderFinanceStatementHtml } = require('../views/FinanceStatementPdfView
 const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper');
 const { normalizePublicUrl, refreshPublicUrlCache, requestOrigin } = require('../helpers/AppUrlHelper');
 const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
+const { isWafRuntimeEnabled, setWafRuntimeEnabled } = require('../services/WafStateService');
 
 function firstString(value) {
   if (Array.isArray(value)) return value.find((item) => typeof item === 'string') || '';
@@ -180,13 +180,10 @@ class AdminController {
       if (req.body.defaultMenuItemCapacity !== undefined) {
         update.defaultMenuItemCapacity = Math.max(Number(req.body.defaultMenuItemCapacity || 0), 0);
       }
-      const colorPattern = /^#[0-9a-fA-F]{6}$/;
-      ['themePrimary', 'themePrimaryLight', 'themePrimaryDark', 'themeGradientFrom', 'themeGradientTo'].forEach((key) => {
-        if (req.body[key] !== undefined) {
-          const value = String(req.body[key] || '').trim();
-          if (colorPattern.test(value)) update[key] = value;
-        }
-      });
+      if (req.body.enableCapacityLimit !== undefined) {
+        update.enableCapacityLimit = parseBoolean(req.body.enableCapacityLimit);
+      }
+      /* رنگ سامانه ثابت است — تغییرات تم از کلاینت نادیده گرفته می‌شود */
       if (req.body.uiFont !== undefined) {
         const font = String(req.body.uiFont || '').trim();
         update.uiFont = font === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn';
@@ -200,11 +197,6 @@ class AdminController {
         throw err;
       }
 
-      const portalSlider = portalSliderFromBody(req.body);
-      if (portalSlider) {
-        update.portalSlider = portalSlider;
-      }
-
       if (update.ldapEnabled) {
         const savedSettings = await getSettingsLean();
         const candidate = { ...savedSettings, ...update };
@@ -216,11 +208,8 @@ class AdminController {
 
       const settings = await updateAppSettings(update);
 
-      // Capacity is inherited at runtime when maxCapacity is 0. Reset snapshots so
-      // changing "ظرفیت پیش‌فرض" immediately applies to existing menu foods.
-      if (update.defaultMenuItemCapacity !== undefined) {
-        await MenuItem.updateMany({}, { $set: { maxCapacity: 0 } });
-      }
+      // ظرفیت سفارشی هر آیتم حفظ می‌شود؛ فقط maxCapacity=0 از پیش‌فرض ارث می‌برد.
+      // دیگر همه آیتم‌ها ریست نمی‌شوند تا ظرفیت روزانه از بین نرود.
 
       if (update.publicUrl !== undefined) {
         refreshPublicUrlCache(settings.publicUrl);
@@ -474,7 +463,7 @@ class AdminController {
           failedAttemptsTotal,
           unreadCount,
           waf: {
-            enabled: true,
+            enabled: isWafRuntimeEnabled(),
             engine: 'firewtwall',
             mode: 'reject',
             profile: 'standard',
@@ -494,6 +483,36 @@ class AdminController {
             totalPages: logsTotalPages,
           },
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async toggleWaf(req, res, next) {
+    try {
+      if (req.user?.role !== 'superadmin') {
+        return res.status(403).json({ success: false, message: 'فقط سوپر ادمین می‌تواند وضعیت WAF را تغییر دهد' });
+      }
+      const enabled = req.body.enabled;
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ success: false, message: 'مقدار enabled باید true یا false باشد' });
+      }
+
+      const newState = await setWafRuntimeEnabled(enabled);
+      const action = newState ? 'فعال‌سازی' : 'غیرفعال‌سازی';
+      await writeSecurityLog(
+        req,
+        'waf_toggled',
+        null,
+        `${action} WAF توسط سوپر ادمین`,
+        { actorId: req.user.id, wafEnabled: newState },
+      );
+
+      res.json({
+        success: true,
+        message: `فایروال وب (WAF) ${newState ? 'فعال' : 'غیرفعال'} شد`,
+        data: { wafEnabled: newState },
       });
     } catch (error) {
       next(error);
@@ -581,14 +600,16 @@ class AdminController {
       const normalizedEmail = optionalString(email);
       const normalizedPhone = optionalString(phone);
       const normalizedDepartmentId = nullableString(departmentId);
-      const requestedRole = firstString(role) || 'admin';
+      const requestedRole = firstString(role) || 'user';
       const normalizedPassword = firstString(password);
 
       if (!normalizedUsername || !normalizedPassword) {
         return res.status(400).json({ message: 'نام کاربری و رمز عبور الزامی هستند' });
       }
 
-      const allowedCreateRoles = req.user.role === 'superadmin' ? ['admin', 'superadmin'] : [];
+      const allowedCreateRoles = req.user.role === 'superadmin'
+        ? ['user', 'admin', 'superadmin']
+        : ['user'];
       if (!allowedCreateRoles.includes(requestedRole)) {
         return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیر بسازد' });
       }
@@ -906,19 +927,38 @@ class AdminController {
       const { name, week_number, weekNumber, start_date, startDate, end_date, endDate, isActive, status } = req.body;
       const normalizedStart = resolveWeekBoundary(start_date || startDate);
       const normalizedEnd = resolveWeekBoundary(end_date || endDate, { endOfDay: true });
-      const normalizedWeekNumber = week_number || weekNumber;
+      let normalizedWeekNumber = week_number || weekNumber;
 
-      if (!normalizedWeekNumber || !normalizedStart || !normalizedEnd) {
-        return res.status(400).json({ message: 'شماره هفته، تاریخ شروع و تاریخ پایان الزامی هستند' });
+      if (!normalizedStart || !normalizedEnd) {
+        return res.status(400).json({ message: 'تاریخ شروع و تاریخ پایان الزامی هستند' });
+      }
+
+      if (normalizedEnd < normalizedStart) {
+        return res.status(400).json({ message: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
+      }
+
+      const daySpan = Math.floor((startOfDay(normalizedEnd) - startOfDay(normalizedStart)) / (24 * 60 * 60 * 1000)) + 1;
+      if (daySpan > 7) {
+        return res.status(400).json({ message: 'بازه هفته حداکثر ۷ روز می‌تواند باشد' });
+      }
+      if (daySpan < 1) {
+        return res.status(400).json({ message: 'بازه هفته نامعتبر است' });
+      }
+
+      if (!normalizedWeekNumber) {
+        const { getPersianWeekNumber } = require('../helpers/DateHelper');
+        normalizedWeekNumber = getPersianWeekNumber(normalizedStart);
       }
 
       if (isActive || status === 'active') {
         await Week.updateMany({}, { $set: { isActive: false, status: 'inactive' } });
       }
 
+      const weekLabel = name || getJalaliWeekTitle(normalizedStart, normalizedEnd);
+
       const week = await Week.create({
-        name,
-        weekNumber: normalizedWeekNumber,
+        name: weekLabel,
+        weekNumber: Number(normalizedWeekNumber),
         startDate: normalizedStart,
         endDate: normalizedEnd,
         isActive: Boolean(isActive || status === 'active'),
@@ -927,8 +967,23 @@ class AdminController {
 
       await ensureDailyMenus(week);
 
-      res.status(201).json({ success: true, message: 'هفته ایجاد شد', weekId: week._id });
+      res.status(201).json({
+        success: true,
+        message: 'هفته ایجاد شد',
+        weekId: week._id,
+        data: {
+          ...week.toObject(),
+          jalaliStart: formatJalaliDate(week.startDate),
+          jalaliEnd: formatJalaliDate(week.endDate),
+        },
+      });
     } catch (error) {
+      if (error?.code === 11000) {
+        return res.status(409).json({
+          success: false,
+          message: 'هفته‌ای با این تاریخ شروع قبلاً ثبت شده است',
+        });
+      }
       next(error);
     }
   }
@@ -995,6 +1050,16 @@ class AdminController {
         const resolved = resolveWeekBoundary(end_date || endDate, { endOfDay: true });
         if (!resolved) return res.status(400).json({ message: 'تاریخ پایان نامعتبر است' });
         week.endDate = resolved;
+      }
+      if (week.endDate < week.startDate) {
+        return res.status(400).json({ message: 'تاریخ پایان باید بعد از تاریخ شروع باشد' });
+      }
+      const daySpan = Math.floor((startOfDay(week.endDate) - startOfDay(week.startDate)) / (24 * 60 * 60 * 1000)) + 1;
+      if (daySpan > 7) {
+        return res.status(400).json({ message: 'بازه هفته حداکثر ۷ روز می‌تواند باشد' });
+      }
+      if (daySpan < 1) {
+        return res.status(400).json({ message: 'بازه هفته نامعتبر است' });
       }
       week.isActive = isActive ?? (status ? status === 'active' : week.isActive);
       week.status = week.isActive ? 'active' : 'inactive';
@@ -1220,15 +1285,15 @@ class AdminController {
     try {
       await assertReportsAccess(req.user);
       const { type: reportType, range, title } = await resolveReportRange(req.query);
+      const isPersonnel2 = String(req.query.variant || '').toLowerCase() === 'personnel2';
       const [report, settings, reportNumber] = await Promise.all([
         buildReport(range.start, range.end),
         getSettingsLean(),
         nextReportNumber(),
       ]);
-      const cellMode = String(req.query.cellMode || req.query.view || 'names') === 'type1' ? 'type1' : 'names';
       const payload = {
         type: reportType,
-        title,
+        title: isPersonnel2 ? `گزارش پرسنلی ۲ — ${title}` : title,
         reportNumber,
         organizationName: settings?.organizationName || 'سامانه تغذیه سازمانی',
         range: {
@@ -1238,12 +1303,15 @@ class AdminController {
           jalaliEnd: formatJalaliDate(range.end),
         },
         ...report,
-        cellMode,
       };
 
-      const pdf = await htmlToPdfBuffer(renderReportHtml(payload));
+      const html = isPersonnel2 ? renderPersonnel2ReportHtml(payload) : renderReportHtml(payload);
+      const pdf = await htmlToPdfBuffer(html);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="food-report-${reportNumber}.pdf"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="food-report${isPersonnel2 ? '-personnel2' : ''}-${reportNumber}.pdf"`,
+      );
       res.send(pdf);
     } catch (error) {
       if (Number(error.status) > 0 && Number(error.status) < 500) {
@@ -1278,6 +1346,7 @@ class AdminController {
           },
           byDayPrep: report.byDayPrep,
           prepTotals: report.prepTotals,
+          categories: report.categories || [],
         },
       });
     } catch (error) {
@@ -1313,6 +1382,7 @@ class AdminController {
         },
         byDayPrep: report.byDayPrep,
         prepTotals: report.prepTotals,
+        categories: report.categories || [],
       };
 
       const pdf = await htmlToPdfBuffer(renderSupplierReportHtml(payload));
@@ -1334,7 +1404,19 @@ class AdminController {
     try {
       const actor = req.user?.fullName || req.user?.username || '';
       const { buffer, counts } = await createBackupBuffer(actor);
-      const stamp = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Tehran',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(now);
+      const pick = (type) => parts.find((p) => p.type === type)?.value || '00';
+      const stamp = `${pick('year')}${pick('month')}${pick('day')}-${pick('hour')}${pick('minute')}${pick('second')}`;
       const filename = `sazman-food-backup-${stamp}.fzbackup`;
 
       await writeSecurityLog(req, 'backup_export', null, 'خروجی پشتیبان سامانه', {
@@ -1348,6 +1430,12 @@ class AdminController {
       res.setHeader('Cache-Control', 'no-store');
       res.send(buffer);
     } catch (error) {
+      if (Number(error.status) > 0 && Number(error.status) < 500) {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+      if (error.message) {
+        return res.status(500).json({ success: false, message: error.message });
+      }
       next(error);
     }
   }
@@ -1365,16 +1453,21 @@ class AdminController {
         actorId: req.user?.id,
         summary: result.summary,
         backupCreatedAt: result.createdAt,
+        mode: result.mode,
       });
 
+      const total = Object.values(result.summary || {}).reduce((s, n) => s + Number(n || 0), 0);
       res.json({
         success: true,
-        message: 'بازیابی با موفقیت انجام شد. داده‌های سامانه از فایل پشتیبان بازگردانده شدند.',
+        message: `بازیابی با موفقیت انجام شد (${Number(total).toLocaleString('fa-IR')} رکورد). برای اعمال کامل، دوباره وارد شوید.`,
         data: result,
       });
     } catch (error) {
       if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
+      }
+      if (error.message) {
+        return res.status(500).json({ success: false, message: error.message });
       }
       next(error);
     }
@@ -1409,52 +1502,6 @@ class AdminController {
       if (Number(error.status) > 0 && Number(error.status) < 500) {
         return res.status(error.status).json({ success: false, message: error.message });
       }
-      next(error);
-    }
-  }
-
-  static async uploadPortalSlideImage(req, res, next) {
-    try {
-      if (!req.file?.filename) {
-        return res.status(400).json({ success: false, message: 'فایل تصویر الزامی است.' });
-      }
-
-      const target = String(req.body.target || 'week').trim();
-      const index = Number(req.body.index);
-      const imageUrl = `/uploads/portal-slides/${req.file.filename}`;
-      const settings = await getSettingsLean();
-
-      // اگر فرانت وضعیت فعلی (از جمله enabled) را فرستاد، همان را مبنا بگیر
-      let base = settings.portalSlider;
-      if (req.body.portalSlider) {
-        try {
-          base = typeof req.body.portalSlider === 'string'
-            ? JSON.parse(req.body.portalSlider)
-            : req.body.portalSlider;
-        } catch { /* keep DB config */ }
-      }
-      const config = normalizePortalSliderConfig(base);
-
-      if (target === 'week') {
-        config.weekHeroImage = imageUrl;
-      } else if (target === 'showcase' && Number.isInteger(index) && index >= 0 && index < config.showcaseSlides.length) {
-        config.showcaseSlides[index] = {
-          ...config.showcaseSlides[index],
-          imageUrl,
-          enabled: config.showcaseSlides[index].enabled === true,
-        };
-      } else {
-        return res.status(400).json({ success: false, message: 'هدف آپلود نامعتبر است.' });
-      }
-
-      const saved = await updateAppSettings({ portalSlider: config });
-      res.json({
-        success: true,
-        message: 'تصویر اسلاید ذخیره شد',
-        imageUrl,
-        data: normalizePortalSliderConfig(saved.portalSlider),
-      });
-    } catch (error) {
       next(error);
     }
   }

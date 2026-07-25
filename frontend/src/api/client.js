@@ -41,18 +41,26 @@ export async function api(url, options = {}) {
   });
 
   if (res.status === 403 && needsCsrf) resetCsrf();
-  if (res.status === 401) {
-    const body = await res.clone().json().catch(() => null);
-    redirectLogin(body?.code === 'idle' ? 'idle' : 'expired');
-    throw new Error('401');
-  }
 
   const text = await res.text();
+  let body;
   try {
-    return JSON.parse(text);
+    body = text ? JSON.parse(text) : null;
   } catch {
-    return { success: false, message: text || `HTTP ${res.status}` };
+    body = null;
   }
+
+  const isAuthCredentialCall = /\/api\/auth\/(login|resolve-username|verify-super-token)(?:\?|$)/.test(url);
+  if (res.status === 401) {
+    if (isAuthCredentialCall) {
+      return body || { success: false, message: 'اطلاعات وارد شده صحیح نیست' };
+    }
+    redirectLogin(body?.code === 'idle' ? 'idle' : 'expired');
+    throw new Error(body?.message || 'نشست منقضی شده است');
+  }
+
+  if (body && typeof body === 'object') return body;
+  return { success: false, message: text || `HTTP ${res.status}` };
 }
 
 export async function apiBlob(url, options = {}) {
@@ -83,6 +91,7 @@ export async function apiForm(url, formData, method = 'POST') {
     redirectLogin('expired');
     throw new Error('401');
   }
+  if (res.status === 403 && needsCsrf) resetCsrf();
   const text = await res.text();
   try {
     return JSON.parse(text);

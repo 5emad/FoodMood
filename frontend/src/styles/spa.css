@@ -1,83 +1,439 @@
 #root { min-height: 100vh; }
 
-/* یکپارچه‌سازی فونت در کل SPA */
-/* فونت سامانه از theme-vars (--font-family) می‌آید */
-body,
-#root,
-button,
-input,
-select,
-textarea,
-.table,
-.sidebar,
-.top-nav,
-.top-header {
-  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif);
+/* یکپارچه‌سازی فونت در کل SPA — از --font-family تم */
+html, body, #root {
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif) !important;
 }
-/* Sonner toast — RTL polish */
+
+body *:not(i):not(.fas):not(.far):not(.fab):not(.fa):not([class*="fa-"]) {
+  font-family: inherit !important;
+}
+
+/* Sonner — استایل پکیج از ToastProvider import می‌شود؛ این‌ها فقط override امن هستند */
 [data-sonner-toaster] {
-  font-family: 'Vazirmatn', Tahoma, sans-serif;
-  --width: 380px;
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif) !important;
+  --width: min(400px, 92vw) !important;
+  z-index: 999999 !important;
+  pointer-events: none !important;
 }
 
-.sonner-toast-root {
-  border-radius: 12px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
-  padding: 14px 18px !important;
+[data-sonner-toaster][dir='rtl'] {
+  --toast-close-button-start: unset;
+  --toast-close-button-end: 0;
+}
+
+[data-sonner-toaster] [data-sonner-toast] {
+  pointer-events: auto !important;
+  font-family: inherit !important;
+}
+
+[data-sonner-toast][data-mounted='true'] {
+  opacity: 1 !important;
+  --y: translateY(0) !important;
+}
+
+[data-sonner-toast][data-mounted='true'][data-front='true'] {
+  transform: translateY(0) !important;
+}
+
+.app-sonner-toast[data-styled='true'] {
   font-size: 0.95rem !important;
-  line-height: 1.6 !important;
+  font-weight: 400 !important;
+  line-height: 1.65 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(15, 30, 60, 0.18) !important;
+  padding: 14px 18px !important;
 }
 
-.sonner-toast-title {
-  font-weight: 600 !important;
+.app-sonner-title {
+  font-weight: 400 !important;
 }
 
-.sonner-toast-close {
-  left: 12px !important;
+.app-sonner-close {
+  left: 6px !important;
   right: auto !important;
+}
+
+/* SweetAlert2 confirms */
+.swal2-container,
+.swal2-container.app-swal-container {
+  z-index: 1000000 !important;
+  pointer-events: auto !important;
+}
+.app-swal-popup {
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif) !important;
+  direction: rtl;
+  text-align: center;
 }
 
 /* ادمین — دکمه سوئیچ پرتال روی هدر سفید */
 body.admin-body .top-header .btn-site {
-  background: var(--primary-dark, #1e3a5f);
+  background: var(--primary);
   color: #fff;
-  border-color: var(--primary-dark, #1e3a5f);
+  border-color: var(--primary);
 }
 
 body.admin-body .top-header .btn-site:hover {
-  background: var(--primary, #2563eb);
+  background: var(--primary-dark);
   color: #fff;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.15);
+  box-shadow: 0 2px 12px var(--primary-glow);
 }
 
 /* ادمین — تب‌های سوئیچر با کنتراست خوانا */
 body.admin-body .sub-tab-btn.active,
 body.admin-body .weekly-report-tab.active {
-  background: var(--primary-dark, #1e3a5f) !important;
+  background: var(--primary) !important;
   color: #fff !important;
-  border-color: var(--primary-dark, #1e3a5f) !important;
+  border-color: var(--primary) !important;
 }
 
 body.admin-body .sub-tab-btn {
   color: var(--text-muted, #64748b);
 }
 
-/* منوی درختی ادمین */
-.sidebar-group {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* ─── منوی ادمین — سایدبار یکپارچه با برند ─── */
+body.admin-body .sidebar.sidebar-nav-panel {
+  background: var(--sidebar-bg, linear-gradient(185deg, #1C1410 0%, #140E0A 55%, #0C0907 100%));
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-family) !important;
+  font-weight: 400 !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.sidebar-subnav {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0 8px 0 0;
+body.admin-sidebar-only .top-header {
+  display: none !important;
 }
 
-.sidebar-subnav .sidebar-link {
-  padding-right: 28px;
-  font-size: 0.88rem;
+body.admin-sidebar-only .main-content {
+  padding-top: 0;
+}
+
+body.admin-body .sidebar-date-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 14px 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sidebar-muted, #7EB3D9);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+body.admin-body .sidebar-date-chip i {
+  opacity: 0.85;
+}
+
+body.admin-body .sidebar-footer--actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+body.admin-body .sidebar-footer-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+body.admin-body .sidebar-action-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+body.admin-body .sidebar-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 8px;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  text-decoration: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+body.admin-body .sidebar-action-link--portal {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: #fff !important;
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+body.admin-body .sidebar-action-link--portal:hover {
+  background: color-mix(in srgb, var(--primary) 38%, transparent);
+}
+
+body.admin-body .sidebar-action-link--logout {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fecaca !important;
+}
+
+body.admin-body .sidebar-action-link--logout:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+body.admin-body .page-header--compact {
+  margin-bottom: 18px;
+  padding: 18px 22px;
+  border-radius: 16px;
+}
+
+body.admin-body .page-header--compact .ph-badge {
+  display: none;
+}
+
+body.admin-body .page-header--compact .ph-title {
+  font-size: 1.2rem;
+}
+
+/* فعال — رنگ برند */
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link.is-active {
+  background: color-mix(in srgb, var(--primary) 32%, transparent) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  font-weight: 400 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-brand {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-brand-text,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-user-name,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-head,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-title,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-text,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-brand-sub,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-user-role {
+  font-family: var(--font-family) !important;
+  font-weight: 400 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-brand-text {
+  font-size: 0.95rem !important;
+  color: #f1f5f9 !important;
+  letter-spacing: 0;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-brand-sub {
+  font-size: 0.72rem !important;
+  color: #8b9bb0 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0 16px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-menu {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 14px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* سرگروه */
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-head {
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  width: 100% !important;
+  min-height: 42px;
+  padding: 9px 12px !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #d0d8e4 !important;
+  font-size: 0.9rem !important;
+  font-weight: 400 !important;
+  text-align: right !important;
+  cursor: pointer;
+  outline: none;
+  letter-spacing: 0;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-head:hover {
+  background: rgba(255, 255, 255, 0.055) !important;
+  color: #fff !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group.is-open > .sidebar-nav-group-head {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-head::before {
+  display: none !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  line-height: 1.45;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-ico {
+  width: 22px !important;
+  height: 22px !important;
+  flex: 0 0 22px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem !important;
+  color: #93a4bb !important;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group-head:hover .sidebar-nav-ico,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group.is-open > .sidebar-nav-group-head .sidebar-nav-ico {
+  color: #e8eef7 !important;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-chevron {
+  flex: 0 0 auto;
+  font-size: 0.55rem !important;
+  color: #7d8b9e !important;
+  opacity: 0.9;
+  transition: transform 0.18s ease;
+}
+
+/* زیرمنو — تورفتگی از راست + خط راهنما (قرص فعال روی خط ننشیند) */
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 4px 0 10px 0 !important;
+  display: none;
+  position: relative;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group.is-open > .sidebar-nav-sub {
+  display: block !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-group.is-open > .sidebar-nav-sub::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 14px;
+  right: 20px;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.22);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-item {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 11px !important;
+  width: auto !important;
+  max-width: none !important;
+  /* فاصله از راست تا خط راهنما بیرون از پس‌زمینه فعال بماند */
+  margin: 2px 28px 2px 0 !important;
+  padding: 9px 12px !important;
+  border-radius: 10px !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #aeb9c9 !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link::before,
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link::after {
+  content: none !important;
+  display: none !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+  transform: none !important;
+}
+
+/* فعال — رنگ برند */
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link.is-active {
+  background: color-mix(in srgb, var(--primary) 32%, transparent) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  font-weight: 400 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link.is-active .sidebar-nav-ico {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-sub-link .sidebar-nav-ico {
+  color: #8f9eb2;
+  background: transparent;
+  width: 18px !important;
+  height: 18px !important;
+  flex-basis: 18px;
+  font-size: 0.82rem !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-nav-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-pending-badge {
+  margin-right: auto;
+  font-size: 0.68rem;
+  font-weight: 400 !important;
+}
+
+body.admin-body .sidebar.sidebar-nav-panel .sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 /* سوپر ادمین — ثابت پایین سایدبار (بالای فوتر) */
@@ -104,29 +460,467 @@ body.admin-body .sub-tab-btn {
 
 /* دکمه بازگشت ادمین در پرتال کاربر */
 .btn-icon.admin-portal-btn {
-  color: var(--primary-dark, #1e3a5f);
-  border-color: rgba(30, 58, 95, 0.2);
-  background: rgba(30, 58, 95, 0.06);
+  color: var(--primary-dark);
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  background: var(--primary-bg-soft);
 }
 
 .btn-icon.admin-portal-btn:hover {
-  background: rgba(30, 58, 95, 0.14);
-  color: var(--primary, #2563eb);
-  border-color: rgba(30, 58, 95, 0.35);
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
 }
 
 /* نسخه در فوتر پرتال */
 .user-portal-shell {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 70px);
+  min-height: 100vh;
+}
+
+.user-portal-shell.user-portal-shell--split {
+  display: block;
 }
 
 .user-portal-shell .app-version-badge {
   margin: 24px auto 32px;
 }
 
-body.admin-body .main-content .app-version-badge {
-  margin: 0 32px 20px;
-  align-self: flex-start;
+html.font-yekanbakh,
+html[data-app-font="yekanbakh"],
+html.font-yekanbakh body,
+html[data-app-font="yekanbakh"] body {
+  font-family: 'Yekan Bakh FaNum', Tahoma, sans-serif !important;
+  font-weight: 400 !important;
+}
+
+/* یکان‌بخ: پایه Regular برای تقریباً همهٔ UI */
+html.font-yekanbakh body,
+html[data-app-font="yekanbakh"] body,
+html.font-yekanbakh p,
+html.font-yekanbakh span,
+html.font-yekanbakh a,
+html.font-yekanbakh label,
+html.font-yekanbakh li,
+html.font-yekanbakh td,
+html.font-yekanbakh th,
+html.font-yekanbakh button,
+html.font-yekanbakh .btn,
+html.font-yekanbakh .form-control,
+html.font-yekanbakh .card-title,
+html.font-yekanbakh .section-title,
+html.font-yekanbakh .sidebar-brand-text,
+html.font-yekanbakh .sidebar-user-name,
+html.font-yekanbakh .table thead th,
+html.font-yekanbakh .food-name,
+html.font-yekanbakh .day-name,
+html.font-yekanbakh .nav-brand-title,
+html.font-yekanbakh .nav-u-name,
+html.font-yekanbakh .modal-title,
+html.font-yekanbakh .auth-card-title,
+html.font-yekanbakh .feature-title,
+html.font-yekanbakh .badge,
+html[data-app-font="yekanbakh"] .card-title,
+html[data-app-font="yekanbakh"] .section-title,
+html[data-app-font="yekanbakh"] .btn,
+html[data-app-font="yekanbakh"] .food-name,
+html[data-app-font="yekanbakh"] .modal-title {
+  font-weight: 400 !important;
+}
+
+html.font-yekanbakh strong,
+html.font-yekanbakh b,
+html.font-yekanbakh .ph-title,
+html.font-yekanbakh h1,
+html.font-yekanbakh h2,
+html.font-yekanbakh h3,
+html[data-app-font="yekanbakh"] strong,
+html[data-app-font="yekanbakh"] b,
+html[data-app-font="yekanbakh"] .ph-title {
+  font-weight: 600 !important;
+}
+
+html.font-vazirmatn,
+html[data-app-font="vazirmatn"],
+html.font-vazirmatn body,
+html[data-app-font="vazirmatn"] body {
+  font-family: 'Vazirmatn', Tahoma, sans-serif !important;
+  font-weight: 400;
+}
+
+/* ظرفیت روزانه در ویرایش منو */
+.food-check-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px dashed var(--border, #e5e7eb);
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.food-check-row.is-on {
+  background: var(--primary-bg-soft);
+  border-radius: 8px;
+  border-bottom-color: transparent;
+  margin-bottom: 4px;
+}
+.food-check-row .food-check-label {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 !important;
+}
+.food-cap-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: end;
+  max-width: 100%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.food-cap-input,
+input.food-cap-input.form-control {
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  flex: 0 0 44px !important;
+  padding: 3px 4px !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
+  border: 1px solid var(--border, #cbd5e1) !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: var(--text-main, #0f172a);
+  font-size: 0.8rem !important;
+  text-align: center;
+}
+.food-cap-input:focus {
+  outline: none;
+  border-color: var(--primary, #1B3F8D) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.week-food-cat-block + .week-food-cat-block {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border, #cbd5e1);
+}
+.week-food-cat-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--primary-dark, #122A62);
+  margin-bottom: 6px;
+}
+
+/* گزارش واحدها */
+.report-dept-stack { display: flex; flex-direction: column; gap: 14px; }
+.report-dept-block {
+  background: var(--surface-card, #fff);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.report-dept-block.is-large { /* واحدهای بزرگ در PDF صفحه‌بندی می‌شوند */ }
+.personnel2-table-wrap { overflow: visible; }
+.personnel2-day-block {
+  margin-bottom: 18px;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-card, #fff);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.personnel2-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--primary-bg-soft, #eef5fa);
+  border-bottom: 1px solid var(--border, #cbd5e1);
+}
+.personnel2-day-title {
+  font-weight: 800;
+  font-size: 1rem;
+  color: var(--primary-dark, #122A62);
+}
+.personnel2-day-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.personnel2-day-block .personnel2-table-wrap {
+  border: none;
+  border-radius: 0;
+}
+.personnel2-day-block .personnel2-table {
+  margin: 0;
+}
+.personnel2-table,
+.personnel2-table th,
+.personnel2-table td,
+.report-table,
+.report-table th,
+.report-table td,
+#tab-reports,
+#weeklyReportWrap,
+#weeklyPersonnel2Pane,
+#weeklySupplierPane,
+#sub-monthly {
+  font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif) !important;
+}
+.personnel2-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.personnel2-col-cat { width: 14%; }
+.personnel2-col-food { width: 20%; }
+.personnel2-col-dept { width: 20%; }
+.personnel2-col-name { width: 46%; }
+.personnel2-table th,
+.personnel2-table td {
+  border: 1px solid var(--border, #94a3b8);
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+.personnel2-table th {
+  font-weight: 800;
+  text-align: center;
+}
+.personnel2-cat,
+.personnel2-food,
+.personnel2-dept {
+  text-align: center;
+  font-weight: 800;
+  background: var(--primary-bg-soft, #eef5fa);
+}
+.personnel2-cat {
+  color: var(--primary-dark, #122A62);
+}
+.personnel2-name {
+  text-align: right !important;
+  font-weight: 700;
+}
+.personnel2-footer {
+  margin-top: 10px;
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.report-cat-group + .report-cat-group { margin-top: 6px; }
+.report-cat-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--primary-dark, #122A62);
+  margin-bottom: 2px;
+}
+.supplier-cat-row td {
+  background: var(--primary-bg-soft, #eef5fa) !important;
+  font-weight: 800;
+  text-align: right !important;
+  color: var(--primary-dark, #122A62);
+  padding: 8px 12px !important;
+}
+.dsc-cat-block + .dsc-cat-block { margin-top: 8px; }
+.dsc-cat-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--primary-dark, #122A62);
+  margin-bottom: 4px;
+}
+
+@media print {
+  .report-dept-block {
+    break-inside: auto;
+    page-break-inside: auto;
+    box-shadow: none;
+  }
+  .report-dept-block .dept-group-row td {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  .personnel2-print,
+  .personnel2-table-wrap {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .personnel2-day-block {
+    border: 1px solid #000 !important;
+    border-radius: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .personnel2-day-head {
+    background: #eee !important;
+    border-bottom: 1px solid #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .personnel2-day-title,
+  .personnel2-day-meta {
+    color: #000 !important;
+  }
+  .personnel2-table th,
+  .personnel2-table td {
+    border: 1px solid #000 !important;
+    color: #000 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .personnel2-food,
+  .personnel2-dept,
+  .personnel2-cat {
+    background: #f3f3f3 !important;
+  }
+  .personnel2-table thead { display: table-header-group; }
+  .personnel2-table tr { break-inside: avoid; page-break-inside: avoid; }
+}
+
+/* فیش صورتحساب — باکس تاریخ و شماره سفارش */
+.receipt-item-meta-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.receipt-date-box,
+.receipt-order-box {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.receipt-date-box {
+  background: var(--primary-bg-soft, #eef5fa);
+  color: var(--text-sub, #1C3550);
+  border: 1px solid var(--border-accent, rgba(4,55,102,.25));
+}
+.receipt-order-box {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary-dark, #122A62);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  direction: ltr;
+}
+
+/* تنظیمات — چینش تمیزتر */
+#system-settings-page .settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+#system-settings-page .settings-section-title {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ── Login minimal redesign ── */
+.auth-body--minimal {
+  background:
+    radial-gradient(800px 420px at 85% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 55%),
+    radial-gradient(640px 380px at 0% 110%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 50%),
+    linear-gradient(165deg, #F7FBFE 0%, #E8F2F8 45%, #D6E8F4 100%) !important;
+}
+.auth-login-shell {
+  width: min(420px, 100%);
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+  animation: fadeUp .5s ease both;
+}
+.auth-login-brand {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.auth-login-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 1.45rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  box-shadow: 0 14px 32px var(--primary-glow);
+}
+.auth-login-title {
+  margin: 0;
+  font-size: clamp(1.55rem, 4vw, 1.9rem);
+  font-weight: 600 !important;
+  color: var(--text-main);
+  line-height: 1.35;
+}
+.auth-login-card {
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--primary) 14%, transparent);
+  border-radius: 20px;
+  padding: 26px 24px 22px;
+  box-shadow: 0 22px 60px rgba(124, 45, 18, 0.1);
+}
+.auth-login-submit {
+  margin-top: 8px;
+  padding: 13px 16px !important;
+  font-size: 1rem;
+}
+.auth-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: var(--primary-bg-soft);
+  border: 1px solid var(--border-accent);
+  color: var(--text-main);
+  font-size: 0.92rem;
+}
+.auth-user-chip i { color: var(--primary); }
+.auth-user-chip span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-user-chip-change {
+  border: 0;
+  background: transparent;
+  color: var(--primary-dark);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 2px 4px;
+}
+.auth-password-wrap {
+  position: relative;
+}
+.auth-password-wrap .form-control {
+  padding-left: 46px;
+}
+.auth-password-toggle {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+.auth-password-toggle:hover { color: var(--primary-dark); background: var(--primary-bg-soft); }
+.auth-login-version {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-dim);
 }

@@ -9,8 +9,12 @@ function ensureCsrfToken(req) {
 function csrfMiddleware(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
 
-  // Login and second factor endpoints bootstrap/rotate authenticated sessions.
-  if (req.path === '/auth/login' || req.path === '/auth/verify-super-token') return next();
+  // Login flow and second factor bootstrap/rotate authenticated sessions.
+  if (
+    req.path === '/auth/login'
+    || req.path === '/auth/resolve-username'
+    || req.path === '/auth/verify-super-token'
+  ) return next();
 
   // Bearer-token API clients are not using ambient browser cookies.
   if (req.headers.authorization?.startsWith('Bearer ')) return next();

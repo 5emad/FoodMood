@@ -1,0 +1,184 @@
+.category-week-menu-slider {
+  width: 100%;
+  position: relative;
+}
+
+.cwm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid color-mix(in srgb, var(--primary, #1B3F8D) 12%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--primary, #1B3F8D) 6%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.cwm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cwm-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--primary, #1B3F8D) 6%, #fff);
+  color: var(--primary-dark, #122A62);
+  border-radius: 999px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.cwm-tab i {
+  color: var(--primary, #1B3F8D);
+  font-size: 0.78rem;
+}
+
+.cwm-tab:hover {
+  border-color: color-mix(in srgb, var(--primary, #1B3F8D) 28%, transparent);
+  transform: translateY(-1px);
+}
+
+.cwm-tab.is-active {
+  background: linear-gradient(135deg, var(--primary-dark, #122A62), var(--primary, #1B3F8D));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(27, 63, 141, 0.24);
+}
+
+.cwm-tab.is-active i {
+  color: #fff;
+}
+
+.cwm-nav-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary, #1B3F8D) 16%, transparent);
+  background: #fff;
+  color: var(--primary, #1B3F8D);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, opacity .15s ease;
+}
+
+.cwm-nav-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(27, 63, 141, 0.14);
+  background: color-mix(in srgb, var(--primary, #1B3F8D) 6%, #fff);
+}
+
+.cwm-nav-btn:active {
+  transform: translateY(0);
+}
+
+.cwm-nav-btn.swiper-button-disabled {
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
+}
+
+.category-week-swiper {
+  padding-bottom: 36px;
+  overflow: hidden;
+}
+
+.category-week-swiper .swiper-slide {
+  height: auto;
+  opacity: 0 !important;
+}
+
+.category-week-swiper .swiper-slide-active {
+  opacity: 1 !important;
+}
+
+.cwm-slide-wrap {
+  min-width: 0;
+  animation: cwm-fade-up .28s ease;
+}
+
+@keyframes cwm-fade-up {
+  from {
+    opacity: 0.55;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.category-week-swiper .swiper-pagination {
+  bottom: 4px !important;
+}
+
+.category-week-swiper .swiper-pagination-bullet {
+  width: 8px;
+  height: 8px;
+  background: color-mix(in srgb, var(--primary, #1B3F8D) 35%, #cbd5e1);
+  opacity: 1;
+  transition: width .2s ease, background .2s ease, border-radius .2s ease;
+}
+
+.category-week-swiper .swiper-pagination-bullet-active {
+  width: 22px;
+  border-radius: 999px;
+  background: var(--primary, #1B3F8D);
+}
+
+.category-week-swiper > .swiper-button-prev,
+.category-week-swiper > .swiper-button-next {
+  display: none;
+}
+
+.portal-menu-stage .btn-reserve {
+  background: linear-gradient(135deg, var(--primary, #1B3F8D), var(--primary-dark, #122A62));
+  border: 0;
+  color: #fff;
+  border-radius: 11px;
+  padding: 8px 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary, #1B3F8D) 24%, transparent);
+}
+
+.portal-menu-stage .btn-reserve:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--primary, #1B3F8D) 30%, transparent);
+}
+
+@media (max-width: 720px) {
+  .cwm-toolbar {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .cwm-nav-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .cwm-tab {
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+}

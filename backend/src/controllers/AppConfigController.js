@@ -69,16 +69,6 @@ class AppConfigController {
     }
   }
 
-  static async getPortalSlider(req, res, next) {
-    try {
-      const { buildPortalSlides } = require('../services/PortalSliderService');
-      const payload = await buildPortalSlides({ user: req.user });
-      res.json({ success: true, data: payload });
-    } catch (error) {
-      next(error);
-    }
-  }
-
   static async adminDashboardMarkup(req, res, next) {
     try {
       const ejs = require('ejs');

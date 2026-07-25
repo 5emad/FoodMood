@@ -216,6 +216,7 @@ app.use(healthGateMiddleware);
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth/login',  loginLimiter);
+app.use('/api/auth/resolve-username', loginLimiter);
 app.use('/api',             apiLimiter);
 app.get('/api/system/health', (req, res) => {
   const { getHealthStatus } = require('./src/helpers/HealthState');
@@ -288,7 +289,10 @@ app.use('/api/app', appConfigRoutes);
 app.use('/api', csrfMiddleware);
 
 app.use('/api/auth/login', ensureDbMiddleware);
+app.use('/api/auth/resolve-username', ensureDbMiddleware);
 app.use('/api/admin', ensureDbMiddleware);
+// ثبت صریح — تا قبل از روتر auth هم در دسترس باشد (مرحله ۱ ورود)
+app.post('/api/auth/resolve-username', require('./src/controllers/AuthController').resolveUsername);
 app.use('/api/auth',   authRoutes);
 app.use('/api/foods',  foodRoutes);
 app.use('/api/orders', orderRoutes);
@@ -382,6 +386,13 @@ async function runPostConnectTasks() {
   }
   await ensureOrderNumbers();
   await finalizeExpiredOrders();
+
+  const { runDataMigrations } = require('./src/services/DataMigrationService');
+  await runDataMigrations().catch(() => {});
+
+  // همگام‌سازی وضعیت WAF از دیتابیس
+  const { syncWafStateFromDb } = require('./src/services/WafStateService');
+  await syncWafStateFromDb().catch(() => {});
 
   setInterval(() => {
     finalizeExpiredOrders().catch((err) => {
