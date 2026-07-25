@@ -1,13 +1,18 @@
 /**
  * IP کلاینت امن برای rate-limit / لاگ.
- * پیش‌فرض: فقط سوکت (ضد جعل X-Forwarded-For).
- * اگر سوکت از TRUSTED_PROXIES / WAF_TRUSTED_PROXIES باشد → Express req.ip (پشت nginx داخل داکر).
+ * پیش‌فرض / حداقل: لوپ‌بک (nginx روی همان سرور) تا XFF جعلی از اینترنت trust نشود،
+ * ولی کلاینت واقعی پشت پروکسی محلی دیده شود.
  */
 
 function envCidrList() {
   const raw = String(process.env.TRUSTED_PROXIES || process.env.WAF_TRUSTED_PROXIES || '').trim();
-  if (!raw) return [];
-  return raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+  const fromEnv = raw
+    ? raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  const merged = new Set(fromEnv.length ? fromEnv : ['127.0.0.1', '::1']);
+  merged.add('127.0.0.1');
+  merged.add('::1');
+  return [...merged];
 }
 
 function normalizeIp(ip) {

@@ -54,11 +54,18 @@ const WAF_OPTIONS = {
   whitelist: envList('WAF_WHITELIST'),
   blacklist: envList('WAF_BLACKLIST'),
 
-  // پیش‌فرض خالی = IP سوکت واقعی (ضد جعل XFF).
-  // در داکر پشت nginx: TRUSTED_PROXIES / WAF_TRUSTED_PROXIES = شبکه داخلی
-  trustedProxies: envList('WAF_TRUSTED_PROXIES').length
-    ? envList('WAF_TRUSTED_PROXIES')
-    : envList('TRUSTED_PROXIES'),
+  // پشت nginx محلی: باید لوپ‌بک trust شود تا XFF کلاینت واقعی خوانده شود.
+  // اگر خالی بماند همه درخواست‌ها IP=127.0.0.1 می‌شوند و WAF rate-limit همه را بلاک می‌کند.
+  trustedProxies: (() => {
+    const fromEnv = envList('WAF_TRUSTED_PROXIES').length
+      ? envList('WAF_TRUSTED_PROXIES')
+      : envList('TRUSTED_PROXIES');
+    const loopback = ['127.0.0.1', '::1'];
+    if (!fromEnv.length) return loopback;
+    const merged = new Set(fromEnv);
+    for (const ip of loopback) merged.add(ip);
+    return [...merged];
+  })(),
 
   bypassPaths: [
     '/healthz',

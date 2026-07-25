@@ -179,6 +179,19 @@ migrate_env_keys() {
     log_info "Added ${key}=${val} to .env"
   }
 
+  # مقدار را همیشه روی لوپ‌بک می‌گذارد (مهاجرت از Docker اغلب رنج 10/172 را جا می‌گذارد).
+  ensure_env_force() {
+    local key="$1"
+    local val="$2"
+    if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+      sed -i "s|^${key}=.*|${key}=${val}|" "$env_file"
+    else
+      echo "${key}=${val}" >> "$env_file"
+    fi
+    chown "$APP_USER:$APP_USER" "$env_file"
+    chmod 600 "$env_file"
+  }
+
   ensure_env_key ANNOUNCEMENT_ENCRYPTION_KEY
   ensure_env_key LDAP_ENCRYPTION_KEY
   ensure_env_key LOG_ENCRYPTION_KEY
@@ -203,9 +216,9 @@ migrate_env_keys() {
   ensure_env_default CLUSTER_WORKERS 0
   ensure_env_default MONGODB_MAX_POOL_SIZE 50
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
-  # فقط لوپ‌بک — nginx روی همان سرور
-  ensure_env_default TRUSTED_PROXIES '127.0.0.1,::1'
-  ensure_env_default WAF_TRUSTED_PROXIES '127.0.0.1,::1'
+  # فقط لوپ‌بک — nginx روی همان سرور (اجباری؛ رنج قدیمی Docker را پاک می‌کند)
+  ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
+  ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
   # WAF_ENABLED=false برای خاموش کردن فایروال وب (فقط در صورت نیاز)
   if ! grep -q '^WAF_ENABLED=' "$env_file" 2>/dev/null; then
     echo 'WAF_ENABLED=true' >> "$env_file"

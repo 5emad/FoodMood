@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-07-25
+
+### Fixed
+- WAF blocking all page loads after Docker→bare-metal: ensure loopback is always in `TRUSTED_PROXIES` / `WAF_TRUSTED_PROXIES` so nginx client IPs are not collapsed to `127.0.0.1`
+
 ## [1.9.0] - 2026-07-24
 
 ### Removed
