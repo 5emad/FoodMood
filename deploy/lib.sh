@@ -502,7 +502,7 @@ test_mongodb_app_query() {
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && node -e \"
 require('dotenv').config();
 const mongoose = require('mongoose');
-const User = require('./src/models/User');
+const User = require('./backend/src/models/User');
 const uri = process.env.MONGODB_URI || '';
 mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 })
   .then(() => User.findOne({ role: 'superadmin' }).select('username role status').lean())
@@ -720,9 +720,13 @@ test_login_api() {
 verify_fonts_and_site() {
   local server_ip="$1"
   local node_font https_login https_css
-  node_font="$(curl -sf -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/vendor/vazirmatn/Vazirmatn-Regular.woff2 2>/dev/null || echo '000')"
-  https_login="$(curl -skf -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/login" 2>/dev/null || echo '000')"
-  https_css="$(curl -skf -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/css/enterprise-theme.css" 2>/dev/null || echo '000')"
+  node_font="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/vendor/vazirmatn/Vazirmatn-Regular.woff2 2>/dev/null || true)"
+  [[ -z "$node_font" || "$node_font" == "000" ]] && node_font="000"
+  # Do not use curl -f here: failed TLS still prints 000, and || echo 000 becomes 000000
+  https_login="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/login" 2>/dev/null || true)"
+  [[ -z "$https_login" ]] && https_login="000"
+  https_css="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/css/enterprise-theme.css" 2>/dev/null || true)"
+  [[ -z "$https_css" ]] && https_css="000"
   echo "node_font=${node_font} https_login=${https_login} https_css=${https_css}"
 }
 

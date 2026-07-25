@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-07-25
+
+### Fixed
+- Diagnose superadmin query: require `./backend/src/models/User` (was broken MODULE_NOT_FOUND)
+- Site HTTPS probe no longer reports `000000` when curl `-f` fails
+
 ## [1.9.3] - 2026-07-25
 
 ### Fixed
