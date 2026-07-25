@@ -99,7 +99,7 @@ function shouldSkipCanonicalRedirect(req) {
   if (!req || req.method !== 'GET') return true;
   const path = req.path || '';
   if (path.startsWith('/vendor/') || path.startsWith('/css/') || path.startsWith('/js/')) return true;
-  if (path === '/api/system/health') return true;
+  if (path === '/api/system/health' || path === '/healthz') return true;
   return false;
 }
 

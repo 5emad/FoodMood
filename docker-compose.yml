@@ -23,7 +23,7 @@ x-app-common: &app_common
     TZ: Asia/Tehran
     MONGODB_URI: mongodb://${MONGO_APP_USER:-foodapp}:${MONGO_APP_PASSWORD}@mongo:27017/food_ordering?authSource=food_ordering&retryWrites=true&w=majority
     LOG_DIR: /app/backend/logs
-    CLUSTER_WORKERS: ${CLUSTER_WORKERS:-auto}
+    CLUSTER_WORKERS: ${CLUSTER_WORKERS:-2}
     NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=1536}
     MONGODB_MAX_POOL_SIZE: ${MONGODB_MAX_POOL_SIZE:-50}
     MONGODB_MIN_POOL_SIZE: ${MONGODB_MIN_POOL_SIZE:-5}
@@ -40,7 +40,7 @@ x-app-common: &app_common
   expose:
     - "3000"
   healthcheck:
-    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/system/health"]
+    test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/healthz"]
     interval: 10s
     timeout: 5s
     retries: 8
@@ -121,9 +121,11 @@ services:
     image: foodmood-nginx:${APP_IMAGE_TAG:-latest}
     restart: always
     stop_grace_period: 20s
+    # service_started (not healthy): with --scale app=2, service_healthy leaves
+    # replicas stuck in "Waiting" and nginx never comes up.
     depends_on:
       app:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8080}:80"
     volumes:

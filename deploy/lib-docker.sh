@@ -230,21 +230,65 @@ stop_bare_metal_app_services() {
 }
 
 docker_stack_up() {
-  local dc scale="${1:-1}"
+  local dc scale="${1:-1}" i mongo_ok=0 app_ok=0
   dc="$(docker_compose_cmd)"
   cd "$INSTALL_DIR"
-  if [[ "$scale" -gt 1 ]]; then
-    $dc --env-file .env.docker up -d --build --scale "app=${scale}"
-  else
-    $dc --env-file .env.docker up -d --build
+
+  log_info "Cleaning stuck app/nginx containers (volumes kept)..."
+  $dc --env-file .env.docker stop nginx 2>/dev/null || true
+  $dc --env-file .env.docker rm -f nginx 2>/dev/null || true
+  # Scaled replicas may be named foodmood-app-1 / foodmood-app-2
+  $dc --env-file .env.docker stop app 2>/dev/null || true
+  $dc --env-file .env.docker rm -f app 2>/dev/null || true
+  docker ps -aq --filter "name=foodmood-app" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+
+  log_info "Building images..."
+  $dc --env-file .env.docker build app nginx || return 1
+
+  log_info "Starting mongo..."
+  $dc --env-file .env.docker up -d mongo || return 1
+  for ((i=1; i<=60; i++)); do
+    if docker inspect --format='{{.State.Health.Status}}' \
+      "$($dc --env-file .env.docker ps -q mongo | head -n1)" 2>/dev/null | grep -qx healthy; then
+      mongo_ok=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$mongo_ok" -ne 1 ]]; then
+    log_err "mongo healthy نشد — لاگ: $dc --env-file .env.docker logs --tail=60 mongo"
+    return 1
   fi
+  log_ok "mongo healthy"
+
+  log_info "Starting app ×${scale}..."
+  $dc --env-file .env.docker up -d --scale "app=${scale}" --no-deps app || return 1
+  for ((i=1; i<=45; i++)); do
+    # At least one app replica must answer /healthz
+    if $dc --env-file .env.docker ps -q app 2>/dev/null | head -n1 | xargs -r -I{} \
+      docker exec {} curl -fsS http://127.0.0.1:3000/healthz >/dev/null 2>&1; then
+      app_ok=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$app_ok" -ne 1 ]]; then
+    log_warn "app هنوز /healthz نداده — ادامه با nginx (لاگ را بررسی کنید)"
+    $dc --env-file .env.docker logs --tail=40 app || true
+  else
+    log_ok "app پاسخ‌گو است"
+  fi
+
+  log_info "Starting nginx edge..."
+  $dc --env-file .env.docker up -d --no-deps nginx || return 1
+  return 0
 }
 
 wait_docker_health() {
   local tries="${1:-40}" i
   for ((i=1; i<=tries; i++)); do
-    if curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/api/system/health" >/dev/null 2>&1 \
-      || curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/healthz" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/healthz" >/dev/null 2>&1 \
+      || curl -fsS "http://127.0.0.1:${FOOD_DOCKER_HTTP_PORT}/api/system/health" >/dev/null 2>&1; then
       return 0
     fi
     sleep 2

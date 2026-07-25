@@ -61,6 +61,7 @@ const WAF_OPTIONS = {
     : envList('TRUSTED_PROXIES'),
 
   bypassPaths: [
+    '/healthz',
     '/api/system/health',
     '/api/auth/csrf',
     // رمز عبور اغلب کاراکترهای خاص دارد و نباید به heuristic/SQLi WAF بخورد
@@ -71,6 +72,7 @@ const WAF_OPTIONS = {
     '/api/auth/register',
     '/api/auth/logout',
     '/api/auth/set-fullname',
+    '/api/auth/profile',
     // تست LDAP حاوی رمز عبور bind است
     '/api/admin/settings/test-ldap',
     // فایل .fzbackup رمزنگاری‌شده — آنتروپی بالا / حجم زیاد
