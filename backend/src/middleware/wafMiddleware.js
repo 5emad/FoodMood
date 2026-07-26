@@ -80,6 +80,8 @@ const WAF_OPTIONS = {
     '/api/auth/logout',
     '/api/auth/set-fullname',
     '/api/auth/profile',
+    '/api/auth/me',
+    '/api/auth/ping',
     // تست LDAP حاوی رمز عبور bind است
     '/api/admin/settings/test-ldap',
     // فایل .fzbackup رمزنگاری‌شده — آنتروپی بالا / حجم زیاد
@@ -87,17 +89,20 @@ const WAF_OPTIONS = {
     '/api/admin/backup/restore',
     '/favicon.ico',
     // SPA shells (HTML) — must not be blocked by cookie/entropy heuristics
+    '/',
     '/login',
+    '/logout',
     '/complete-profile',
     '/foods',
     '/unavailable',
+    '/service-unavailable',
   ],
 
   // لایهٔ سخت بیرونی؛ limiter اپ همچنان برای لاگین/API جزئی‌تر عمل می‌کند
   rateLimit: {
     windowMs: 60 * 1000,
-    maxRequests: envInt('WAF_RATE_LIMIT_MAX', Math.max(apiRateDefault, 400)),
-    blockDurationMs: envInt('WAF_BLOCK_MS', 10 * 60 * 1000),
+    maxRequests: envInt('WAF_RATE_LIMIT_MAX', Math.max(apiRateDefault, 800)),
+    blockDurationMs: envInt('WAF_BLOCK_MS', 2 * 60 * 1000),
   },
 
   ddos: {
@@ -106,8 +111,8 @@ const WAF_OPTIONS = {
     maxHeaderSize: 4096,
     burst: {
       windowMs: 1000,
-      maxRequests: envInt('WAF_BURST_MAX', 30),
-      blockDurationMs: 2 * 60 * 1000,
+      maxRequests: envInt('WAF_BURST_MAX', 60),
+      blockDurationMs: 60 * 1000,
     },
     // عملاً per-minute در این نسخهٔ کتابخانه
     global: {
@@ -116,16 +121,16 @@ const WAF_OPTIONS = {
     },
     fingerprint: {
       windowMs: 10_000,
-      maxRequests: envInt('WAF_FP_MAX', 100),
-      blockDurationMs: 2 * 60 * 1000,
+      maxRequests: envInt('WAF_FP_MAX', 200),
+      blockDurationMs: 60 * 1000,
     },
     pathFlood: {
       windowMs: 5_000,
-      maxRequests: envInt('WAF_PATH_FLOOD_MAX', 400),
+      maxRequests: envInt('WAF_PATH_FLOOD_MAX', 800),
     },
     tarpit: {
       enabled: process.env.WAF_TARPIT !== 'false',
-      delayMs: envInt('WAF_TARPIT_MS', 1200),
+      delayMs: envInt('WAF_TARPIT_MS', 800),
     },
   },
 
@@ -189,15 +194,25 @@ function createSafeWafResponseMiddleware() {
 }
 
 /**
- * firewtwall فیلد bypassPaths را اجرا نمی‌کند — قبل از زنجیره علامت trusted می‌زنیم.
- * exact + چند پیشوند امن (استاتیک/هلث).
+ * firewtwall فیلد bypassPaths را خودش اجرا نمی‌کند — قبل از زنجیره علامت trusted می‌زنیم.
+ * exact + پیشوندهای امن (استاتیک / auth / bootstrap / پنل).
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
-  const prefixes = ['/vendor/', '/css/', '/js/', '/assets/', '/spa/assets/', '/admin/', '/user/'];
+  const prefixes = [
+    '/vendor/',
+    '/css/',
+    '/js/',
+    '/assets/',
+    '/spa/assets/',
+    '/admin/',
+    '/user/',
+    '/api/auth/',
+    '/api/app/',
+  ];
   return function wafPathBypass(req, _res, next) {
     const p = req.path || '';
-    if (exact.has(p) || prefixes.some((pre) => p.startsWith(pre))) {
+    if (exact.has(p) || prefixes.some((pre) => p === pre.slice(0, -1) || p.startsWith(pre))) {
       req.wafTrusted = true;
     }
     next();

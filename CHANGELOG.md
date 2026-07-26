@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.12] - 2026-07-26
+
+### Fixed
+- «درخواست مجاز نیست» on login/admin: WAF now trusts `/api/auth/*` and `/api/app/*`; softer rate/burst defaults
+- Root URL (`/`) always redirects to `/login` (SPA static no longer captures index)
+- Logout works via server GET `/logout` (clears session cookies) instead of fragile SPA POST
+
 ## [1.9.11] - 2026-07-26
 
 ### Added

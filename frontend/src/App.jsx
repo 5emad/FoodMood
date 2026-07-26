@@ -1,5 +1,4 @@
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
-import { useEffect } from 'react';
 import LoginPage from './pages/LoginPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import UserDashboardPage from './pages/UserDashboardPage';
@@ -11,30 +10,13 @@ import SuperSecurityPanel from './components/admin/super/SuperSecurityPanel';
 import UnavailablePage from './pages/UnavailablePage';
 import NotFoundPage from './pages/NotFoundPage';
 import { adminTabPath, isAdminTab } from './lib/adminPaths';
-import { api } from './api/client';
 
 function RootRedirect() {
+  // Prefer full navigation so Express redirect + cookies stay in sync
+  if (typeof window !== 'undefined') {
+    window.location.replace('/login');
+  }
   return <Navigate to="/login" replace />;
-}
-
-function LegacyLogout() {
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        await api('/api/auth/logout', { method: 'POST', body: '{}' });
-      } catch {
-        /* ignore — always leave */
-      }
-      if (!cancelled) window.location.replace('/login');
-    })();
-    return () => { cancelled = true; };
-  }, []);
-  return (
-    <div style={{ padding: '2rem', textAlign: 'center', direction: 'rtl', fontFamily: 'Tahoma,sans-serif' }}>
-      در حال خروج…
-    </div>
-  );
 }
 
 function AdminLegacyUrlRedirect() {
@@ -63,7 +45,8 @@ export default function App() {
         <Route path=":tab" element={<AdminDashboardPage />} />
       </Route>
       <Route path="/admin/dashboard" element={<AdminLegacyUrlRedirect />} />
-      <Route path="/logout" element={<LegacyLogout />} />
+      {/* /logout is handled by Express (clears session) — keep a fallback redirect */}
+      <Route path="/logout" element={<RootRedirect />} />
       <Route path="/service-unavailable" element={<UnavailablePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

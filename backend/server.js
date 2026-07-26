@@ -312,8 +312,14 @@ app.use('/api/user',          ensureDbMiddleware, userApiRoutes);
 app.use('/api/announcements', announcementRoutes);
 
 const spaMiddleware = require('./src/middleware/spaMiddleware');
+// Root URL must always land on login (spa/index.html must not capture "/")
+app.get('/', (_req, res) => res.redirect(302, '/login'));
+// Server-side logout clears cookies even if SPA/API/WAF misbehave
+app.get('/logout', require('./src/controllers/ViewController').logout);
+
 app.use(spaMiddleware);
 app.use(express.static(path.join(publicDir, 'spa'), {
+  index: false,
   maxAge: isProduction ? '7d' : 0,
   setHeaders: staticHeaders,
 }));
