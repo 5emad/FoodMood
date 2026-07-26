@@ -1,21 +1,29 @@
 const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
-const { getVersionViewModel } = require('../helpers/AppVersionHelper');
+const { getVersionViewModel, setDbVersionOverride } = require('../helpers/AppVersionHelper');
 
-function withVersion(data) {
-  return { ...data, ...getVersionViewModel() };
+function versionFromSettings(settings) {
+  if (settings?.appVersion) setDbVersionOverride(settings.appVersion);
+  return getVersionViewModel({
+    appVersion: settings?.appVersion,
+    previousAppVersion: settings?.previousAppVersion,
+    appVersionUpdatedAt: settings?.appVersionUpdatedAt,
+  });
+}
+
+function withVersion(data, settings) {
+  return { ...data, ...versionFromSettings(settings) };
 }
 
 class AppConfigController {
   static async publicConfig(_req, res, next) {
     try {
       const settings = await getSettingsLean().catch(() => defaultSettings);
-      const version = getVersionViewModel();
       res.json({
         success: true,
         data: {
           organizationName: settings?.organizationName || 'سامانه تغذیه',
           uiFont: settings?.uiFont === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn',
-          ...version,
+          ...versionFromSettings(settings),
         },
       });
     } catch (error) {
@@ -40,7 +48,7 @@ class AppConfigController {
           appSettings: adminWorkspaceSettings(settings),
           reportsAccess: capabilities.reportsAccess,
           capabilities,
-        }),
+        }, settings),
       });
     } catch (error) {
       next(error);
@@ -50,6 +58,7 @@ class AppConfigController {
   static async userBootstrap(req, res, next) {
     try {
       const { getUserCapabilities } = require('../helpers/PermissionHelper');
+      const settings = await getSettingsLean().catch(() => defaultSettings);
       const capabilities = await getUserCapabilities();
       res.json({
         success: true,
@@ -62,7 +71,7 @@ class AppConfigController {
             personalSharePercent: capabilities.personalSharePercent,
             showPricesToUsers: capabilities.showPrices,
           },
-        }),
+        }, settings),
       });
     } catch (error) {
       next(error);

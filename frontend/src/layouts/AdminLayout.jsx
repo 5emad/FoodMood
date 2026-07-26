@@ -290,10 +290,12 @@ export default function AdminLayout() {
               <i className="fas fa-sign-out-alt" /> خروج
             </a>
           </div>
-          {boot?.appVersionMajorFa && (
+          {(boot?.appVersionFa || boot?.appVersion || boot?.appVersionMajorFa) && (
             <span className="sidebar-app-version">
-              نسخه {boot.appVersionMajorFa}
-              {boot.appVersion && String(boot.appVersion) !== String(boot.appVersionMajor) && ` (${boot.appVersionFa})`}
+              نسخه {boot.appVersionFa || boot.appVersion || boot.appVersionMajorFa}
+              {boot.previousAppVersionFa && boot.previousAppVersionFa !== boot.appVersionFa
+                ? ` ← ${boot.previousAppVersionFa}`
+                : ''}
             </span>
           )}
         </div>

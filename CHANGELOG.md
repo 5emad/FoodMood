@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.11] - 2026-07-26
+
+### Added
+- App version persisted in MongoDB (`appsettings.appVersion`) on every boot and shown on login/admin from DB
+- `deploy/import-json.sh` to restore mongoexport JSON folders; `restore-data.sh --from-json`
+- Update summary prints DB version and user/order counts for empty-DB diagnosis
+
+### Fixed
+- Version badge now shows full semver (e.g. ۱.۹.۱۱) instead of only major «۱»
+- SPA still injects version into HTML when DB is empty/unavailable
+
 ## [1.9.10] - 2026-07-25
 
 ### Fixed

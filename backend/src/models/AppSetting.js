@@ -123,6 +123,21 @@ const appSettingSchema = new mongoose.Schema({
     default: '(sAMAccountName={{username}})',
     trim: true,
   },
+  /** Semver written on each boot/update so UI can show version even if package.json path drifts */
+  appVersion: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  previousAppVersion: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  appVersionUpdatedAt: {
+    type: Date,
+    default: null,
+  },
   updatedAt: {
     type: Date,
     default: Date.now,

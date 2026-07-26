@@ -400,6 +400,10 @@ async function runPostConnectTasks() {
   const { runDataMigrations } = require('./src/services/DataMigrationService');
   await runDataMigrations().catch(() => {});
 
+  // Persist installed version into AppSetting (shown on login/admin from DB)
+  const { syncInstalledVersionToDb } = require('./src/helpers/AppVersionHelper');
+  await syncInstalledVersionToDb().catch(() => {});
+
   // همگام‌سازی وضعیت WAF از دیتابیس
   const { syncWafStateFromDb } = require('./src/services/WafStateService');
   await syncWafStateFromDb().catch(() => {});

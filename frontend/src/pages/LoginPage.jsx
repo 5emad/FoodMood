@@ -28,7 +28,20 @@ export default function LoginPage() {
   const [form, setForm] = useState({ username: '', password: '', superToken: '' });
 
   useEffect(() => {
-    api('/api/app/public').then((r) => { if (r.success) setConfig(r.data); });
+    const bootEl = document.getElementById('app-bootstrap-data');
+    if (bootEl) {
+      try {
+        const boot = JSON.parse(bootEl.textContent || '{}');
+        if (boot?.version?.appVersionFa || boot?.settings?.organizationName) {
+          setConfig((c) => ({
+            ...c,
+            organizationName: boot.settings?.organizationName || c.organizationName,
+            ...boot.version,
+          }));
+        }
+      } catch { /* ignore */ }
+    }
+    api('/api/app/public').then((r) => { if (r.success) setConfig((c) => ({ ...c, ...r.data })); });
   }, []);
 
   useEffect(() => {
@@ -252,9 +265,12 @@ export default function LoginPage() {
           )}
         </form>
 
-        {config.appVersionFa && (
-          <div className="auth-login-version">نسخه {config.appVersionFa}</div>
-        )}
+        <div className="auth-login-version">
+          نسخه {config.appVersionFa || config.appVersion || '—'}
+          {config.previousAppVersionFa && config.previousAppVersionFa !== config.appVersionFa
+            ? ` (قبلی: ${config.previousAppVersionFa})`
+            : ''}
+        </div>
       </div>
     </div>
   );

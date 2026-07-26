@@ -5,6 +5,7 @@
 #  Usage:
 #    sudo bash /opt/food/deploy/restore-data.sh --scan
 #    sudo bash /opt/food/deploy/restore-data.sh --from /path/to/dump-or-archive
+#    sudo bash /opt/food/deploy/restore-data.sh --from-json /path/to/json-dir
 #    sudo bash /opt/food/deploy/restore-data.sh --promote-superadmin 'Food@Super2026!'
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -17,6 +18,7 @@ SUPERADMIN_USER="${SUPERADMIN_USER:-superadmin}"
 SUPERADMIN_PASS=""
 SCAN_ONLY=0
 FROM_PATH=""
+FROM_JSON=""
 PROMOTE_ONLY=0
 
 RED='\033[0;31m'
@@ -35,6 +37,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --scan) SCAN_ONLY=1; shift ;;
     --from) FROM_PATH="$2"; shift 2 ;;
+    --from-json) FROM_JSON="$2"; shift 2 ;;
     --promote-superadmin) SUPERADMIN_PASS="$2"; PROMOTE_ONLY=1; shift 2 ;;
     --superadmin-user) SUPERADMIN_USER="$2"; shift 2 ;;
     --db) DB_NAME="$2"; shift 2 ;;
@@ -52,26 +55,65 @@ load_uri() {
   grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true
 }
 
+print_version_info() {
+  local uri pkg_ver db_ver
+  pkg_ver="$(python3 -c 'import json; print(json.load(open("'"${INSTALL_DIR}/package.json"'", encoding="utf-8"))["version"])' 2>/dev/null || echo '?')"
+  uri="$(load_uri)"
+  db_ver="?"
+  if [[ -n "$uri" ]]; then
+    db_ver="$(mongosh --quiet "$uri" --eval 'const s=db.appsettings.findOne({key:"default"})||{}; print(s.appVersion||"(not set)")' 2>/dev/null || echo '?')"
+  fi
+  echo ""
+  echo -e "${BOLD}Version${NC}"
+  echo "  package.json : v${pkg_ver}"
+  echo "  database     : ${db_ver}"
+}
+
 scan_backups() {
   echo ""
   echo -e "${BOLD}Possible backup locations${NC}"
   echo ""
 
-  log_info "Mongo databases on this host:"
-  mongosh --quiet --eval 'db.adminCommand({ listDatabases: 1 }).databases.forEach(d => print("  - " + d.name + "  (" + Math.round(d.sizeOnDisk/1024) + " KB)"))' 2>/dev/null \
-    || log_warn "Cannot list DBs (auth?). Try with URI from .env"
+  print_version_info
 
   echo ""
-  log_info "Collections in ${DB_NAME}:"
+  log_info "Mongo databases on this host:"
   local uri
   uri="$(load_uri)"
   if [[ -n "$uri" ]]; then
-    mongosh --quiet "$uri" --eval 'db.getCollectionNames().forEach(c => { const n=db[c].estimatedDocumentCount(); print("  - " + c + ": " + n); })' 2>/dev/null \
-      || true
+    mongosh --quiet "$uri" --eval '
+      db.adminCommand({ listDatabases: 1 }).databases.forEach(d => {
+        print("  - " + d.name + "  (" + Math.round(d.sizeOnDisk/1024) + " KB)");
+      });
+    ' 2>/dev/null || log_warn "Cannot list DBs"
+  else
+    mongosh --quiet --eval 'db.adminCommand({ listDatabases: 1 }).databases.forEach(d => print("  - " + d.name + "  (" + Math.round(d.sizeOnDisk/1024) + " KB)"))' 2>/dev/null \
+      || log_warn "Cannot list DBs (auth?). Try with URI from .env"
+  fi
+
+  echo ""
+  log_info "Collections in ${DB_NAME}:"
+  if [[ -n "$uri" ]]; then
+    mongosh --quiet "$uri" --eval '
+      const names = db.getCollectionNames();
+      if (!names.length) print("  (empty database)");
+      names.forEach(c => { const n=db[c].estimatedDocumentCount(); print("  - " + c + ": " + n); });
+    ' 2>/dev/null || true
     echo ""
     log_info "Users sample (roles):"
     mongosh --quiet "$uri" --eval 'db.users.find({}, {username:1, role:1, status:1}).limit(20).forEach(u => print("  - " + u.username + "  role=" + u.role + "  status=" + u.status))' 2>/dev/null \
       || true
+  fi
+
+  if [[ -n "$uri" ]]; then
+    echo ""
+    log_info "Peek food_reservation (if any):"
+    mongosh --quiet "$uri" --eval '
+      const d = db.getSiblingDB("food_reservation");
+      const names = d.getCollectionNames();
+      if (!names.length) { print("  (missing or empty)"); }
+      else names.forEach(c => print("  - " + c + ": " + d[c].estimatedDocumentCount()));
+    ' 2>/dev/null || true
   fi
 
   echo ""
@@ -94,7 +136,9 @@ scan_backups() {
   echo ""
   log_warn "If data is in DB food_reservation by mistake, restore with:"
   echo "  sudo bash $0 --from /opt/food/backups/docker-exit-XXXX.archive --db food_ordering"
-  echo "  (script maps archive into food_ordering)"
+  echo ""
+  log_warn "If you have a mongoexport JSON folder:"
+  echo "  sudo bash ${INSTALL_DIR}/deploy/import-json.sh /path/to/json-dir --drop"
 }
 
 restore_from() {
@@ -114,13 +158,11 @@ restore_from() {
   log_info "Restoring into ${DB_NAME} from ${src}…"
 
   if [[ -f "$src" && "$src" == *.archive ]]; then
-    # May have been dumped as wrong db name; force nsFrom/nsTo when possible
     if mongorestore --uri="$uri" --archive="$src" --gzip --drop --nsFrom='food_reservation.*' --nsTo="${DB_NAME}.*" 2>/dev/null \
       || mongorestore --uri="$uri" --archive="$src" --gzip --drop --nsFrom='food_ordering.*' --nsTo="${DB_NAME}.*" 2>/dev/null \
       || mongorestore --uri="$uri" --archive="$src" --gzip --drop --db="$DB_NAME" 2>/dev/null; then
       log_ok "Archive restored"
     else
-      # try without gzip
       mongorestore --uri="$uri" --archive="$src" --drop --db="$DB_NAME" \
         || { log_err "mongorestore failed"; exit 1; }
       log_ok "Archive restored (uncompressed)"
@@ -155,6 +197,15 @@ if [[ "$SCAN_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
+if [[ -n "$FROM_JSON" ]]; then
+  bash "${INSTALL_DIR}/deploy/import-json.sh" "$FROM_JSON" --drop --db "$DB_NAME"
+  if [[ -n "$SUPERADMIN_PASS" ]]; then
+    promote_superadmin "$SUPERADMIN_PASS"
+  fi
+  scan_backups
+  exit 0
+fi
+
 if [[ "$PROMOTE_ONLY" -eq 1 ]]; then
   promote_superadmin "$SUPERADMIN_PASS"
   exit 0
@@ -174,4 +225,5 @@ echo ""
 log_info "Next steps:"
 echo "  1) Pick a backup path from the list above"
 echo "  2) sudo bash $0 --from /path/to/backup"
-echo "  3) sudo bash $0 --promote-superadmin 'Food@Super2026!'"
+echo "  3) Or JSON: sudo bash $0 --from-json /path/to/json-dir"
+echo "  4) sudo bash $0 --promote-superadmin 'Food@Super2026!'"

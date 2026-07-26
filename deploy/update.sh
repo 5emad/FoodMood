@@ -528,6 +528,21 @@ apply_update() {
   fi
   log_ok "Installed version confirmed: v${installed_after}"
 
+  # Persist + show DB version + data counts (helps empty-DB diagnosis)
+  if [[ -x "${INSTALL_DIR}/deploy/restore-data.sh" ]]; then
+    uri_dbg="$(grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
+    if [[ -n "$uri_dbg" ]]; then
+      db_ver="$(mongosh --quiet "$uri_dbg" --eval 'const s=db.appsettings.findOne({key:"default"})||{}; print(s.appVersion||"(syncing…)")' 2>/dev/null || echo '?')"
+      u_count="$(mongosh --quiet "$uri_dbg" --eval 'print(db.users.estimatedDocumentCount())' 2>/dev/null || echo '?')"
+      o_count="$(mongosh --quiet "$uri_dbg" --eval 'print(db.orders.estimatedDocumentCount())' 2>/dev/null || echo '?')"
+      ui_kv "DB version" "${db_ver}"
+      ui_kv "Users / Orders" "${u_count} / ${o_count}"
+      if [[ "$u_count" == "0" || "$u_count" == "?" ]]; then
+        log_warn "Database looks empty — run: sudo bash ${INSTALL_DIR}/deploy/restore-data.sh --scan"
+      fi
+    fi
+  fi
+
   ui_step "Verify site"
   log_info "Fonts, HTTPS, login probe…"
   site_checks="$(verify_fonts_and_site "$server_ip")"
