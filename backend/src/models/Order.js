@@ -137,6 +137,12 @@ orderSchema.index(
     },
   },
 );
+orderSchema.index({ orderDate: 1 });
+orderSchema.index({ menuItemId: 1 });
+orderSchema.index({ status: 1, orderDate: 1 });
+orderSchema.index({ dailyMenuId: 1, status: 1 });
+orderSchema.index({ status: 1 });
+
 orderSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

@@ -3,13 +3,13 @@ const User = require('../models/User');
 const LdapProfile = require('../models/LdapProfile');
 const Week = require('../models/Week');
 const DailyMenu = require('../models/DailyMenu');
-const MenuItem = require('../models/MenuItem');
 const FoodCategory = require('../models/FoodCategory');
 const { ensureDefaultCategories } = require('../controllers/FoodCategoryController');
 // Registered for the populate() calls below (departmentId, items.foodId).
 require('../models/Department');
 require('../models/Food');
 require('../models/Guest');
+require('../models/MenuItem');
 const {
   startOfDay,
   addDays,
@@ -188,23 +188,40 @@ function endOfRange(date) {
 }
 
 /**
- * Loads only orders relevant to the range instead of the full collection.
- * An order belongs to the range if its menu delivery date OR orderDate falls inside.
+ * Loads only confirmed orders relevant to the range (lean + field-limited).
+ * Prefer dailyMenuId (indexed) over scanning all orderDates.
  */
 async function findOrdersInRange(rangeStart, rangeEnd) {
   const dailyMenus = await DailyMenu.find({
     date: { $gte: rangeStart, $lte: rangeEnd },
   }).select('_id').lean();
-  const menuItems = dailyMenus.length
-    ? await MenuItem.find({ dailyMenuId: { $in: dailyMenus.map((m) => m._id) } }).select('_id').lean()
-    : [];
+  const dailyMenuIds = dailyMenus.map((m) => m._id);
 
-  const orConditions = [{ orderDate: { $gte: rangeStart, $lte: rangeEnd } }];
-  if (menuItems.length) {
-    orConditions.push({ menuItemId: { $in: menuItems.map((m) => m._id) } });
+  const statusFilter = { status: { $in: CONFIRMED_REPORT_STATUSES } };
+  let query;
+  if (dailyMenuIds.length) {
+    query = {
+      ...statusFilter,
+      $or: [
+        { dailyMenuId: { $in: dailyMenuIds } },
+        // legacy rows without dailyMenuId
+        { dailyMenuId: null, orderDate: { $gte: rangeStart, $lte: rangeEnd } },
+        { dailyMenuId: { $exists: false }, orderDate: { $gte: rangeStart, $lte: rangeEnd } },
+      ],
+    };
+  } else {
+    query = {
+      ...statusFilter,
+      orderDate: { $gte: rangeStart, $lte: rangeEnd },
+    };
   }
 
-  return Order.find({ $or: orConditions })
+  return Order.find(query)
+    .select([
+      'status', 'quantity', 'totalPrice', 'orderDate', 'items',
+      'userId', 'ldapUsername', 'guestId', 'menuItemId', 'dailyMenuId',
+      'orderUserName', 'orderUserDepartment', 'foodCategory',
+    ].join(' '))
     .sort({ orderDate: -1 })
     .populate({
       path: 'userId',
@@ -218,12 +235,30 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
     })
     .populate({
       path: 'menuItemId',
-      populate: [{ path: 'foodId', select: 'name category' }, { path: 'dailyMenuId', select: 'date weekId' }],
-    });
+      select: 'foodId dailyMenuId',
+      populate: [
+        { path: 'foodId', select: 'name category' },
+        { path: 'dailyMenuId', select: 'date weekId' },
+      ],
+    })
+    .lean();
 }
 
-async function buildReport(rangeStartInput, rangeEndInput) {
-  await finalizeExpiredOrders();
+/** Short TTL cache for month list (invalidates on process restart / TTL). */
+let monthsCache = { at: 0, data: null };
+const MONTHS_CACHE_MS = 90 * 1000;
+
+/**
+ * @param {Date} rangeStartInput
+ * @param {Date} rangeEndInput
+ * @param {{ mode?: 'full'|'prep' }} [options]
+ *   prep = supplier-only (skip users/LDAP/personnel rows)
+ */
+async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
+  const mode = options.mode === 'prep' ? 'prep' : 'full';
+
+  // Do not block report on finalize — interval job already handles this
+  finalizeExpiredOrders().catch(() => {});
 
   const rangeStart = rangeStartInput ? startOfDay(rangeStartInput) : null;
   const rangeEnd = rangeEndInput ? startOfDay(rangeEndInput) : null;
@@ -234,23 +269,13 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     }
   }
 
-  const [candidateOrders, allUsers, ldapProfiles] = await Promise.all([
-    findOrdersInRange(rangeStartInput, endOfRange(rangeEndInput)),
-    User.find({
-      status: { $ne: 'inactive' },
-      role: { $nin: ['superadmin', 'guest'] },
-      username: { $ne: 'superadmin' },
-    }).populate('departmentId').sort({ fullName: 1 }).lean(),
-    LdapProfile.find({}).lean(),
-  ]);
+  const candidateOrders = await findOrdersInRange(rangeStartInput, endOfRange(rangeEndInput));
 
   const reportDateOfOrder = (order) => startOfDay(order.menuItemId?.dailyMenuId?.date || order.orderDate);
-  const ordersInRange = candidateOrders.filter((order) => {
+  const orders = candidateOrders.filter((order) => {
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
   });
-  // سفارش‌های سوپرادمین هم در آمار می‌آیند؛ فقط از لیست «فاقد سفارش» حذف می‌شوند
-  const orders = ordersInRange.filter(isConfirmedReportOrder);
 
   const totals = orders.reduce((acc, order) => {
     acc.totalOrders += 1;
@@ -318,125 +343,6 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     }
   }
 
-  const orderedUserIds = new Set();
-  const byUserMap = new Map(allUsers.map((user) => [String(user._id), {
-    userId: user._id,
-    fullName: user.fullName || user.username,
-    username: user.username,
-    role: user.role,
-    department: user.departmentId?.name || 'بدون واحد',
-    total: 0,
-    totalPrice: 0,
-    days: reportDates.map((date) => ({ ...date, foods: [] })),
-  }]));
-
-  for (const profile of ldapProfiles) {
-    const ownerKey = `ldap:${profile.ldapUsername}`;
-    if (byUserMap.has(ownerKey)) continue;
-    byUserMap.set(ownerKey, {
-      userId: ownerKey,
-      fullName: profile.fullName || profile.ldapUsername,
-      username: profile.ldapUsername,
-      role: profile.role === 'admin' ? 'admin' : 'user',
-      department: profile.department || 'بدون واحد',
-      total: 0,
-      totalPrice: 0,
-      days: reportDates.map((date) => ({ ...date, foods: [] })),
-    });
-  }
-
-  for (const order of orders) {
-    if (isGuestOrder(order)) continue;
-
-    let row;
-    let ownerKey;
-    if (order.ldapUsername) {
-      ownerKey = `ldap:${order.ldapUsername}`;
-      if (!byUserMap.has(ownerKey)) {
-        byUserMap.set(ownerKey, {
-          userId: ownerKey,
-          fullName: order.orderUserName || order.ldapUsername,
-          username: order.ldapUsername,
-          role: 'user',
-          department: order.orderUserDepartment || 'بدون واحد',
-          total: 0,
-          totalPrice: 0,
-          days: reportDates.map((date) => ({ ...date, foods: [] })),
-        });
-      }
-      row = byUserMap.get(ownerKey);
-      if (row && order.orderUserName && row.fullName === order.ldapUsername) {
-        row.fullName = order.orderUserName;
-      }
-    } else {
-      ownerKey = String(order.userId?._id || order.userId || '');
-      if (!ownerKey || ownerKey === 'undefined' || ownerKey === 'null') continue;
-      if (!byUserMap.has(ownerKey)) {
-        const user = order.userId || {};
-        // کاربر خارج از لیست عادی (مثل سوپرادمین با سفارش تست) — فقط اگر سفارش دارد در گزارش بیاید
-        byUserMap.set(ownerKey, {
-          userId: user._id || ownerKey,
-          fullName: user.fullName || user.username || order.orderUserName || 'کاربر',
-          username: user.username || '',
-          role: user.role || 'user',
-          department: user.departmentId?.name || order.orderUserDepartment || 'بدون واحد',
-          total: 0,
-          totalPrice: 0,
-          days: reportDates.map((date) => ({ ...date, foods: [] })),
-        });
-      }
-      row = byUserMap.get(ownerKey);
-    }
-
-    if (row) {
-      orderedUserIds.add(ownerKey);
-      const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-      const day = row.days.find((item) => item.jalaliDate === jalaliDate);
-      if (day) pushFoodEntries(day, order);
-      row.total += orderMealCount(order);
-      row.totalPrice += Number(order.totalPrice || 0);
-    }
-  }
-
-  const byUser = [...byUserMap.values()].filter((item) => item.total > 0);
-  const missingUsers = [...byUserMap.values()]
-    .filter((item) => !isSuperadminReportUser(item))
-    .filter((item) => !orderedUserIds.has(String(item.userId)))
-    .reduce((acc, item) => {
-      if (!acc[item.department]) acc[item.department] = [];
-      acc[item.department].push(item.fullName);
-      return acc;
-    }, {});
-
-  const byGuestMap = new Map();
-  for (const order of orders) {
-    if (!isGuestOrder(order)) continue;
-    const guest = order.guestId;
-    const guestKey = String(guest?._id || guest || order.guestId);
-    if (!guestKey) continue;
-    if (!byGuestMap.has(guestKey)) {
-      byGuestMap.set(guestKey, {
-        guestId: guest?._id || guest,
-        guestCode: guest?.guestCode || '-',
-        fullName: guest?.fullName || order.orderUserName || 'مهمان',
-        guestType: guest?.guestType || 'temporary',
-        guestTypeLabel: guestTypeLabel(guest?.guestType),
-        department: guest?.department || order.orderUserDepartment || 'مهمان',
-        total: 0,
-        totalPrice: 0,
-        days: reportDates.map((date) => ({ ...date, foods: [] })),
-      });
-    }
-    const row = byGuestMap.get(guestKey);
-    const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-    const day = row.days.find((item) => item.jalaliDate === jalaliDate);
-    if (day) pushFoodEntries(day, order);
-    row.total += orderMealCount(order);
-    row.totalPrice += Number(order.totalPrice || 0);
-  }
-  const byGuest = [...byGuestMap.values()].filter((item) => item.total > 0)
-    .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
-
   const byDayPrep = reportDates.map((dateInfo) => {
     const prep = byDayPrepMap.get(dateInfo.jalaliDate);
     if (!prep) {
@@ -468,29 +374,181 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     return acc;
   }, { totalMeals: 0, userMeals: 0, guestMeals: 0 });
 
-  const categories = await FoodCategory.find({ status: 'active' })
+  const categoriesPromise = FoodCategory.find({ status: 'active' })
     .select('key name sortOrder')
     .sort({ sortOrder: 1, name: 1 })
     .lean();
 
-  if (!categories.length) {
-    await ensureDefaultCategories();
+  // Supplier path: skip personnel / LDAP scaffolding
+  if (mode === 'prep') {
+    let categories = await categoriesPromise;
+    if (!categories.length) {
+      await ensureDefaultCategories();
+      categories = await FoodCategory.find({ status: 'active' })
+        .select('key name sortOrder').sort({ sortOrder: 1, name: 1 }).lean();
+    }
+    return {
+      totals,
+      prepTotals,
+      days: reportDates,
+      categories: categories.map((c) => ({
+        key: c.key,
+        name: c.name,
+        sortOrder: Number(c.sortOrder || 0),
+      })),
+      byDay: [...byDayMap.values()].sort((a, b) => a.date - b.date),
+      byDayPrep,
+      byFood: [...byFoodMap.values()].sort((a, b) => b.count - a.count).slice(0, 10),
+      byDepartment: [...byDepartmentMap.values()].sort((a, b) => b.count - a.count),
+      byUser: [],
+      byGuest: [],
+      missingUsers: {},
+      orders: [],
+    };
   }
 
-  const categoryRows = (categories.length
-    ? categories
-    : await FoodCategory.find({ status: 'active' }).select('key name sortOrder').sort({ sortOrder: 1, name: 1 }).lean()
-  ).map((c) => ({
-    key: c.key,
-    name: c.name,
-    sortOrder: Number(c.sortOrder || 0),
-  }));
+  const emptyDays = () => reportDates.map((date) => ({ ...date, foods: [] }));
+  const orderedUserIds = new Set();
+  const byUserMap = new Map();
+
+  for (const order of orders) {
+    if (isGuestOrder(order)) continue;
+
+    let row;
+    let ownerKey;
+    if (order.ldapUsername) {
+      ownerKey = `ldap:${order.ldapUsername}`;
+      if (!byUserMap.has(ownerKey)) {
+        byUserMap.set(ownerKey, {
+          userId: ownerKey,
+          fullName: order.orderUserName || order.ldapUsername,
+          username: order.ldapUsername,
+          role: 'user',
+          department: order.orderUserDepartment || 'بدون واحد',
+          total: 0,
+          totalPrice: 0,
+          days: emptyDays(),
+        });
+      }
+      row = byUserMap.get(ownerKey);
+      if (row && order.orderUserName && row.fullName === order.ldapUsername) {
+        row.fullName = order.orderUserName;
+      }
+    } else {
+      ownerKey = String(order.userId?._id || order.userId || '');
+      if (!ownerKey || ownerKey === 'undefined' || ownerKey === 'null') continue;
+      if (!byUserMap.has(ownerKey)) {
+        const user = order.userId || {};
+        byUserMap.set(ownerKey, {
+          userId: user._id || ownerKey,
+          fullName: user.fullName || user.username || order.orderUserName || 'کاربر',
+          username: user.username || '',
+          role: user.role || 'user',
+          department: user.departmentId?.name || order.orderUserDepartment || 'بدون واحد',
+          total: 0,
+          totalPrice: 0,
+          days: emptyDays(),
+        });
+      }
+      row = byUserMap.get(ownerKey);
+    }
+
+    if (row) {
+      orderedUserIds.add(ownerKey);
+      const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
+      const day = row.days.find((item) => item.jalaliDate === jalaliDate);
+      if (day) pushFoodEntries(day, order);
+      row.total += orderMealCount(order);
+      row.totalPrice += Number(order.totalPrice || 0);
+    }
+  }
+
+  const byGuestMap = new Map();
+  for (const order of orders) {
+    if (!isGuestOrder(order)) continue;
+    const guest = order.guestId;
+    const guestKey = String(guest?._id || guest || order.guestId);
+    if (!guestKey) continue;
+    if (!byGuestMap.has(guestKey)) {
+      byGuestMap.set(guestKey, {
+        guestId: guest?._id || guest,
+        guestCode: guest?.guestCode || '-',
+        fullName: guest?.fullName || order.orderUserName || 'مهمان',
+        guestType: guest?.guestType || 'temporary',
+        guestTypeLabel: guestTypeLabel(guest?.guestType),
+        department: guest?.department || order.orderUserDepartment || 'مهمان',
+        total: 0,
+        totalPrice: 0,
+        days: emptyDays(),
+      });
+    }
+    const row = byGuestMap.get(guestKey);
+    const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
+    const day = row.days.find((item) => item.jalaliDate === jalaliDate);
+    if (day) pushFoodEntries(day, order);
+    row.total += orderMealCount(order);
+    row.totalPrice += Number(order.totalPrice || 0);
+  }
+
+  // missingUsers: light query — no pre-scaffold of every profile with day grids
+  const [allUsers, ldapProfiles, categoriesRaw] = await Promise.all([
+    User.find({
+      status: { $ne: 'inactive' },
+      role: { $nin: ['superadmin', 'guest'] },
+      username: { $ne: 'superadmin' },
+    }).select('fullName username role departmentId').populate('departmentId', 'name').lean(),
+    LdapProfile.find({}).select('ldapUsername fullName role department').lean(),
+    categoriesPromise,
+  ]);
+
+  let categories = categoriesRaw;
+  if (!categories.length) {
+    await ensureDefaultCategories();
+    categories = await FoodCategory.find({ status: 'active' })
+      .select('key name sortOrder').sort({ sortOrder: 1, name: 1 }).lean();
+  }
+
+  // Enrich LDAP row names from profiles when order only had username
+  for (const profile of ldapProfiles) {
+    const ownerKey = `ldap:${profile.ldapUsername}`;
+    const row = byUserMap.get(ownerKey);
+    if (!row) continue;
+    if (profile.fullName) row.fullName = profile.fullName;
+    if (profile.department) row.department = profile.department;
+    if (profile.role === 'admin') row.role = 'admin';
+  }
+
+  const missingUsers = {};
+  for (const user of allUsers) {
+    const key = String(user._id);
+    if (orderedUserIds.has(key)) continue;
+    if (isSuperadminReportUser(user)) continue;
+    const dept = user.departmentId?.name || 'بدون واحد';
+    if (!missingUsers[dept]) missingUsers[dept] = [];
+    missingUsers[dept].push(user.fullName || user.username);
+  }
+  for (const profile of ldapProfiles) {
+    const key = `ldap:${profile.ldapUsername}`;
+    if (orderedUserIds.has(key)) continue;
+    if (isSuperadminReportUser({ username: profile.ldapUsername, role: profile.role })) continue;
+    const dept = profile.department || 'بدون واحد';
+    if (!missingUsers[dept]) missingUsers[dept] = [];
+    missingUsers[dept].push(profile.fullName || profile.ldapUsername);
+  }
+
+  const byUser = [...byUserMap.values()].filter((item) => item.total > 0);
+  const byGuest = [...byGuestMap.values()].filter((item) => item.total > 0)
+    .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
 
   return {
     totals,
     prepTotals,
     days: reportDates,
-    categories: categoryRows,
+    categories: categories.map((c) => ({
+      key: c.key,
+      name: c.name,
+      sortOrder: Number(c.sortOrder || 0),
+    })),
     byDay: [...byDayMap.values()].sort((a, b) => a.date - b.date),
     byDayPrep,
     byFood: [...byFoodMap.values()].sort((a, b) => b.count - a.count).slice(0, 10),
@@ -498,25 +556,31 @@ async function buildReport(rangeStartInput, rangeEndInput) {
     byUser,
     byGuest,
     missingUsers,
-    orders,
+    orders: [], // never ship raw orders to the client — huge unused payload
   };
 }
 
 async function getAvailableReportMonths() {
-  const orders = await Order.find({})
-    .select('orderDate menuItemId userId ldapUsername status')
-    .populate('userId', 'role username')
-    .populate({
-      path: 'menuItemId',
-      select: 'dailyMenuId',
-      populate: { path: 'dailyMenuId', select: 'date' },
-    })
-    .lean();
-  const monthMap = new Map();
+  if (monthsCache.data && (Date.now() - monthsCache.at) < MONTHS_CACHE_MS) {
+    return monthsCache.data;
+  }
 
+  const orders = await Order.find({ status: { $in: CONFIRMED_REPORT_STATUSES } })
+    .select('orderDate dailyMenuId')
+    .lean();
+
+  const menuIds = [...new Set(
+    orders.map((o) => (o.dailyMenuId ? String(o.dailyMenuId) : '')).filter(Boolean),
+  )];
+  const menus = menuIds.length
+    ? await DailyMenu.find({ _id: { $in: menuIds } }).select('date').lean()
+    : [];
+  const menuDate = new Map(menus.map((m) => [String(m._id), m.date]));
+
+  const monthMap = new Map();
   for (const order of orders) {
-    if (!isConfirmedReportOrder(order)) continue;
-    const reportDate = order.menuItemId?.dailyMenuId?.date || order.orderDate;
+    const reportDate = (order.dailyMenuId && menuDate.get(String(order.dailyMenuId))) || order.orderDate;
+    if (!reportDate) continue;
     const { year, month } = getJalaliYearMonth(reportDate);
     if (!year || !month) continue;
     const item = jalaliMonthRangeValue(year, month);
@@ -525,9 +589,12 @@ async function getAvailableReportMonths() {
     monthMap.set(item.key, current);
   }
 
-  return [...monthMap.values()]
+  const data = [...monthMap.values()]
     .sort((a, b) => (b.year - a.year) || (b.month - a.month))
     .map(({ key, label, from, to, count }) => ({ key, label, from, to, count }));
+
+  monthsCache = { at: Date.now(), data };
+  return data;
 }
 
 module.exports = {

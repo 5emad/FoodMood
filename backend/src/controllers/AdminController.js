@@ -1258,6 +1258,7 @@ class AdminController {
       await assertReportsAccess(req.user);
       const { type: reportType, range, title } = await resolveReportRange(req.query);
       const report = await buildReport(range.start, range.end);
+      const { orders: _ordersOmit, ...reportSafe } = report;
 
       res.json({
         success: true,
@@ -1270,7 +1271,7 @@ class AdminController {
             jalaliStart: formatJalaliDate(range.start),
             jalaliEnd: formatJalaliDate(range.end),
           },
-          ...report,
+          ...reportSafe,
         },
       });
     } catch (error) {
@@ -1331,7 +1332,7 @@ class AdminController {
         ...req.query,
         type: 'week',
       });
-      const report = await buildReport(range.start, range.end);
+      const report = await buildReport(range.start, range.end, { mode: 'prep' });
 
       res.json({
         success: true,
@@ -1365,7 +1366,7 @@ class AdminController {
         type: 'week',
       });
       const [report, settings, reportNumber] = await Promise.all([
-        buildReport(range.start, range.end),
+        buildReport(range.start, range.end, { mode: 'prep' }),
         getSettingsLean(),
         nextSupplierReportNumber(),
       ]);

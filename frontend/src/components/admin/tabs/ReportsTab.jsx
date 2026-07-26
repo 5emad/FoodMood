@@ -23,6 +23,7 @@ export default function ReportsTab() {
   const [access, setAccess] = useState({ allowed: true, pendingCount: 0, message: '' });
   const [weeks, setWeeks] = useState([]);
   const [months, setMonths] = useState([]);
+  const [monthsLoaded, setMonthsLoaded] = useState(false);
   const [subTab, setSubTab] = useState('weekly');
   const [weeklyTab, setWeeklyTab] = useState('personnel');
   const [weekId, setWeekId] = useState('');
@@ -35,23 +36,37 @@ export default function ReportsTab() {
   const loadSeq = useRef(0);
   const lastFetchKey = useRef('');
 
+  // Fast mount: access + weeks only (months lazy — was scanning all orders)
   useEffect(() => {
     (async () => {
-      const [acc, w, m] = await Promise.all([
+      const [acc, w] = await Promise.all([
         api('/api/admin/reports/access'),
         api('/api/admin/weeks?noSync=true'),
-        api('/api/admin/reports/months'),
       ]);
       if (acc.success) setAccess(acc.data || {});
       const weekList = w.success ? w.data : [];
       setWeeks(weekList);
       if (weekList.length) setWeekId(weekList.find((x) => x.isActive)?._id || weekList[0]._id);
-      const monthList = m.success ? m.data : [];
-      setMonths(monthList);
-      if (monthList.length) setMonthVal(`${monthList[0].from}|${monthList[0].to}`);
       setLoading(false);
     })();
   }, []);
+
+  // Load months only when opening monthly tab
+  useEffect(() => {
+    if (subTab !== 'monthly' || monthsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const m = await api('/api/admin/reports/months');
+      if (cancelled) return;
+      const monthList = m.success ? m.data : [];
+      setMonths(monthList);
+      if (monthList.length && !monthVal) {
+        setMonthVal(`${monthList[0].from}|${monthList[0].to}`);
+      }
+      setMonthsLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [subTab, monthsLoaded, monthVal]);
 
   // گزارش پرسنلی ۲ همیشه روی هفته فعال
   useEffect(() => {
@@ -62,6 +77,7 @@ export default function ReportsTab() {
 
   useEffect(() => {
     if (!access.allowed || loading) return;
+    if (subTab === 'monthly' && !monthVal) return;
     const fetchKey = subTab === 'monthly'
       ? `month:${monthVal}`
       : `week:${weekId}:${weeklyFetchKey(weeklyTab)}`;

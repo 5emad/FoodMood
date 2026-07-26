@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.14] - 2026-07-26
+
+### Fixed
+- Reports tab load: months list no longer scans/populates entire Orders collection; cached 90s
+- Report queries use lean + status filter + dailyMenuId indexes; skip blocking finalize; omit raw orders from JSON
+- Supplier report uses slim `prep` mode (no users/LDAP scaffolding)
+- Frontend loads months only when opening monthly tab so weekly reports appear immediately
+
+### Added
+- Order indexes: `orderDate`, `menuItemId`, `status+orderDate`, `dailyMenuId+status`
+
 ## [1.9.13] - 2026-07-26
 
 ### Fixed
