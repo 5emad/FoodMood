@@ -757,9 +757,15 @@ input.food-cap-input.form-control {
   .personnel2-day-block {
     border: 1px solid #000 !important;
     border-radius: 0 !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 0 !important;
     break-inside: auto;
     page-break-inside: auto;
+    break-after: page;
+    page-break-after: always;
+  }
+  .personnel2-day-block:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
   }
   .personnel2-day-head {
     background: #eee !important;

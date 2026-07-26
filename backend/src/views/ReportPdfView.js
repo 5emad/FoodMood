@@ -814,7 +814,15 @@ function renderPersonnel2ReportHtml(report) {
     }
     .head-title { font-size: 11pt; font-weight: 700; }
     .head-meta { font-size: 7.5pt; text-align: left; line-height: 1.35; }
-    .day-block { margin-bottom: 6pt; }
+    .day-block {
+      margin-bottom: 0;
+      break-after: page;
+      page-break-after: always;
+    }
+    .day-block:last-of-type {
+      break-after: auto;
+      page-break-after: auto;
+    }
     .day-head {
       display: flex; justify-content: space-between; align-items: center;
       gap: 6pt; padding: 3pt 6pt; margin-bottom: 0;
