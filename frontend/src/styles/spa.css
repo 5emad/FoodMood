@@ -708,6 +708,8 @@ input.food-cap-input.form-control {
 .personnel2-name {
   text-align: right !important;
   font-weight: 700;
+  line-height: 1.65;
+  word-break: break-word;
 }
 .personnel2-footer {
   margin-top: 10px;

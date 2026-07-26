@@ -31,7 +31,7 @@ const announcementRoutes   = require('./src/routes/announcementRoutes');
 const adminViewRoutes = require('./src/routes/adminViewRoutes');
 const ThemeController = require('./src/controllers/ThemeController');
 const MongoSessionStore = require('./src/config/MongoSessionStore');
-const { getMaxMs } = require('./src/helpers/SessionSecurityHelper');
+const { getMaxMs, getIdleMs } = require('./src/helpers/SessionSecurityHelper');
 const { getVersionViewModel, versionMiddleware } = require('./src/helpers/AppVersionHelper');
 const { ensureLogDir, writeSystemLog, recordLifecycleEvent, readLifecycleStats } = require('./src/services/SystemLogService');
 const {
@@ -199,6 +199,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // ── Session ───────────────────────────────────────────────────────────────────
 const sessionMaxAgeMs = getMaxMs();
+const sessionIdleMs = getIdleMs();
 // Dev fallback: random per boot instead of a hardcoded guessable secret
 app.use(session({
   secret:            SESSION_SECRET || require('crypto').randomBytes(32).toString('hex'),
@@ -211,7 +212,8 @@ app.use(session({
     secure:   isProduction && trustTls,
     httpOnly: true,
     sameSite: 'strict',
-    maxAge:   sessionMaxAgeMs,
+    // Rolling idle window: inactivity drops the session cookie; absolute max still enforced server-side
+    maxAge:   sessionIdleMs,
   },
 }));
 

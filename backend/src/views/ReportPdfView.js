@@ -642,7 +642,7 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
             people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
           }))
           .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
-        const rowCount = departments.reduce((s, d) => s + Math.max(d.people.length, 1), 0);
+        const rowCount = Math.max(departments.length, 1);
         return {
           foodName: food.foodName,
           total: food.total,
@@ -726,27 +726,27 @@ function renderDayTableRows(day) {
       let foodRendered = false;
       for (const dept of food.departments) {
         const people = dept.people.length ? dept.people : [{ fullName: '—', count: 0 }];
-        people.forEach((person, personIdx) => {
-          const catCell = !catRendered
-            ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
-            : '';
-          const foodCell = !foodRendered
-            ? `<td class="col-food" rowspan="${food.rowCount}">${escapeHtml(food.foodName)}</td>`
-            : '';
-          const deptCell = personIdx === 0
-            ? `<td class="col-dept" rowspan="${people.length}">${escapeHtml(dept.department)}</td>`
-            : '';
-          const countTxt = person.count > 1 ? ` (${person.count.toLocaleString('fa-IR')})` : '';
-          rows.push(`
+        const namesLabel = people
+          .map((person) => {
+            const countTxt = person.count > 1 ? ` (${person.count.toLocaleString('fa-IR')})` : '';
+            return `${escapeHtml(person.fullName)}${countTxt}`;
+          })
+          .join('، ');
+        const catCell = !catRendered
+          ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
+          : '';
+        const foodCell = !foodRendered
+          ? `<td class="col-food" rowspan="${food.rowCount}">${escapeHtml(food.foodName)}</td>`
+          : '';
+        rows.push(`
           <tr>
             ${catCell}
             ${foodCell}
-            ${deptCell}
-            <td class="col-name">${escapeHtml(person.fullName)}${countTxt}</td>
+            <td class="col-dept">${escapeHtml(dept.department)}</td>
+            <td class="col-name">${namesLabel}</td>
           </tr>`);
-          catRendered = true;
-          foodRendered = true;
-        });
+        catRendered = true;
+        foodRendered = true;
       }
     }
   }

@@ -1,9 +1,10 @@
 const crypto = require('crypto');
 
 function defaultMaxAgeMs() {
-  const hours = parseFloat(process.env.SESSION_MAX_HOURS);
-  if (Number.isFinite(hours) && hours > 0) return hours * 60 * 60 * 1000;
-  return 8 * 60 * 60 * 1000;
+  // Align browser auth cookies with idle window; refreshed on login/ping (httpOnly).
+  const minutes = parseInt(process.env.SESSION_IDLE_MINUTES, 10);
+  if (Number.isFinite(minutes) && minutes > 0) return minutes * 60 * 1000;
+  return 15 * 60 * 1000;
 }
 
 function prefersSecureCookies() {

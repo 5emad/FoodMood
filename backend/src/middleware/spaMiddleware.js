@@ -16,6 +16,7 @@ function spaIndexExists() {
 const { getSettingsLean, publicSettings, defaultSettings } = require('../services/SettingsService');
 const { getUserCapabilities } = require('../helpers/PermissionHelper');
 const { getVersionViewModel, setDbVersionOverride } = require('../helpers/AppVersionHelper');
+const { getSessionPolicy } = require('../helpers/SessionSecurityHelper');
 
 function safeJsonForHtml(obj) {
   return JSON.stringify(obj).replace(/</g, '\\u003c');
@@ -77,6 +78,7 @@ async function spaMiddleware(req, res, next) {
       settings: pubSettings,
       capabilities: caps,
       version,
+      sessionPolicy: getSessionPolicy(),
     };
 
     res.set('Content-Type', 'text/html');

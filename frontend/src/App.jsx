@@ -11,6 +11,7 @@ import SuperSecurityPanel from './components/admin/super/SuperSecurityPanel';
 import UnavailablePage from './pages/UnavailablePage';
 import NotFoundPage from './pages/NotFoundPage';
 import { adminTabPath, isAdminTab } from './lib/adminPaths';
+import SessionIdleGuard from './components/SessionIdleGuard';
 
 function RootRedirect() {
   useEffect(() => {
@@ -45,7 +46,9 @@ function AdminLegacyUrlRedirect() {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <SessionIdleGuard />
+      <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/complete-profile" element={<CompleteProfilePage />} />
@@ -70,5 +73,6 @@ export default function App() {
       <Route path="/service-unavailable" element={<UnavailablePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </>
   );
 }

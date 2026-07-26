@@ -3,7 +3,7 @@ const { writeSecurityLog } = require('../services/SecurityLogService');
 const { revokeUserSessions, touchSession } = require('../services/SessionTokenService');
 const { clearAuthCookies } = require('./AuthCookieHelper');
 
-const DEFAULT_IDLE_MINUTES = 30;
+const DEFAULT_IDLE_MINUTES = 15;
 const DEFAULT_MAX_HOURS = 8;
 
 const SESSION_COOKIE_NAME = process.env.NODE_ENV === 'production' ? '__Host-sid' : 'sid';

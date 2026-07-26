@@ -300,7 +300,8 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
               people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
             }))
             .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
-          const rowCount = departments.reduce((s, d) => s + Math.max(d.people.length, 1), 0);
+          // یک سطر به ازای هر واحد — نام‌ها کنار هم در همان سلول
+          const rowCount = Math.max(departments.length, 1);
           return {
             foodName: food.foodName,
             total: food.total,
@@ -379,7 +380,7 @@ export function buildPersonnel2ByDay(report) {
     .filter((day) => day.categories.length > 0);
 }
 
-/** ردیف‌های جدول با rowspan برای دسته، غذا و واحد */
+/** ردیف‌های جدول با rowspan برای دسته و غذا؛ افراد یک واحد در یک سلول */
 export function buildPersonnel2TableRows(tree, keyPrefix = '') {
   const rows = [];
   for (const cat of tree) {
@@ -388,24 +389,29 @@ export function buildPersonnel2TableRows(tree, keyPrefix = '') {
       let foodRendered = false;
       for (const dept of food.departments) {
         const people = dept.people.length ? dept.people : [{ fullName: '—', count: 0 }];
-        people.forEach((person, personIdx) => {
-          rows.push({
-            key: `${keyPrefix}${cat.key}|${food.foodName}|${dept.department}|${person.fullName}|${personIdx}`,
-            showCategory: !catRendered,
-            categoryRowSpan: cat.rowCount,
-            categoryName: cat.name,
-            showFood: !foodRendered,
-            foodRowSpan: food.rowCount,
-            foodName: food.foodName,
-            showDept: personIdx === 0,
-            deptRowSpan: people.length,
-            department: dept.department,
-            fullName: person.fullName,
-            count: person.count,
-          });
-          catRendered = true;
-          foodRendered = true;
+        const namesLabel = people
+          .map((person) => (
+            person.count > 1
+              ? `${person.fullName} (${faDigits(person.count)})`
+              : person.fullName
+          ))
+          .join('، ');
+        rows.push({
+          key: `${keyPrefix}${cat.key}|${food.foodName}|${dept.department}`,
+          showCategory: !catRendered,
+          categoryRowSpan: cat.rowCount,
+          categoryName: cat.name,
+          showFood: !foodRendered,
+          foodRowSpan: food.rowCount,
+          foodName: food.foodName,
+          showDept: true,
+          deptRowSpan: 1,
+          department: dept.department,
+          fullName: namesLabel,
+          count: 0,
         });
+        catRendered = true;
+        foodRendered = true;
       }
     }
   }
@@ -463,7 +469,6 @@ export function WeeklyPersonnelByFoodReport({ report }) {
                       )}
                       <td className="col-name personnel2-name">
                         {row.fullName}
-                        {row.count > 1 ? ` (${faDigits(row.count)})` : ''}
                       </td>
                     </tr>
                   ))}

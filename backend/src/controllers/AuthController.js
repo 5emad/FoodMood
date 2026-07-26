@@ -22,7 +22,7 @@ const {
   invalidateSession,
 } = require('../helpers/SessionSecurityHelper');
 const { setAuthCookies } = require('../helpers/AuthCookieHelper');
-const { issueSession, revokeUserSessions } = require('../services/SessionTokenService');
+const { issueSession, revokeUserSessions, touchSession } = require('../services/SessionTokenService');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS   = 30 * 60 * 1000; // 30 min
@@ -488,6 +488,31 @@ class AuthController {
 
   static async ping(req, res) {
     touchSessionActivity(req);
+    if (req.session?.sessionId) {
+      try {
+        await touchSession(req.session.sessionId);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (req.session?.token) {
+      try {
+        const { setAuthCookies } = require('../helpers/AuthCookieHelper');
+        setAuthCookies(res, {
+          token: req.session.token,
+          role: req.session.userRole || req.user?.role,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    if (req.session) {
+      try {
+        await new Promise((resolve) => req.session.save(() => resolve()));
+      } catch {
+        /* ignore */
+      }
+    }
     return res.json({
       success: true,
       policy: getSessionPolicy(),
