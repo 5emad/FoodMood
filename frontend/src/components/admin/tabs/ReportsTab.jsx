@@ -76,13 +76,6 @@ export default function ReportsTab() {
     return () => { cancelled = true; };
   }, [subTab, monthsLoaded, monthVal]);
 
-  // گزارش پرسنلی ۲ همیشه روی هفته فعال
-  useEffect(() => {
-    if (!weeks.length || weeklyTab !== 'personnel2') return;
-    const activeId = weeks.find((w) => w.isActive)?._id;
-    if (activeId && weekId !== activeId) setWeekId(activeId);
-  }, [weeklyTab, weeks, weekId]);
-
   useEffect(() => {
     if (!access.allowed || loading) return;
     if (subTab === 'monthly' && !monthVal) return;
@@ -191,8 +184,6 @@ export default function ReportsTab() {
                     id="reportWeekSelect"
                     style={{ width: 240 }}
                     value={weekId}
-                    disabled={weeklyTab === 'personnel2'}
-                    title={weeklyTab === 'personnel2' ? 'گزارش پرسنلی ۲ فقط هفته فعال را نشان می‌دهد' : undefined}
                     onChange={(e) => setWeekId(e.target.value)}
                   >
                     {weeks.map((w) => <option key={w._id} value={w._id}>{weekSelectLabel(w)}</option>)}
