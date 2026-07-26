@@ -602,7 +602,7 @@ function foodNameOf(food) {
   return String(food || '');
 }
 
-/** درخت یک روز: دسته → غذا → واحد → افراد */
+/** درخت یک روز: دسته → غذا (یک ردیف فشرده برای همه واحدها/افراد) */
 function buildCategoryFoodTreeFromEntries(entries, categories = []) {
   const catMap = new Map();
   for (const { foodName, category, department, fullName } of entries) {
@@ -642,12 +642,11 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
             people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
           }))
           .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
-        const rowCount = Math.max(departments.length, 1);
         return {
           foodName: food.foodName,
           total: food.total,
           departments,
-          rowCount,
+          rowCount: 1,
         };
       })
       .sort((a, b) => a.foodName.localeCompare(b.foodName, 'fa'));
@@ -656,26 +655,41 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
       name: categoryLabel(categories, key),
       foods,
       total: foods.reduce((s, f) => s + f.total, 0),
-      rowCount: foods.reduce((s, f) => s + f.rowCount, 0),
+      rowCount: Math.max(foods.length, 1),
     };
   });
+}
+
+function normPersonnel2DayKey(value) {
+  return String(value || '')
+    .replace(/[\u200e\u200f\u202a-\u202e\u00a0]/g, '')
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/-/g, '/')
+    .trim();
 }
 
 function buildPersonnel2ByDay(report) {
   const dayOrder = [];
   const dayMap = new Map();
+  const dayLabel = new Map();
   const categories = report.categories || [];
 
   const ensureDay = (jalaliDate) => {
-    const key = String(jalaliDate || '').trim() || '—';
+    const display = String(jalaliDate || '').trim() || '—';
+    const key = normPersonnel2DayKey(display) || '—';
     if (!dayMap.has(key)) {
       dayMap.set(key, []);
       dayOrder.push(key);
+      dayLabel.set(key, display);
     }
     return dayMap.get(key);
   };
 
   for (const d of report.days || []) {
+    if (d?.jalaliDate) ensureDay(d.jalaliDate);
+  }
+  for (const d of report.byDayPrep || []) {
     if (d?.jalaliDate) ensureDay(d.jalaliDate);
   }
 
@@ -709,11 +723,11 @@ function buildPersonnel2ByDay(report) {
   }
 
   return dayOrder
-    .map((jalaliDate) => {
-      const cats = buildCategoryFoodTreeFromEntries(dayMap.get(jalaliDate) || [], categories);
+    .map((key) => {
+      const cats = buildCategoryFoodTreeFromEntries(dayMap.get(key) || [], categories);
       const total = cats.reduce((s, c) => s + c.total, 0);
       const foodCount = cats.reduce((s, c) => s + c.foods.length, 0);
-      return { jalaliDate, categories: cats, total, foodCount };
+      return { jalaliDate: dayLabel.get(key) || key, categories: cats, total, foodCount };
     })
     .filter((day) => day.categories.length > 0);
 }
@@ -723,31 +737,28 @@ function renderDayTableRows(day) {
   for (const cat of day.categories) {
     let catRendered = false;
     for (const food of cat.foods) {
-      let foodRendered = false;
-      for (const dept of food.departments) {
-        const people = dept.people.length ? dept.people : [{ fullName: '—', count: 0 }];
-        const namesLabel = people
-          .map((person) => {
+      const departments = food.departments || [];
+      const deptLabel = departments.map((d) => d.department).filter(Boolean).join('، ') || '—';
+      const namesLabel = departments
+        .flatMap((dept) => {
+          const people = dept.people?.length ? dept.people : [{ fullName: '—', count: 0 }];
+          return people.map((person) => {
             const countTxt = person.count > 1 ? ` (${person.count.toLocaleString('fa-IR')})` : '';
             return `${escapeHtml(person.fullName)}${countTxt}`;
-          })
-          .join('، ');
-        const catCell = !catRendered
-          ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
-          : '';
-        const foodCell = !foodRendered
-          ? `<td class="col-food" rowspan="${food.rowCount}">${escapeHtml(food.foodName)}</td>`
-          : '';
-        rows.push(`
+          });
+        })
+        .join('، ');
+      const catCell = !catRendered
+        ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
+        : '';
+      rows.push(`
           <tr>
+            <td class="col-dept">${escapeHtml(deptLabel)}</td>
             ${catCell}
-            ${foodCell}
-            <td class="col-dept">${escapeHtml(dept.department)}</td>
-            <td class="col-name">${namesLabel}</td>
+            <td class="col-food">${escapeHtml(food.foodName)}</td>
+            <td class="col-name">${namesLabel || '—'}</td>
           </tr>`);
-        catRendered = true;
-        foodRendered = true;
-      }
+      catRendered = true;
     }
   }
   return rows.join('');
@@ -768,9 +779,9 @@ function renderPersonnel2ReportHtml(report) {
       <table class="p2">
         <thead>
           <tr>
+            <th>واحد</th>
             <th>دسته</th>
             <th>غذاها</th>
-            <th>واحد</th>
             <th>نام و نام خانوادگی</th>
           </tr>
         </thead>
@@ -784,48 +795,48 @@ function renderPersonnel2ReportHtml(report) {
   <meta charset="UTF-8">
   <title>${escapeHtml(report.title || 'گزارش پرسنلی ۲')}</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm; }
+    @page { size: A4 portrait; margin: 8mm; }
     * { box-sizing: border-box; }
     body {
       margin: 0; padding: 0;
       font-family: var(--report-font-family, 'Vazirmatn', Tahoma, sans-serif);
-      font-size: 10pt; color: #000; direction: rtl;
+      font-size: 8.5pt; color: #000; direction: rtl;
     }
     .head {
       display: flex; justify-content: space-between; align-items: baseline;
-      gap: 12pt; border-bottom: 1.5pt solid #000; padding-bottom: 6pt; margin-bottom: 10pt;
+      gap: 8pt; border-bottom: 1pt solid #000; padding-bottom: 4pt; margin-bottom: 6pt;
     }
-    .head-title { font-size: 13pt; font-weight: 700; }
-    .head-meta { font-size: 8.5pt; text-align: left; line-height: 1.5; }
-    .day-block { margin-bottom: 12pt; page-break-inside: avoid; }
+    .head-title { font-size: 11pt; font-weight: 700; }
+    .head-meta { font-size: 7.5pt; text-align: left; line-height: 1.35; }
+    .day-block { margin-bottom: 6pt; }
     .day-head {
       display: flex; justify-content: space-between; align-items: center;
-      gap: 8pt; padding: 5pt 8pt; margin-bottom: 0;
-      border: 1pt solid #000; border-bottom: none; background: #e8e8e8;
+      gap: 6pt; padding: 3pt 6pt; margin-bottom: 0;
+      border: 0.7pt solid #000; border-bottom: none; background: #e8e8e8;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    .day-title { font-size: 11pt; font-weight: 700; }
-    .day-meta { font-size: 8pt; white-space: nowrap; }
+    .day-title { font-size: 9pt; font-weight: 700; }
+    .day-meta { font-size: 7pt; white-space: nowrap; }
     table.p2 {
       width: 100%; border-collapse: collapse; table-layout: fixed;
     }
     table.p2 th, table.p2 td {
-      border: 1pt solid #000; padding: 5pt 7pt; vertical-align: middle;
+      border: 0.7pt solid #000; padding: 2.5pt 4pt; vertical-align: middle;
     }
     table.p2 th {
-      background: #eee; font-weight: 700; text-align: center;
+      background: #eee; font-weight: 700; text-align: center; font-size: 8pt;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     table.p2 thead { display: table-header-group; }
     table.p2 tr { page-break-inside: avoid; }
-    .col-cat { width: 14%; text-align: center; font-weight: 700; background: #f0f0f0; }
-    .col-food { width: 22%; text-align: center; font-weight: 700; background: #f5f5f5; }
-    .col-dept { width: 20%; text-align: center; font-weight: 700; background: #fafafa; }
-    .col-name { width: 44%; text-align: right; font-weight: 700; }
-    .empty { text-align: center; padding: 16pt; border: 1pt solid #000; }
+    .col-dept { width: 16%; text-align: center; font-weight: 700; background: #fafafa; font-size: 7.5pt; }
+    .col-cat { width: 12%; text-align: center; font-weight: 700; background: #f0f0f0; font-size: 7.5pt; }
+    .col-food { width: 18%; text-align: center; font-weight: 700; background: #f5f5f5; font-size: 8pt; }
+    .col-name { width: 54%; text-align: right; font-weight: 600; font-size: 8pt; line-height: 1.35; }
+    .empty { text-align: center; padding: 12pt; border: 1pt solid #000; }
     .foot {
-      margin-top: 8pt; padding-top: 5pt; border-top: 1pt solid #000;
-      font-size: 8pt; display: flex; justify-content: space-between; gap: 8pt;
+      margin-top: 6pt; padding-top: 4pt; border-top: 0.7pt solid #000;
+      font-size: 7.5pt; display: flex; justify-content: space-between; gap: 6pt;
     }
   </style>
 </head>

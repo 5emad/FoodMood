@@ -255,7 +255,7 @@ export function WeeklyPersonnelReport({ report }) {
   );
 }
 
-/** درخت یک روز: دسته → غذا → واحد → افراد */
+/** درخت یک روز: دسته → غذا → (همه واحدها و افراد در یک ردیف فشرده) */
 function buildCategoryFoodTreeFromEntries(entries, categories = []) {
   const catMap = new Map();
   for (const { foodName, category, department, fullName } of entries) {
@@ -300,44 +300,56 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
               people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
             }))
             .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
-          // یک سطر به ازای هر واحد — نام‌ها کنار هم در همان سلول
-          const rowCount = Math.max(departments.length, 1);
+          // یک ردیف به ازای هر غذا (واحدها و نام‌ها فشرده در همان سطر)
           return {
             foodName: food.foodName,
             total: food.total,
             departments,
-            rowCount,
+            rowCount: 1,
           };
         })
         .sort((a, b) => a.foodName.localeCompare(b.foodName, 'fa'));
-      const rowCount = foods.reduce((s, f) => s + f.rowCount, 0);
-      const total = foods.reduce((s, f) => s + f.total, 0);
       return {
         key,
         name: categoryLabel(categories, key),
         foods,
-        total,
-        rowCount,
+        total: foods.reduce((s, f) => s + f.total, 0),
+        rowCount: Math.max(foods.length, 1),
       };
     });
+}
+
+function normPersonnel2DayKey(value) {
+  return String(value || '')
+    .replace(/[\u200e\u200f\u202a-\u202e\u00a0]/g, '')
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/-/g, '/')
+    .trim();
 }
 
 /** گزارش پرسنلی ۲ — تفکیک روزهای هفته فعال */
 export function buildPersonnel2ByDay(report) {
   const dayOrder = [];
   const dayMap = new Map();
+  const dayLabel = new Map();
   const categories = reportCategories(report);
 
   const ensureDay = (jalaliDate) => {
-    const key = String(jalaliDate || '').trim() || '—';
+    const display = String(jalaliDate || '').trim() || '—';
+    const key = normPersonnel2DayKey(display) || '—';
     if (!dayMap.has(key)) {
       dayMap.set(key, []);
       dayOrder.push(key);
+      dayLabel.set(key, display);
     }
     return dayMap.get(key);
   };
 
   for (const d of (report?.days || [])) {
+    if (d?.jalaliDate) ensureDay(d.jalaliDate);
+  }
+  for (const d of (report?.byDayPrep || [])) {
     if (d?.jalaliDate) ensureDay(d.jalaliDate);
   }
 
@@ -371,54 +383,56 @@ export function buildPersonnel2ByDay(report) {
   }
 
   return dayOrder
-    .map((jalaliDate) => {
-      const cats = buildCategoryFoodTreeFromEntries(dayMap.get(jalaliDate) || [], categories);
+    .map((key) => {
+      const cats = buildCategoryFoodTreeFromEntries(dayMap.get(key) || [], categories);
       const total = cats.reduce((s, c) => s + c.total, 0);
       const foodCount = cats.reduce((s, c) => s + c.foods.length, 0);
-      return { jalaliDate, categories: cats, total, foodCount };
+      return { jalaliDate: dayLabel.get(key) || key, categories: cats, total, foodCount };
     })
     .filter((day) => day.categories.length > 0);
 }
 
-/** ردیف‌های جدول با rowspan برای دسته و غذا؛ افراد یک واحد در یک سلول */
+/** ردیف‌ها: واحد | دسته | غذا | نام‌ها (فشرده، یک سطر per غذا) */
 export function buildPersonnel2TableRows(tree, keyPrefix = '') {
   const rows = [];
   for (const cat of tree) {
     let catRendered = false;
     for (const food of cat.foods) {
-      let foodRendered = false;
-      for (const dept of food.departments) {
-        const people = dept.people.length ? dept.people : [{ fullName: '—', count: 0 }];
-        const namesLabel = people
-          .map((person) => (
-            person.count > 1
-              ? `${person.fullName} (${faDigits(person.count)})`
-              : person.fullName
-          ))
-          .join('، ');
-        rows.push({
-          key: `${keyPrefix}${cat.key}|${food.foodName}|${dept.department}`,
-          showCategory: !catRendered,
-          categoryRowSpan: cat.rowCount,
-          categoryName: cat.name,
-          showFood: !foodRendered,
-          foodRowSpan: food.rowCount,
-          foodName: food.foodName,
-          showDept: true,
-          deptRowSpan: 1,
-          department: dept.department,
-          fullName: namesLabel,
-          count: 0,
-        });
-        catRendered = true;
-        foodRendered = true;
-      }
+      const departments = food.departments || [];
+      const deptLabel = departments.map((d) => d.department).filter(Boolean).join('، ') || '—';
+      const namesLabel = departments
+        .flatMap((dept) => {
+          const people = dept.people?.length ? dept.people : [{ fullName: '—', count: 0 }];
+          return people.map((person) => {
+            const countTxt = person.count > 1 ? ` (${faDigits(person.count)})` : '';
+            // اگر بیش از یک واحد باشد، واحد را کنار نام می‌گذاریم تا سطر جدا نسازیم
+            if (departments.length > 1) {
+              return `${person.fullName}${countTxt}`;
+            }
+            return `${person.fullName}${countTxt}`;
+          });
+        })
+        .join('، ');
+      rows.push({
+        key: `${keyPrefix}${cat.key}|${food.foodName}`,
+        showDept: true,
+        deptRowSpan: 1,
+        department: deptLabel,
+        showCategory: !catRendered,
+        categoryRowSpan: cat.rowCount,
+        categoryName: cat.name,
+        showFood: true,
+        foodRowSpan: 1,
+        foodName: food.foodName,
+        fullName: namesLabel || '—',
+      });
+      catRendered = true;
     }
   }
   return rows;
 }
 
-/** گزارش پرسنلی ۲ — هر روز جدا، سپس دسته / غذا / واحد / نام */
+/** گزارش پرسنلی ۲ — واحد / دسته / غذا / نام (فشرده) */
 export function WeeklyPersonnelByFoodReport({ report }) {
   if (!report) return null;
 
@@ -442,34 +456,28 @@ export function WeeklyPersonnelByFoodReport({ report }) {
             <div className="table-wrap personnel2-table-wrap">
               <table className="report-table personnel2-table">
                 <colgroup>
+                  <col className="personnel2-col-dept" />
                   <col className="personnel2-col-cat" />
                   <col className="personnel2-col-food" />
-                  <col className="personnel2-col-dept" />
                   <col className="personnel2-col-name" />
                 </colgroup>
                 <thead>
                   <tr>
+                    <th>واحد</th>
                     <th>دسته</th>
                     <th>غذاها</th>
-                    <th>واحد</th>
                     <th className="col-name">نام و نام خانوادگی</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.key}>
+                      <td className="personnel2-dept">{row.department}</td>
                       {row.showCategory && (
                         <td className="personnel2-cat" rowSpan={row.categoryRowSpan}>{row.categoryName}</td>
                       )}
-                      {row.showFood && (
-                        <td className="personnel2-food" rowSpan={row.foodRowSpan}>{row.foodName}</td>
-                      )}
-                      {row.showDept && (
-                        <td className="personnel2-dept" rowSpan={row.deptRowSpan}>{row.department}</td>
-                      )}
-                      <td className="col-name personnel2-name">
-                        {row.fullName}
-                      </td>
+                      <td className="personnel2-food">{row.foodName}</td>
+                      <td className="col-name personnel2-name">{row.fullName}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -107,7 +107,14 @@ function orderFoodEntries(order) {
     .map((item) => foodEntryFromDoc(item.foodId))
     .filter(Boolean);
   if (fromItems.length) return fromItems;
-  return [{ name: '-', category: 'uncategorized' }];
+  const fallbackName = orderFoodName(order);
+  if (fallbackName && fallbackName !== '-') {
+    return [{
+      name: fallbackName,
+      category: String(order.foodCategory || '').trim() || 'uncategorized',
+    }];
+  }
+  return [];
 }
 
 function pushFoodEntries(day, order) {
@@ -473,7 +480,9 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     if (row) {
       orderedUserIds.add(ownerKey);
       const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-      const day = row.days.find((item) => item.jalaliDate === jalaliDate);
+      const day = row.days.find((item) => (
+        normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
+      ));
       if (day) pushFoodEntries(day, order);
       row.total += orderMealCount(order);
       row.totalPrice += Number(order.totalPrice || 0);
@@ -501,7 +510,9 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     }
     const row = byGuestMap.get(guestKey);
     const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-    const day = row.days.find((item) => item.jalaliDate === jalaliDate);
+    const day = row.days.find((item) => (
+      normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
+    ));
     if (day) pushFoodEntries(day, order);
     row.total += orderMealCount(order);
     row.totalPrice += Number(order.totalPrice || 0);
