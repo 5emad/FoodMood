@@ -835,10 +835,10 @@ function renderPersonnel2ReportHtml(report) {
     }
     table.p2 thead { display: table-header-group; }
     table.p2 tr { page-break-inside: avoid; }
-    .col-cat { width: 12%; text-align: center; font-weight: 700; background: #f0f0f0; font-size: 7.5pt; }
-    .col-dept { width: 16%; text-align: center; font-weight: 700; background: #fafafa; font-size: 7.5pt; }
-    .col-food { width: 18%; text-align: center; font-weight: 700; background: #f5f5f5; font-size: 8pt; }
-    .col-name { width: 54%; text-align: right; font-weight: 600; font-size: 8pt; line-height: 1.35; }
+    .col-cat { width: 8%; text-align: center; font-weight: 700; background: #f0f0f0; font-size: 7.5pt; }
+    .col-dept { width: 10%; text-align: center; font-weight: 700; background: #fafafa; font-size: 7.5pt; }
+    .col-food { width: 12%; text-align: center; font-weight: 700; background: #f5f5f5; font-size: 8pt; }
+    .col-name { width: 70%; text-align: right; font-weight: 600; font-size: 8pt; line-height: 1.4; word-break: break-word; overflow-wrap: anywhere; }
     .empty { text-align: center; padding: 12pt; border: 1pt solid #000; }
     .foot {
       margin-top: 6pt; padding-top: 4pt; border-top: 0.7pt solid #000;
