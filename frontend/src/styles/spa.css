@@ -679,8 +679,8 @@ input.food-cap-input.form-control {
   font-family: var(--font-family, 'Vazirmatn', Tahoma, sans-serif) !important;
 }
 .personnel2-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.personnel2-col-dept { width: 16%; }
 .personnel2-col-cat { width: 12%; }
+.personnel2-col-dept { width: 16%; }
 .personnel2-col-food { width: 18%; }
 .personnel2-col-name { width: 54%; }
 .personnel2-table th,

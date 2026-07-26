@@ -602,7 +602,7 @@ function foodNameOf(food) {
   return String(food || '');
 }
 
-/** درخت یک روز: دسته → غذا (یک ردیف فشرده برای همه واحدها/افراد) */
+/** درخت یک روز: دسته → واحد → غذا → افراد */
 function buildCategoryFoodTreeFromEntries(entries, categories = []) {
   const catMap = new Map();
   for (const { foodName, category, department, fullName } of entries) {
@@ -611,16 +611,16 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
     const catKey = normalizeCategoryKey(category);
     const dept = department || 'بدون واحد';
     const name = fullName || '—';
-    if (!catMap.has(catKey)) catMap.set(catKey, { key: catKey, foods: new Map() });
+    if (!catMap.has(catKey)) catMap.set(catKey, { key: catKey, depts: new Map() });
     const catRow = catMap.get(catKey);
-    if (!catRow.foods.has(food)) catRow.foods.set(food, { foodName: food, total: 0, depts: new Map() });
-    const foodRow = catRow.foods.get(food);
+    if (!catRow.depts.has(dept)) catRow.depts.set(dept, { department: dept, foods: new Map() });
+    const deptRow = catRow.depts.get(dept);
+    if (!deptRow.foods.has(food)) deptRow.foods.set(food, { foodName: food, total: 0, people: new Map() });
+    const foodRow = deptRow.foods.get(food);
     foodRow.total += 1;
-    if (!foodRow.depts.has(dept)) foodRow.depts.set(dept, { department: dept, people: new Map() });
-    const deptRow = foodRow.depts.get(dept);
-    const person = deptRow.people.get(name) || { fullName: name, count: 0 };
+    const person = foodRow.people.get(name) || { fullName: name, count: 0 };
     person.count += 1;
-    deptRow.people.set(name, person);
+    foodRow.people.set(name, person);
   }
 
   const ordered = [];
@@ -634,28 +634,30 @@ function buildCategoryFoodTreeFromEntries(entries, categories = []) {
 
   return ordered.map((key) => {
     const catRow = catMap.get(key);
-    const foods = [...catRow.foods.values()]
-      .map((food) => {
-        const departments = [...food.depts.values()]
-          .map((dept) => ({
-            department: dept.department,
-            people: [...dept.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
+    const departments = [...catRow.depts.values()]
+      .map((dept) => {
+        const foods = [...dept.foods.values()]
+          .map((food) => ({
+            foodName: food.foodName,
+            total: food.total,
+            people: [...food.people.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'fa')),
           }))
-          .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
+          .sort((a, b) => a.foodName.localeCompare(b.foodName, 'fa'));
         return {
-          foodName: food.foodName,
-          total: food.total,
-          departments,
-          rowCount: 1,
+          department: dept.department,
+          foods,
+          rowCount: Math.max(foods.length, 1),
+          total: foods.reduce((s, f) => s + f.total, 0),
         };
       })
-      .sort((a, b) => a.foodName.localeCompare(b.foodName, 'fa'));
+      .sort((a, b) => a.department.localeCompare(b.department, 'fa'));
     return {
       key,
       name: categoryLabel(categories, key),
-      foods,
-      total: foods.reduce((s, f) => s + f.total, 0),
-      rowCount: Math.max(foods.length, 1),
+      departments,
+      total: departments.reduce((s, d) => s + d.total, 0),
+      foodCount: departments.reduce((s, d) => s + d.foods.length, 0),
+      rowCount: Math.max(departments.reduce((s, d) => s + d.rowCount, 0), 1),
     };
   });
 }
@@ -726,7 +728,7 @@ function buildPersonnel2ByDay(report) {
     .map((key) => {
       const cats = buildCategoryFoodTreeFromEntries(dayMap.get(key) || [], categories);
       const total = cats.reduce((s, c) => s + c.total, 0);
-      const foodCount = cats.reduce((s, c) => s + c.foods.length, 0);
+      const foodCount = cats.reduce((s, c) => s + (c.foodCount || 0), 0);
       return { jalaliDate: dayLabel.get(key) || key, categories: cats, total, foodCount };
     })
     .filter((day) => day.categories.length > 0);
@@ -736,29 +738,33 @@ function renderDayTableRows(day) {
   const rows = [];
   for (const cat of day.categories) {
     let catRendered = false;
-    for (const food of cat.foods) {
-      const departments = food.departments || [];
-      const deptLabel = departments.map((d) => d.department).filter(Boolean).join('، ') || '—';
-      const namesLabel = departments
-        .flatMap((dept) => {
-          const people = dept.people?.length ? dept.people : [{ fullName: '—', count: 0 }];
-          return people.map((person) => {
+    for (const dept of cat.departments || []) {
+      let deptRendered = false;
+      const foods = dept.foods?.length ? dept.foods : [{ foodName: '—', people: [] }];
+      for (const food of foods) {
+        const people = food.people?.length ? food.people : [{ fullName: '—', count: 0 }];
+        const namesLabel = people
+          .map((person) => {
             const countTxt = person.count > 1 ? ` (${person.count.toLocaleString('fa-IR')})` : '';
             return `${escapeHtml(person.fullName)}${countTxt}`;
-          });
-        })
-        .join('، ');
-      const catCell = !catRendered
-        ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
-        : '';
-      rows.push(`
+          })
+          .join('، ');
+        const catCell = !catRendered
+          ? `<td class="col-cat" rowspan="${cat.rowCount}">${escapeHtml(cat.name)}</td>`
+          : '';
+        const deptCell = !deptRendered
+          ? `<td class="col-dept" rowspan="${dept.rowCount}">${escapeHtml(dept.department)}</td>`
+          : '';
+        rows.push(`
           <tr>
-            <td class="col-dept">${escapeHtml(deptLabel)}</td>
             ${catCell}
+            ${deptCell}
             <td class="col-food">${escapeHtml(food.foodName)}</td>
             <td class="col-name">${namesLabel || '—'}</td>
           </tr>`);
-      catRendered = true;
+        catRendered = true;
+        deptRendered = true;
+      }
     }
   }
   return rows.join('');
@@ -779,8 +785,8 @@ function renderPersonnel2ReportHtml(report) {
       <table class="p2">
         <thead>
           <tr>
-            <th>واحد</th>
             <th>دسته</th>
+            <th>واحد</th>
             <th>غذاها</th>
             <th>نام و نام خانوادگی</th>
           </tr>
@@ -829,8 +835,8 @@ function renderPersonnel2ReportHtml(report) {
     }
     table.p2 thead { display: table-header-group; }
     table.p2 tr { page-break-inside: avoid; }
-    .col-dept { width: 16%; text-align: center; font-weight: 700; background: #fafafa; font-size: 7.5pt; }
     .col-cat { width: 12%; text-align: center; font-weight: 700; background: #f0f0f0; font-size: 7.5pt; }
+    .col-dept { width: 16%; text-align: center; font-weight: 700; background: #fafafa; font-size: 7.5pt; }
     .col-food { width: 18%; text-align: center; font-weight: 700; background: #f5f5f5; font-size: 8pt; }
     .col-name { width: 54%; text-align: right; font-weight: 600; font-size: 8pt; line-height: 1.35; }
     .empty { text-align: center; padding: 12pt; border: 1pt solid #000; }
