@@ -78,8 +78,8 @@ export default function AdminLayout() {
         setBoot(res.data);
         return;
       }
-      // Session not ready yet right after login — retry once
-      if (tries < 2 && (res._httpStatus === 401 || res._httpStatus === 403)) {
+      // Session not ready yet right after login — retry once on 401 only
+      if (tries < 2 && res._httpStatus === 401) {
         await new Promise((r) => setTimeout(r, 400));
         return loadBoot();
       }
@@ -87,8 +87,8 @@ export default function AdminLayout() {
         window.location.replace('/login?expired=1');
         return;
       }
-      if (res.code === 'FORBIDDEN_ROLE') {
-        setBootError('این حساب به پنل مدیریت دسترسی ندارد. با حساب سوپرادمین وارد شوید.');
+      if (res.code === 'FORBIDDEN_ROLE' || res._httpStatus === 403) {
+        setBootError(res.message || 'این حساب به پنل مدیریت دسترسی ندارد. با حساب سوپرادمین وارد شوید.');
         return;
       }
       setBootError(res.message || 'بارگذاری پنل ناموفق بود.');

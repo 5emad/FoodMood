@@ -115,18 +115,22 @@ app.get('/healthz', (_req, res) => {
 // ── Security headers via Helmet ──────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
+    useDefaults: false,
     directives: {
       defaultSrc:     ["'self'"],
       scriptSrc:      ["'self'", "'unsafe-inline'"],
       scriptSrcAttr:  ["'unsafe-inline'"],
       styleSrc:       ["'self'", "'unsafe-inline'"],
+      // React style={{...}} → style-src-attr
+      styleSrcAttr:   ["'unsafe-inline'"],
       imgSrc:         ["'self'", 'data:', 'blob:'],
-      fontSrc:        ["'self'"],
+      fontSrc:        ["'self'", 'data:'],
       connectSrc:     ["'self'"],
       objectSrc:      ["'none'"],
       baseUri:        ["'self'"],
       formAction:     ["'self'"],
       frameAncestors: ["'none'"],
+      workerSrc:      ["'self'", 'blob:'],
     },
   },
   crossOriginEmbedderPolicy: false,

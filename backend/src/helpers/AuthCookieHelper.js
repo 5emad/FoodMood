@@ -46,15 +46,26 @@ function signRole(role) {
   return `${sig}.${role}`;
 }
 
+function timingSafeEqualStr(a, b) {
+  const left = Buffer.from(String(a || ''));
+  const right = Buffer.from(String(b || ''));
+  if (left.length !== right.length) return false;
+  try {
+    return crypto.timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
 function verifySignedRole(value) {
   const raw = String(value || '');
   const dot = raw.indexOf('.');
   if (dot <= 0) return '';
-  const sig = raw.slice(0, dot);
   const role = raw.slice(dot + 1);
   if (!role) return '';
-  if (signRole(role) === raw) return role;
-  return '';
+  const expected = signRole(role);
+  if (!expected || !timingSafeEqualStr(expected, raw)) return '';
+  return role;
 }
 
 function setAuthCookies(res, { token, role }) {
@@ -66,22 +77,35 @@ function setAuthCookies(res, { token, role }) {
 
 function clearAuthCookies(res) {
   if (!res?.clearCookie) return;
-  const opts = { path: '/', secure: prefersSecureCookies() };
+  const secure = prefersSecureCookies();
+  const opts = { path: '/', secure, sameSite: 'strict', httpOnly: true };
   res.clearCookie(authCookieName(), opts);
   res.clearCookie(roleCookieName(), opts);
+  // legacy names
+  res.clearCookie('fm-auth', { path: '/', sameSite: 'strict' });
+  res.clearCookie('fm-role', { path: '/', sameSite: 'strict' });
 }
 
 function readAuthTokenFromCookie(req) {
-  return parseCookieHeader(req, authCookieName()) || null;
+  return parseCookieHeader(req, authCookieName())
+    || parseCookieHeader(req, 'fm-auth')
+    || null;
 }
 
 function readRoleFromCookie(req) {
-  return verifySignedRole(parseCookieHeader(req, roleCookieName()));
+  return verifySignedRole(parseCookieHeader(req, roleCookieName()))
+    || verifySignedRole(parseCookieHeader(req, 'fm-role'));
 }
 
+/** Health-gate helper: require a valid JWT (not role cookie alone). */
 function isSuperadminRequest(req) {
-  if (req.session?.userRole === 'superadmin') return true;
-  if (readRoleFromCookie(req) === 'superadmin') return true;
+  if (req.session?.userRole === 'superadmin' && req.session?.token) {
+    try {
+      const { verifyToken } = require('./TokenHelper');
+      const decoded = verifyToken(req.session.token);
+      if (decoded?.role === 'superadmin') return true;
+    } catch { /* fall through */ }
+  }
   const token = req.session?.token || readAuthTokenFromCookie(req);
   if (!token) return false;
   try {

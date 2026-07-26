@@ -154,11 +154,6 @@ function normalizeReqPath(req) {
   }
 }
 
-function hasAppSessionCookie(req) {
-  const cookie = String(req.headers?.cookie || '');
-  return /(?:^|;\s*)(?:sid|__Host-sid|__Secure-sid|connect\.sid)=/i.test(cookie);
-}
-
 /**
  * آیا این درخواست جزء سطح اپ است و نباید WAF بلاکش کند؟
  */
@@ -194,15 +189,6 @@ function createSafeWafResponseMiddleware() {
           || (typeof body.rule === 'string' && /waf|blocked by waf/i.test(String(body.message || '')))
           || /Request blocked by WAF/i.test(String(body.message || ''));
         if (isWafBlock) {
-          // اگر سطح اپ بود ولی به هر دلیل بلاک شد — عبور نرم (نباید UI ادمین بشکند)
-          if (req.wafTrusted || isAppSurfacePath(normalizeReqPath(req))) {
-            if (!res.statusCode || res.statusCode >= 400) res.status(200);
-            return originalJson({
-              success: false,
-              message: 'درخواست توسط لایه امنیتی رد شد؛ دوباره تلاش کنید.',
-              code: 'WAF_SOFT',
-            });
-          }
           if (!res.statusCode || res.statusCode === 200) res.status(403);
           return originalJson({
             success: false,
@@ -218,18 +204,14 @@ function createSafeWafResponseMiddleware() {
 }
 
 /**
- * قبل از کل زنجیره firewtwall: سطح اپ و نشست لاگین‌شده را trusted کن.
- * firewtwall خودش bypassPaths را اجرا نمی‌کند.
+ * قبل از کل زنجیره firewtwall: سطح اپ را trusted کن.
+ * نکته امنیتی: فقط path — نه کوکی جعلی sid (قبلاً هر درخواستی با sid=x از WAF رد می‌شد).
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
   return function wafPathBypass(req, _res, next) {
     const p = normalizeReqPath(req);
-    if (
-      exact.has(p)
-      || isAppSurfacePath(p)
-      || hasAppSessionCookie(req)
-    ) {
+    if (exact.has(p) || isAppSurfacePath(p)) {
       req.wafTrusted = true;
     }
     next();

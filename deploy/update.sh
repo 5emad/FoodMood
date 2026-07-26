@@ -277,8 +277,8 @@ migrate_env_keys() {
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
   ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
-  # WAF false-positives were breaking admin UI — keep off until superadmin enables in panel
-  ensure_env_force WAF_ENABLED 'false'
+  # Default off; superadmin toggle in DB wins at runtime (do not force every update)
+  ensure_env_default WAF_ENABLED 'false'
   ensure_env_default WAF_TARPIT 'false'
   # Point Mongo URI at host loopback if a Docker hostname remained
   if declare -F normalize_mongodb_uri_to_localhost >/dev/null 2>&1; then

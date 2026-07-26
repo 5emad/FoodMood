@@ -23,7 +23,7 @@ export default function LoginPage() {
   const [config, setConfig] = useState({ organizationName: 'سامانه تغذیه', appVersionFa: '' });
   const [step, setStep] = useState('username'); // username | password | 2fa
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [resolved, setResolved] = useState(null);
   const [form, setForm] = useState({ username: '', password: '', superToken: '' });
 
@@ -66,7 +66,7 @@ export default function LoginPage() {
     setStep('username');
     setResolved(null);
     setForm((f) => ({ ...f, password: '', superToken: '' }));
-    setShowPassword(true);
+    setShowPassword(false);
   }
 
   async function onSubmit(e) {
@@ -112,13 +112,13 @@ export default function LoginPage() {
         const nextUser = res?.username || username;
         setResolved({ username: nextUser });
         setForm((f) => ({ ...f, username: nextUser, password: '' }));
-        setShowPassword(true);
+        setShowPassword(false);
         setStep('password');
       } catch {
         // حتی در خطا هم به رمز می‌رویم تا وجود کاربر لو نرود
         setResolved({ username });
         setForm((f) => ({ ...f, username, password: '' }));
-        setShowPassword(true);
+        setShowPassword(false);
         setStep('password');
       } finally {
         setLoading(false);

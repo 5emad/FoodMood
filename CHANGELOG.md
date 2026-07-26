@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.16] - 2026-07-26
+
+### Fixed
+- Console CSP errors: firewtwall was overwriting Helmet CSP with `default-src 'self'` only — blocked React inline styles and `data:` SVG images; WAF security-headers now deferred to Helmet
+- Helmet CSP: explicit `style-src` / `style-src-attr` / `img-src data: blob:` for SPA
+- Security: WAF no longer trusts arbitrary `sid` cookies (path-only app-surface trust)
+- Security: superadmin health-gate requires valid JWT, not forged role cookie alone; timing-safe role HMAC verify
+- Security: password field hidden by default on login
+- WAF panel toggle: DB setting wins over env (toggle in Super→Security works again)
+- Admin bootstrap: do not retry FORBIDDEN_ROLE as session race
+- Root redirect: navigate once via useEffect (avoid render-time replace loops)
+- WAF stays off the hot path for `/api` and `/admin` so it does not slow the panel
+
 ## [1.9.15] - 2026-07-26
 
 ### Fixed

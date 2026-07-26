@@ -207,8 +207,38 @@ function patchRequestSizeForMultipart() {
   require.cache[requestSizePath].exports = factory;
 }
 
+/**
+ * firewtwall securityHeaders یک CSP خیلی سخت می‌گذارد
+ * (فقط default-src 'self') و CSP هلمت را overwrite می‌کند →
+ * React inline style و data: SVG در کنسول بلاک می‌شوند و UI کند/خراب دیده می‌شود.
+ * هدرهای امنیتی را Helmet در server.js مدیریت می‌کند.
+ */
+function patchSecurityHeadersNoop() {
+  const path = require('path');
+  let headersPath;
+  try {
+    const wafRoot = path.dirname(require.resolve('firewtwall'));
+    headersPath = path.join(wafRoot, 'middleware', 'securityHeaders.js');
+  } catch {
+    return;
+  }
+
+  // eslint-disable-next-line import/no-dynamic-require, global-require
+  const original = require(headersPath);
+  if (original?.__fmoxHelmetOwnsHeaders) return;
+
+  const factory = function createSecurityHeadersMiddleware() {
+    return function securityHeadersPassthrough(_req, _res, next) {
+      next();
+    };
+  };
+  factory.__fmoxHelmetOwnsHeaders = true;
+  require.cache[headersPath].exports = factory;
+}
+
 function applyFirewtwallPatches() {
   patchRequestSizeForMultipart();
+  patchSecurityHeadersNoop();
 }
 
 module.exports = {
