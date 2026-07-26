@@ -20,7 +20,7 @@ function weeklyFetchKey(tab) {
 export default function ReportsTab() {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [access, setAccess] = useState({ allowed: true, pendingCount: 0, message: '' });
+  const [access, setAccess] = useState({ allowed: false, pendingCount: 0, message: '' });
   const [weeks, setWeeks] = useState([]);
   const [months, setMonths] = useState([]);
   const [monthsLoaded, setMonthsLoaded] = useState(false);
@@ -43,7 +43,15 @@ export default function ReportsTab() {
         api('/api/admin/reports/access'),
         api('/api/admin/weeks?noSync=true'),
       ]);
-      if (acc.success) setAccess(acc.data || {});
+      if (acc.success && acc.data) {
+        setAccess({
+          allowed: Boolean(acc.data.allowed),
+          pendingCount: Number(acc.data.pendingCount || 0),
+          message: acc.data.message || '',
+        });
+      } else {
+        setAccess({ allowed: false, pendingCount: 0, message: acc?.message || 'دسترسی گزارش تایید نشد' });
+      }
       const weekList = w.success ? w.data : [];
       setWeeks(weekList);
       if (weekList.length) setWeekId(weekList.find((x) => x.isActive)?._id || weekList[0]._id);

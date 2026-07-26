@@ -241,6 +241,7 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
         { path: 'dailyMenuId', select: 'date weekId' },
       ],
     })
+    .populate({ path: 'dailyMenuId', select: 'date weekId' })
     .lean();
 }
 
@@ -271,7 +272,9 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
 
   const candidateOrders = await findOrdersInRange(rangeStartInput, endOfRange(rangeEndInput));
 
-  const reportDateOfOrder = (order) => startOfDay(order.menuItemId?.dailyMenuId?.date || order.orderDate);
+  const reportDateOfOrder = (order) => startOfDay(
+    order.dailyMenuId?.date || order.menuItemId?.dailyMenuId?.date || order.orderDate,
+  );
   const orders = candidateOrders.filter((order) => {
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
@@ -331,15 +334,29 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     departmentRow.totalPrice += Number(order.totalPrice || 0);
     byDepartmentMap.set(department, departmentRow);
 
-    for (const item of order.items || []) {
-      const foodId = String(item.foodId?._id || item.foodId || order.menuItemId?.foodId?._id || '');
-      if (!foodId) continue;
-      const itemName = item.foodId?.name || order.menuItemId?.foodId?.name || '-';
-      const itemCategory = String(item.foodId?.category || order.menuItemId?.foodId?.category || primaryEntry.category || 'uncategorized');
-      const foodRow = byFoodMap.get(foodId) || { foodId, foodName: itemName, category: itemCategory, count: 0, totalPrice: 0 };
-      foodRow.count += Number(item.quantity || 1);
-      foodRow.totalPrice += Number(item.price || 0) * Number(item.quantity || 1);
-      byFoodMap.set(foodId, foodRow);
+    const items = order.items || [];
+    if (items.length) {
+      for (const item of items) {
+        const foodId = String(item.foodId?._id || item.foodId || order.menuItemId?.foodId?._id || '');
+        if (!foodId) continue;
+        const itemName = item.foodId?.name || order.menuItemId?.foodId?.name || '-';
+        const itemCategory = String(item.foodId?.category || order.menuItemId?.foodId?.category || primaryEntry.category || 'uncategorized');
+        const foodRow = byFoodMap.get(foodId) || { foodId, foodName: itemName, category: itemCategory, count: 0, totalPrice: 0 };
+        foodRow.count += Number(item.quantity || 1);
+        foodRow.totalPrice += Number(item.price || 0) * Number(item.quantity || 1);
+        byFoodMap.set(foodId, foodRow);
+      }
+    } else {
+      // Legacy orders: items[] empty but menuItemId.foodId present
+      const foodId = String(order.menuItemId?.foodId?._id || order.menuItemId?.foodId || '');
+      if (foodId) {
+        const itemName = order.menuItemId?.foodId?.name || primaryEntry.name || '-';
+        const itemCategory = String(order.menuItemId?.foodId?.category || primaryEntry.category || 'uncategorized');
+        const foodRow = byFoodMap.get(foodId) || { foodId, foodName: itemName, category: itemCategory, count: 0, totalPrice: 0 };
+        foodRow.count += mealCount;
+        foodRow.totalPrice += Number(order.totalPrice || 0);
+        byFoodMap.set(foodId, foodRow);
+      }
     }
   }
 
@@ -467,8 +484,8 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
   for (const order of orders) {
     if (!isGuestOrder(order)) continue;
     const guest = order.guestId;
-    const guestKey = String(guest?._id || guest || order.guestId);
-    if (!guestKey) continue;
+    const guestKey = String(guest?._id || guest || order.guestId || '');
+    if (!guestKey || guestKey === 'undefined' || guestKey === 'null') continue;
     if (!byGuestMap.has(guestKey)) {
       byGuestMap.set(guestKey, {
         guestId: guest?._id || guest,

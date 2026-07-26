@@ -5,7 +5,7 @@ const PACKAGE_PATH = path.join(__dirname, '../../../package.json');
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
 let cachedVersion = null;
-/** Optional override from AppSetting.appVersion (set after DB sync). */
+/** Last synced DB version (tracking only — display always uses package.json). */
 let dbVersionOverride = null;
 
 function readPackageVersion() {
@@ -23,24 +23,36 @@ function normalizeSemver(value) {
   return SEMVER_RE.test(v) ? v : '';
 }
 
-function getAppVersion() {
-  const fromDb = normalizeSemver(dbVersionOverride);
-  if (fromDb) return fromDb;
-  if (cachedVersion) return cachedVersion;
-  try {
-    cachedVersion = readPackageVersion();
-  } catch {
-    cachedVersion = '0.0.0';
+function compareSemver(a, b) {
+  const pa = String(a || '0.0.0').split('.').map((n) => Number(n) || 0);
+  const pb = String(b || '0.0.0').split('.').map((n) => Number(n) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    if (pa[i] > pb[i]) return 1;
+    if (pa[i] < pb[i]) return -1;
   }
-  return cachedVersion;
+  return 0;
 }
 
+/**
+ * Current installed version = package.json (source of truth after deploy).
+ * DB may lag until syncInstalledVersionToDb; never show a stale DB value as "current".
+ */
 function getPackageVersion() {
   try {
     return readPackageVersion();
   } catch {
     return '0.0.0';
   }
+}
+
+function getAppVersion() {
+  if (cachedVersion) return cachedVersion;
+  try {
+    cachedVersion = readPackageVersion();
+  } catch {
+    cachedVersion = normalizeSemver(dbVersionOverride) || '0.0.0';
+  }
+  return cachedVersion;
 }
 
 function setDbVersionOverride(version) {
@@ -56,10 +68,27 @@ function toPersianDigits(value) {
   return String(value).replace(/\d/g, (d) => map[Number(d)]);
 }
 
+/**
+ * View/API model. Always exposes the latest installed (package.json) as appVersion*.
+ * previous* comes from DB/history when older than current.
+ */
 function getVersionViewModel(extra = {}) {
-  const appVersion = normalizeSemver(extra.appVersion) || getAppVersion();
+  const pkgVersion = getPackageVersion();
+  const dbCurrent = normalizeSemver(extra.appVersion) || normalizeSemver(dbVersionOverride);
+  // Prefer package; if DB somehow newer (manual), take the max
+  const appVersion = (pkgVersion && pkgVersion !== '0.0.0')
+    ? (dbCurrent && compareSemver(dbCurrent, pkgVersion) > 0 ? dbCurrent : pkgVersion)
+    : (dbCurrent || '0.0.0');
+
   const appVersionMajor = appVersion.split('.')[0];
-  const previousAppVersion = normalizeSemver(extra.previousAppVersion) || '';
+  let previousAppVersion = normalizeSemver(extra.previousAppVersion) || '';
+  if (!previousAppVersion && dbCurrent && dbCurrent !== appVersion && compareSemver(dbCurrent, appVersion) < 0) {
+    previousAppVersion = dbCurrent;
+  }
+  if (previousAppVersion && previousAppVersion === appVersion) {
+    previousAppVersion = '';
+  }
+
   return {
     appVersion,
     appVersionMajor,

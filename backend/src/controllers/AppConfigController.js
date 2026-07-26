@@ -1,12 +1,13 @@
 const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
-const { getVersionViewModel, setDbVersionOverride } = require('../helpers/AppVersionHelper');
+const { getVersionViewModel } = require('../helpers/AppVersionHelper');
 
 function versionFromSettings(settings) {
-  if (settings?.appVersion) setDbVersionOverride(settings.appVersion);
+  // Do not let a stale DB appVersion override package.json display
   return getVersionViewModel({
-    appVersion: settings?.appVersion,
     previousAppVersion: settings?.previousAppVersion,
     appVersionUpdatedAt: settings?.appVersionUpdatedAt,
+    // pass DB current only as history hint when older than package
+    appVersion: settings?.appVersion,
   });
 }
 

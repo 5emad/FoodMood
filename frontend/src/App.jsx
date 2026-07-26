@@ -23,6 +23,17 @@ function RootRedirect() {
   );
 }
 
+function LogoutRedirect() {
+  useEffect(() => {
+    window.location.replace('/logout');
+  }, []);
+  return (
+    <div style={{ padding: '2rem', textAlign: 'center', direction: 'rtl', fontFamily: 'Tahoma,sans-serif' }}>
+      در حال خروج…
+    </div>
+  );
+}
+
 function AdminLegacyUrlRedirect() {
   const [params] = useSearchParams();
   const tab = params.get('tab');
@@ -49,8 +60,13 @@ export default function App() {
         <Route path=":tab" element={<AdminDashboardPage />} />
       </Route>
       <Route path="/admin/dashboard" element={<AdminLegacyUrlRedirect />} />
-      {/* Prefer Express GET /logout; SPA fallback only if static shell is served */}
-      <Route path="/logout" element={<RootRedirect />} />
+      {/* Always hit Express GET /logout so session/cookies are cleared */}
+      <Route
+        path="/logout"
+        element={(
+          <LogoutRedirect />
+        )}
+      />
       <Route path="/service-unavailable" element={<UnavailablePage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

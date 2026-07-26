@@ -84,7 +84,7 @@ const authMiddleware = async (req, res, next) => {
       if (!(await isProfileActive(user.username))) {
         await invalidateSession(req, res, 'inactive');
         if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'inactive');
-        return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است' });
+        return res.status(403).json({ message: 'حساب کاربری شما غیرفعال است', code: 'inactive' });
       }
       req.user = await enrichLdapSessionUser(user);
       if ((req.user.role || 'user') !== (user.role || 'user')) {
@@ -100,9 +100,12 @@ const authMiddleware = async (req, res, next) => {
 
     const dbUser = await User.findById(user.id).select('activeSessionId status role username fullName email').lean();
     if (!dbUser || dbUser.status !== 'active') {
-      await invalidateSession(req, res, 'expired');
+      await invalidateSession(req, res, 'inactive');
       if (wantsHtml(req)) return htmlLoginRedirect(req, res, 'inactive');
-      return res.status(401).json({ message: 'حساب کاربری غیرفعال یا یافت نشد' });
+      return res.status(403).json({
+        message: 'حساب کاربری غیرفعال یا یافت نشد',
+        code: 'inactive',
+      });
     }
 
     // Always authorize with DB role (JWT may be stale after promote admin→superadmin).

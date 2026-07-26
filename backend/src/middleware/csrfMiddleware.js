@@ -19,8 +19,8 @@ function csrfMiddleware(req, res, next) {
     || p.startsWith('/auth/login/')
   ) return next();
 
-  // Bearer-token API clients are not using ambient browser cookies.
-  if (req.headers.authorization?.startsWith('Bearer ')) return next();
+  // Bearer-token API clients are not using ambient browser cookies (require non-empty token).
+  if (/^Bearer\s+\S+/.test(String(req.headers.authorization || ''))) return next();
 
   const expected = ensureCsrfToken(req);
   const provided = String(req.get('x-csrf-token') || '');

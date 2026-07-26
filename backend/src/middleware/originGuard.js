@@ -14,7 +14,7 @@ async function originGuard(req, res, next) {
   const presented = origin ? normalizePublicUrl(origin) : normalizePublicUrl(referer || '');
 
   if (!presented) {
-    if (req.headers.authorization?.startsWith('Bearer ')) return next();
+    if (/^Bearer\s+\S+/.test(String(req.headers.authorization || ''))) return next();
     return res.status(403).json({ success: false, message: 'درخواست بدون مبدا معتبر رد شد' });
   }
 

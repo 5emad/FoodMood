@@ -26,6 +26,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [resolved, setResolved] = useState(null);
   const [form, setForm] = useState({ username: '', password: '', superToken: '' });
+  /** First-time 2FA token — shown masked once; copy only, never plaintext toast */
+  const [bootstrapToken, setBootstrapToken] = useState('');
 
   useEffect(() => {
     const bootEl = document.getElementById('app-bootstrap-data');
@@ -42,6 +44,23 @@ export default function LoginPage() {
       } catch { /* ignore */ }
     }
     api('/api/app/public').then((r) => { if (r.success) setConfig((c) => ({ ...c, ...r.data })); });
+  }, []);
+
+  // Already authenticated → leave /login
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await api('/api/auth/me');
+        if (cancelled || !me?.success) return;
+        const user = me.user || me.data?.user || me.data;
+        if (user) redirectAfterLogin(user);
+      } catch {
+        /* stay on login */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -67,6 +86,17 @@ export default function LoginPage() {
     setResolved(null);
     setForm((f) => ({ ...f, password: '', superToken: '' }));
     setShowPassword(false);
+    setBootstrapToken('');
+  }
+
+  async function copyBootstrapToken() {
+    if (!bootstrapToken) return;
+    try {
+      await navigator.clipboard.writeText(bootstrapToken);
+      toast('توکن کپی شد — در جای امن ذخیره کنید.', 'success');
+    } catch {
+      toast('کپی نشد؛ با Ctrl+A و Ctrl+C از فیلد مخفی کپی کنید.', 'warning');
+    }
   }
 
   async function onSubmit(e) {
@@ -87,6 +117,7 @@ export default function LoginPage() {
           toast(res.message || 'توکن امنیتی نامعتبر است.', 'error');
           return;
         }
+        setBootstrapToken('');
         if (res.user) redirectAfterLogin(res.user);
         else navigate('/admin/reports');
       } catch (err) {
@@ -139,10 +170,14 @@ export default function LoginPage() {
       });
 
       if (res.tokenRequired) {
+        setShowPassword(false);
+        setForm((f) => ({ ...f, superToken: '' }));
         setStep('2fa');
         if (res.secondFactorToken) {
-          toast(`توکن جدید: ${res.secondFactorToken}`, 'warning');
+          setBootstrapToken(String(res.secondFactorToken));
+          toast('توکن امنیتی جدید صادر شد — مخفی است؛ فقط کپی و ذخیره کنید.', 'warning');
         } else {
+          setBootstrapToken('');
           toast(res.message || 'توکن امنیتی را وارد کنید.', 'info');
         }
         return;
@@ -235,13 +270,42 @@ export default function LoginPage() {
 
           {step === '2fa' && (
             <>
+              {bootstrapToken ? (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="login-bootstrap-token">توکن جدید (فقط یک‌بار — مخفی)</label>
+                  <div className="auth-password-wrap">
+                    <input
+                      id="login-bootstrap-token"
+                      className="form-control input-secret"
+                      type="password"
+                      readOnly
+                      value={bootstrapToken}
+                      dir="ltr"
+                      autoComplete="off"
+                      aria-label="توکن جدید مخفی"
+                    />
+                    <button
+                      type="button"
+                      className="auth-password-toggle"
+                      onClick={copyBootstrapToken}
+                      aria-label="کپی توکن"
+                      title="کپی"
+                    >
+                      <i className="fas fa-copy" />
+                    </button>
+                  </div>
+                  <p className="form-hint" style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    روی صفحه دیده نمی‌شود؛ کپی کنید و در جای امن نگه دارید.
+                  </p>
+                </div>
+              ) : null}
               <div className="form-group">
                 <label className="form-label" htmlFor="login-token">توکن امنیتی</label>
                 <input
                   id="login-token"
                   className="form-control input-secret"
-                  type="text"
-                  autoComplete="one-time-code"
+                  type="password"
+                  autoComplete="off"
                   spellCheck="false"
                   value={form.superToken}
                   onChange={(e) => setForm({ ...form, superToken: e.target.value })}

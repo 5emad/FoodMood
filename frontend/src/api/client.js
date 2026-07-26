@@ -20,7 +20,7 @@ async function getCsrfToken() {
 
 function redirectLogin(reason) {
   if (window.location.pathname.includes('/login')) return;
-  const q = reason === 'idle' ? 'idle=1' : 'expired=1';
+  const q = reason === 'idle' ? 'idle=1' : reason === 'inactive' ? 'inactive=1' : 'expired=1';
   window.location.replace(`/login?${q}`);
 }
 
@@ -51,11 +51,12 @@ export async function api(url, options = {}) {
   }
 
   const isAuthCredentialCall = /\/api\/auth\/(login|resolve-username|verify-super-token)(?:\?|$)/.test(url);
-  if (res.status === 401) {
+  if (res.status === 401 || (res.status === 403 && body?.code === 'inactive')) {
     if (isAuthCredentialCall) {
       return body || { success: false, message: 'اطلاعات وارد شده صحیح نیست' };
     }
-    redirectLogin(body?.code === 'idle' ? 'idle' : 'expired');
+    const reason = body?.code === 'idle' ? 'idle' : body?.code === 'inactive' ? 'inactive' : 'expired';
+    redirectLogin(reason);
     throw new Error(body?.message || 'نشست منقضی شده است');
   }
 

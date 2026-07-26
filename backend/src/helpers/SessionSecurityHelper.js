@@ -38,14 +38,35 @@ function initSessionSecurity(req) {
 }
 
 function assertActiveSession(req) {
-  if (!req.session?.token) {
-    try {
-      const { readAuthTokenFromCookie } = require('./AuthCookieHelper');
-      if (readAuthTokenFromCookie(req)) return { ok: true };
-    } catch {
-      // ignore
-    }
+  let hasCookieToken = false;
+  try {
+    const { readAuthTokenFromCookie } = require('./AuthCookieHelper');
+    hasCookieToken = Boolean(readAuthTokenFromCookie(req));
+  } catch {
+    /* ignore */
+  }
+
+  const hasSessionToken = Boolean(req.session?.token);
+  // Truly anonymous
+  if (!hasSessionToken && !hasCookieToken) {
     return { ok: true };
+  }
+
+  // Cookie JWT without server session → force re-login
+  if (hasCookieToken && !req.session?.sessionId && !hasSessionToken) {
+    return {
+      ok: false,
+      reason: 'expired',
+      message: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
+    };
+  }
+
+  if (!req.session) {
+    return {
+      ok: false,
+      reason: 'expired',
+      message: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
+    };
   }
 
   const now = Date.now();
@@ -86,7 +107,8 @@ function assertActiveSession(req) {
 }
 
 function touchSessionActivity(req) {
-  if (!req.session?.token) return;
+  if (!req.session) return;
+  if (!req.session.token && !req.session.sessionId) return;
   req.session.lastActivityAt = Date.now();
 }
 

@@ -222,9 +222,26 @@ function createWafGateMiddleware() {
   return function wafGate(req, _res, next) {
     if (!isWafRuntimeEnabled()) {
       req.wafTrusted = true;
+      req.wafSkipStack = true;
     }
     next();
   };
+}
+
+/** Run Express-style middleware array as one step. */
+function runMiddlewareChain(stack, req, res, next) {
+  let i = 0;
+  function run(err) {
+    if (err) return next(err);
+    const mw = stack[i++];
+    if (!mw) return next();
+    try {
+      mw(req, res, run);
+    } catch (error) {
+      next(error);
+    }
+  }
+  run();
 }
 
 function createAppWaf() {
@@ -235,14 +252,25 @@ function createAppWaf() {
       ? createMultipartSafeRequestSizeMiddleware(WAF_OPTIONS)
       : mw
   ));
-  return [
-    createSafeWafResponseMiddleware(),
-    createWafGateMiddleware(),
-    // مهم: bypass قبل از scrub/stack تا rhythm/ddos اصلاً اجرا نشوند
-    createPathBypassMiddleware(WAF_OPTIONS.bypassPaths),
+  const heavyStack = [
     createWafScrubMiddleware(),
     ...stack,
     createWafRestoreMiddleware(),
+  ];
+
+  // When WAF is off or path is trusted, skip the entire firewtwall stack (not just soft-rewrite)
+  function conditionalWafStack(req, res, next) {
+    if (req.wafSkipStack || req.wafTrusted || !isWafRuntimeEnabled()) {
+      return next();
+    }
+    return runMiddlewareChain(heavyStack, req, res, next);
+  }
+
+  return [
+    createSafeWafResponseMiddleware(),
+    createWafGateMiddleware(),
+    createPathBypassMiddleware(WAF_OPTIONS.bypassPaths),
+    conditionalWafStack,
   ];
 }
 

@@ -21,10 +21,19 @@ function safeJsonForHtml(obj) {
   return JSON.stringify(obj).replace(/</g, '\\u003c');
 }
 
+function escapeHtmlText(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function injectSpaHtml(rawHtml, bootstrapData, orgName) {
   const version = bootstrapData.version || getVersionViewModel();
+  const safeTitle = escapeHtmlText(orgName);
   return rawHtml
-    .replace(/<title>.*?<\/title>/, `<title>${orgName}</title>`)
+    .replace(/<title>.*?<\/title>/, `<title>${safeTitle}</title>`)
     .replace(
       '</head>',
       `<meta name="foodmood-version" content="${version.appVersion || ''}" />`
