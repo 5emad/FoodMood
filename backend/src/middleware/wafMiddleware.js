@@ -195,7 +195,8 @@ function createSafeWafResponseMiddleware() {
 
 /**
  * firewtwall فیلد bypassPaths را خودش اجرا نمی‌کند — قبل از زنجیره علامت trusted می‌زنیم.
- * exact + پیشوندهای امن (استاتیک / auth / bootstrap / پنل).
+ * کل /api/* را trust می‌کنیم: اسکنر WAF روی ObjectId / متن فارسی / CSRF false-positive می‌دهد
+ * و پنل را با «درخواست مجاز نیست» می‌بندد. محدودیت واقعی با auth + CSRF + rateLimiter اپ است.
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
@@ -207,8 +208,7 @@ function createPathBypassMiddleware(bypassPaths = []) {
     '/spa/assets/',
     '/admin/',
     '/user/',
-    '/api/auth/',
-    '/api/app/',
+    '/api/',
   ];
   return function wafPathBypass(req, _res, next) {
     const p = req.path || '';

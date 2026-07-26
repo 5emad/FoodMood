@@ -576,6 +576,8 @@ apply_update() {
 
   ensure_superadmin_exists || true
 
+  log_warn "If login/settings still blocked: sudo bash ${INSTALL_DIR}/deploy/emergency-unlock.sh"
+
   ui_success_card "$new_version" "$source_commit" "https://${server_ip}/login"
 
   if [[ -n "${AUTO_SUPERADMIN_PASS:-}" ]]; then

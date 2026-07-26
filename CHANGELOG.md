@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.13] - 2026-07-26
+
+### Fixed
+- Admin settings/data APIs under `/api/admin/*` were still scanned by WAF → «درخواست مجاز نیست» and saves did nothing; entire `/api/` is now trusted (app auth/CSRF/rate-limit remain)
+- Clearer FORBIDDEN_ROLE message includes current role vs required role
+
+### Added
+- `deploy/emergency-unlock.sh` — turn WAF off, reset superadmin, print DB counts
+
 ## [1.9.12] - 2026-07-26
 
 ### Fixed
