@@ -331,9 +331,6 @@ export default function LoginPage() {
 
         <div className="auth-login-version">
           نسخه {config.appVersionFa || config.appVersion || '—'}
-          {config.previousAppVersionFa && config.previousAppVersionFa !== config.appVersionFa
-            ? ` (قبلی: ${config.previousAppVersionFa})`
-            : ''}
         </div>
       </div>
     </div>

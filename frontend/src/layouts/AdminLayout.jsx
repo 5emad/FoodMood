@@ -293,9 +293,6 @@ export default function AdminLayout() {
           {(boot?.appVersionFa || boot?.appVersion || boot?.appVersionMajorFa) && (
             <span className="sidebar-app-version">
               نسخه {boot.appVersionFa || boot.appVersion || boot.appVersionMajorFa}
-              {boot.previousAppVersionFa && boot.previousAppVersionFa !== boot.appVersionFa
-                ? ` ← ${boot.previousAppVersionFa}`
-                : ''}
             </span>
           )}
         </div>
