@@ -25,28 +25,29 @@ function envInt(name, fallback) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
+function envFlag(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
 /**
- * کانفیگ استاندارد firewtwall برای FoodMood
- *
- * بر اساس بردارهای اخیر پروژه:
- * - جعل X-Forwarded-For برای دور زدن rate-limit
- * - SQLi / XSS / Path Traversal در query
- * - NoSQL / LDAP injection
- * - flood و fuzz اسکنر (mutation / burst)
- * - آپلود تا ۵MB (غذا / اسلایدر)
- *
- * نکته: در firewtwall شمارندهٔ global عملاً روی پنجرهٔ ۶۰ثانیه کار می‌کند
- * (حتی اگر windowMs=1000 باشد) — سقف را بر همان اساس می‌گذاریم.
+ * WAF برای FoodMood:
+ * - سطح اپ (SPA / API / پنل / استاتیک / نشست لاگین‌شده) همیشه trusted است
+ * - موتور فقط روی مسیرهای ناشناس/اسکنر سخت می‌گیرد
+ * - auth + CSRF + rateLimiter اپ همچنان فعال‌اند
  */
-const apiRateDefault = envInt('API_RATE_LIMIT_MAX', 400);
+const apiRateDefault = envInt('API_RATE_LIMIT_MAX', 800);
 
 const WAF_OPTIONS = {
-  mode: 'reject',
+  // log-only = ثبت بدون بلاک؛ reject = بلاک. پیش‌فرض reject ولی با trust گسترده برای اپ.
+  mode: String(process.env.WAF_MODE || 'reject').toLowerCase() === 'log-only' ? 'log-only' : 'reject',
   responseType: 'json',
   logPath: WAF_LOG_PATH,
   debug: process.env.WAF_DEBUG === 'true',
 
-  // JSON اپ ۱MB؛ تصویر تا ۵MB؛ بکاپ تا ۲۰۰MB (مسیر backup هم در bypass است)
   maxBodySize: envInt('WAF_MAX_BODY_BYTES', 210 * 1024 * 1024),
 
   allowedMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
@@ -54,8 +55,6 @@ const WAF_OPTIONS = {
   whitelist: envList('WAF_WHITELIST'),
   blacklist: envList('WAF_BLACKLIST'),
 
-  // پشت nginx محلی: باید لوپ‌بک trust شود تا XFF کلاینت واقعی خوانده شود.
-  // اگر خالی بماند همه درخواست‌ها IP=127.0.0.1 می‌شوند و WAF rate-limit همه را بلاک می‌کند.
   trustedProxies: (() => {
     const fromEnv = envList('WAF_TRUSTED_PROXIES').length
       ? envList('WAF_TRUSTED_PROXIES')
@@ -70,25 +69,7 @@ const WAF_OPTIONS = {
   bypassPaths: [
     '/healthz',
     '/api/system/health',
-    '/api/auth/csrf',
-    // رمز عبور اغلب کاراکترهای خاص دارد و نباید به heuristic/SQLi WAF بخورد
-    '/api/auth/login',
-    '/api/auth/resolve-username',
-    '/api/auth/verify-super-token',
-    '/api/auth/change-password',
-    '/api/auth/register',
-    '/api/auth/logout',
-    '/api/auth/set-fullname',
-    '/api/auth/profile',
-    '/api/auth/me',
-    '/api/auth/ping',
-    // تست LDAP حاوی رمز عبور bind است
-    '/api/admin/settings/test-ldap',
-    // فایل .fzbackup رمزنگاری‌شده — آنتروپی بالا / حجم زیاد
-    '/api/admin/backup/export',
-    '/api/admin/backup/restore',
     '/favicon.ico',
-    // SPA shells (HTML) — must not be blocked by cookie/entropy heuristics
     '/',
     '/login',
     '/logout',
@@ -98,79 +79,112 @@ const WAF_OPTIONS = {
     '/service-unavailable',
   ],
 
-  // لایهٔ سخت بیرونی؛ limiter اپ همچنان برای لاگین/API جزئی‌تر عمل می‌کند
   rateLimit: {
     windowMs: 60 * 1000,
-    maxRequests: envInt('WAF_RATE_LIMIT_MAX', Math.max(apiRateDefault, 800)),
-    blockDurationMs: envInt('WAF_BLOCK_MS', 2 * 60 * 1000),
+    maxRequests: envInt('WAF_RATE_LIMIT_MAX', Math.max(apiRateDefault, 2000)),
+    blockDurationMs: envInt('WAF_BLOCK_MS', 30 * 1000),
   },
 
   ddos: {
-    maxUrlLength: 2048,
-    maxHeaderCount: 64,
-    maxHeaderSize: 4096,
+    maxUrlLength: 4096,
+    maxHeaderCount: 80,
+    maxHeaderSize: 8192,
     burst: {
       windowMs: 1000,
-      maxRequests: envInt('WAF_BURST_MAX', 60),
-      blockDurationMs: 60 * 1000,
+      maxRequests: envInt('WAF_BURST_MAX', 120),
+      blockDurationMs: 15 * 1000,
     },
-    // عملاً per-minute در این نسخهٔ کتابخانه
     global: {
       windowMs: 60_000,
-      maxRequests: envInt('WAF_GLOBAL_MAX', 20_000),
+      maxRequests: envInt('WAF_GLOBAL_MAX', 50_000),
     },
     fingerprint: {
       windowMs: 10_000,
-      maxRequests: envInt('WAF_FP_MAX', 200),
-      blockDurationMs: 60 * 1000,
+      maxRequests: envInt('WAF_FP_MAX', 500),
+      blockDurationMs: 15 * 1000,
     },
     pathFlood: {
       windowMs: 5_000,
-      maxRequests: envInt('WAF_PATH_FLOOD_MAX', 800),
+      maxRequests: envInt('WAF_PATH_FLOOD_MAX', 2000),
     },
     tarpit: {
-      enabled: process.env.WAF_TARPIT !== 'false',
-      delayMs: envInt('WAF_TARPIT_MS', 800),
+      // تارپیت برای ادمین واقعی فقط تاخیر می‌سازد — پیش‌فرض خاموش
+      enabled: envFlag('WAF_TARPIT', false),
+      delayMs: envInt('WAF_TARPIT_MS', 400),
     },
   },
 
-  // payload مبهم / double-encode / shellcode
   entropy: {
-    minLength: 24,
-    shellcodeThreshold: 6.5,
-    encodedThreshold: 5.6,
-    b64Threshold: 6.0,
+    minLength: 48,
+    shellcodeThreshold: 7.2,
+    encodedThreshold: 6.2,
+    b64Threshold: 6.5,
   },
 
-  // encoding-mix روی کوکی/توکن حساس است؛ آستانه بالا + پچ skip کوکی sid
   heuristic: {
-    encodingMixThreshold: 6,
-    nestingDepthThreshold: 6,
-    keywordDensityThreshold: 3,
-    operatorStormThreshold: 15,
+    encodingMixThreshold: 12,
+    nestingDepthThreshold: 10,
+    keywordDensityThreshold: 8,
+    operatorStormThreshold: 40,
   },
 
-  // فازیگ و replay اسکنر (مثل راند حملهٔ جعبه‌سیاه)
+  // عملاً خاموش برای UI واقعی (اسکنر فازی همچنان با آستانه خیلی بالا)
   mutation: {
     windowMs: 60_000,
-    maxVariants: 4,
-    levenshteinThreshold: 8,
-    replayThreshold: 8,
+    maxVariants: envInt('WAF_MUTATION_MAX', 80),
+    levenshteinThreshold: 2,
+    replayThreshold: envInt('WAF_REPLAY_MAX', 80),
   },
 
-  // الگوی زمانی بات/اسکنر — نه کاربر معمولی UI
   rhythm: {
-    sampleSize: 12,
-    machineStddevThreshold: 40,
-    burstWindowMs: 150,
-    lowSlowJitterMs: 8,
+    sampleSize: 30,
+    machineStddevThreshold: 5,
+    burstWindowMs: 40,
+    lowSlowJitterMs: 1,
   },
 };
 
+function normalizeReqPath(req) {
+  const raw = String(req.originalUrl || req.url || req.path || '/').split('?')[0];
+  if (!raw) return '/';
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function hasAppSessionCookie(req) {
+  const cookie = String(req.headers?.cookie || '');
+  return /(?:^|;\s*)(?:sid|__Host-sid|__Secure-sid|connect\.sid)=/i.test(cookie);
+}
+
 /**
- * پاسخ بلاک WAF را برای کلاینت عمومی می‌کند — بدون rule / blocked / پیام انگلیسی فنی.
- * جزئیات فقط در waf.log و SecurityLog می‌ماند.
+ * آیا این درخواست جزء سطح اپ است و نباید WAF بلاکش کند؟
  */
+function isAppSurfacePath(p) {
+  if (!p || p === '/') return true;
+  const prefixes = [
+    '/api/',
+    '/admin',
+    '/user',
+    '/assets/',
+    '/spa/',
+    '/vendor/',
+    '/css/',
+    '/js/',
+    '/login',
+    '/logout',
+    '/complete-profile',
+    '/foods',
+    '/unavailable',
+    '/service-unavailable',
+    '/healthz',
+    '/favicon.ico',
+  ];
+  return prefixes.some((pre) => p === pre || p.startsWith(pre));
+}
+
 function createSafeWafResponseMiddleware() {
   return function safeWafResponse(req, res, next) {
     const originalJson = res.json.bind(res);
@@ -180,10 +194,20 @@ function createSafeWafResponseMiddleware() {
           || (typeof body.rule === 'string' && /waf|blocked by waf/i.test(String(body.message || '')))
           || /Request blocked by WAF/i.test(String(body.message || ''));
         if (isWafBlock) {
+          // اگر سطح اپ بود ولی به هر دلیل بلاک شد — عبور نرم (نباید UI ادمین بشکند)
+          if (req.wafTrusted || isAppSurfacePath(normalizeReqPath(req))) {
+            if (!res.statusCode || res.statusCode >= 400) res.status(200);
+            return originalJson({
+              success: false,
+              message: 'درخواست توسط لایه امنیتی رد شد؛ دوباره تلاش کنید.',
+              code: 'WAF_SOFT',
+            });
+          }
           if (!res.statusCode || res.statusCode === 200) res.status(403);
           return originalJson({
             success: false,
             message: 'درخواست مجاز نیست',
+            code: 'WAF_BLOCKED',
           });
         }
       }
@@ -194,36 +218,24 @@ function createSafeWafResponseMiddleware() {
 }
 
 /**
- * firewtwall فیلد bypassPaths را خودش اجرا نمی‌کند — قبل از زنجیره علامت trusted می‌زنیم.
- * کل /api/* را trust می‌کنیم: اسکنر WAF روی ObjectId / متن فارسی / CSRF false-positive می‌دهد
- * و پنل را با «درخواست مجاز نیست» می‌بندد. محدودیت واقعی با auth + CSRF + rateLimiter اپ است.
+ * قبل از کل زنجیره firewtwall: سطح اپ و نشست لاگین‌شده را trusted کن.
+ * firewtwall خودش bypassPaths را اجرا نمی‌کند.
  */
 function createPathBypassMiddleware(bypassPaths = []) {
   const exact = new Set(bypassPaths.filter(Boolean));
-  const prefixes = [
-    '/vendor/',
-    '/css/',
-    '/js/',
-    '/assets/',
-    '/spa/assets/',
-    '/admin/',
-    '/user/',
-    '/api/',
-  ];
   return function wafPathBypass(req, _res, next) {
-    const p = req.path || '';
-    if (exact.has(p) || prefixes.some((pre) => p === pre.slice(0, -1) || p.startsWith(pre))) {
+    const p = normalizeReqPath(req);
+    if (
+      exact.has(p)
+      || isAppSurfacePath(p)
+      || hasAppSessionCookie(req)
+    ) {
       req.wafTrusted = true;
     }
     next();
   };
 }
 
-/**
- * WAF Gate — بر اساس وضعیت runtime (از WafStateService) تصمیم می‌گیرد
- * آیا درخواست از WAF رد شود یا skip شود.
- * این middleware قبل از WAF stack قرار می‌گیرد.
- */
 function createWafGateMiddleware() {
   return function wafGate(req, _res, next) {
     if (!isWafRuntimeEnabled()) {
@@ -234,7 +246,6 @@ function createWafGateMiddleware() {
 }
 
 function createAppWaf() {
-  // WAF stack همیشه ساخته می‌شود — gate middleware وضعیت runtime را کنترل می‌کند
   applyFirewtwallPatches();
   startWafLogBridge(WAF_LOG_PATH);
   const stack = createWAF(WAF_OPTIONS).map((mw) => (
@@ -245,10 +256,10 @@ function createAppWaf() {
   return [
     createSafeWafResponseMiddleware(),
     createWafGateMiddleware(),
-    createWafScrubMiddleware(),
+    // مهم: bypass قبل از scrub/stack تا rhythm/ddos اصلاً اجرا نشوند
     createPathBypassMiddleware(WAF_OPTIONS.bypassPaths),
+    createWafScrubMiddleware(),
     ...stack,
-    // مهم: بعد از WAF و قبل از روت‌ها — وگرنه weekId/id از query/body گم می‌ماند
     createWafRestoreMiddleware(),
   ];
 }
@@ -260,6 +271,7 @@ function isWafEnabled() {
 module.exports = {
   createAppWaf,
   isWafEnabled,
+  isAppSurfacePath,
   WAF_LOG_PATH,
   WAF_OPTIONS,
 };

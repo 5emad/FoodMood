@@ -268,22 +268,21 @@ migrate_env_keys() {
   fi
 
   ensure_env_default TZ Asia/Tehran
-  ensure_env_default API_RATE_LIMIT_MAX 400
-  ensure_env_default WAF_RATE_LIMIT_MAX 400
+  ensure_env_default API_RATE_LIMIT_MAX 800
+  ensure_env_default WAF_RATE_LIMIT_MAX 2000
+  ensure_env_default WAF_BURST_MAX 120
+  ensure_env_default WAF_FP_MAX 500
   ensure_env_default CLUSTER_WORKERS 0
   ensure_env_default MONGODB_MAX_POOL_SIZE 50
   ensure_env_default MONGODB_MIN_POOL_SIZE 5
   ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
+  # WAF false-positives were breaking admin UI — keep off until superadmin enables in panel
+  ensure_env_force WAF_ENABLED 'false'
+  ensure_env_default WAF_TARPIT 'false'
   # Point Mongo URI at host loopback if a Docker hostname remained
   if declare -F normalize_mongodb_uri_to_localhost >/dev/null 2>&1; then
     normalize_mongodb_uri_to_localhost
-  fi
-  if ! grep -q '^WAF_ENABLED=' "$env_file" 2>/dev/null; then
-    echo 'WAF_ENABLED=true' >> "$env_file"
-    chown "$APP_USER:$APP_USER" "$env_file"
-    chmod 600 "$env_file"
-    log_info "Added WAF_ENABLED=true (set false to disable WAF)"
   fi
 }
 

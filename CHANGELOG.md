@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.15] - 2026-07-26
+
+### Fixed
+- WAF no longer blocks admin panel navigation: trust entire app surface (`/api`, `/admin`, `/user`, static, session cookies) before firewtwall runs
+- Soften entropy/heuristic/mutation/rhythm; tarpit off by default; higher rate ceilings
+- Default WAF off (`WAF_ENABLED=false` on update + `appsettings.wafEnabled` default false) until superadmin enables it intentionally
+
 ## [1.9.14] - 2026-07-26
 
 ### Fixed

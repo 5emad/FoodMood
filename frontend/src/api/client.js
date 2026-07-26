@@ -63,6 +63,16 @@ export async function api(url, options = {}) {
     return body || { success: false, message: 'دسترسی مجاز نیست' };
   }
 
+  // WAF false-positive on app surface — don't look like a hard auth failure
+  if (body?.code === 'WAF_SOFT' || body?.code === 'WAF_BLOCKED') {
+    return {
+      success: false,
+      message: body.message || 'لایه امنیتی درخواست را رد کرد',
+      code: body.code,
+      _httpStatus: res.status,
+    };
+  }
+
   if (body && typeof body === 'object') {
     return { ...body, _httpStatus: res.status };
   }

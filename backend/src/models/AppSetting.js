@@ -78,7 +78,7 @@ const appSettingSchema = new mongoose.Schema({
   },
   wafEnabled: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   ldapEnabled: {
     type: Boolean,

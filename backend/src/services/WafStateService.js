@@ -5,7 +5,7 @@
  * مقدار از DB خوانده و در حافظه cache می‌شود تا در هر request کوئری نزنیم.
  */
 
-let _wafEnabled = true; // پیش‌فرض: فعال
+let _wafEnabled = false; // پیش‌فرض: خاموش تا sync از DB/env انجام شود
 let _synced = false;
 
 /**
@@ -45,16 +45,25 @@ async function syncWafStateFromDb() {
     console.warn('[WAF] غیرفعال توسط WAF_ENABLED env');
     return;
   }
+  if (['true', '1', 'on', 'yes'].includes(envVal)) {
+    _wafEnabled = true;
+    _synced = true;
+    console.warn('[WAF] فعال توسط WAF_ENABLED env');
+    return;
+  }
 
   try {
     const AppSetting = require('../models/AppSetting');
     const settings = await AppSetting.findOne({ key: 'default' }).select('wafEnabled').lean();
     if (settings && typeof settings.wafEnabled === 'boolean') {
       _wafEnabled = settings.wafEnabled;
+    } else {
+      // پیش‌فرض امن برای پنل: خاموش تا سوپرادمین عمداً روشن کند
+      _wafEnabled = false;
     }
-    // اگر فیلد وجود نداشت، پیش‌فرض true باقی می‌ماند
   } catch (err) {
-    console.warn('[WAF] خطا در خواندن وضعیت از DB — پیش‌فرض فعال:', err.message);
+    console.warn('[WAF] خطا در خواندن وضعیت از DB — پیش‌فرض خاموش:', err.message);
+    _wafEnabled = false;
   }
   _synced = true;
 }
