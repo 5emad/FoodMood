@@ -1492,7 +1492,11 @@ class AdminController {
 
       await saveCustomCertificate(certFile.buffer, keyFile.buffer);
       await applyCustomCertificate();
-      await refreshOriginPublicUrlCache();
+      try {
+        await refreshOriginPublicUrlCache();
+      } catch {
+        /* non-fatal after SSL apply */
+      }
 
       res.json({
         success: true,
@@ -1500,8 +1504,9 @@ class AdminController {
         data: await getSslStatus(),
       });
     } catch (error) {
-      if (error.expose || (Number(error.status) > 0 && Number(error.status) < 500)) {
-        return res.status(error.status || 400).json({ success: false, message: error.message });
+      if (error.expose || (Number(error.status) > 0 && Number(error.status) < 600)) {
+        const status = Number(error.status) || 400;
+        return res.status(status >= 500 ? 503 : status).json({ success: false, message: error.message });
       }
       next(error);
     }

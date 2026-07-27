@@ -42,15 +42,6 @@ if ! verify_cert_key_match "$CERT" "$KEY"; then
   exit 1
 fi
 
-chmod 644 "$CERT"
-chmod 640 "$KEY"
-chown root:root "$CERT" "$KEY"
-if getent group ssl-cert >/dev/null 2>&1; then
-  chgrp ssl-cert "$KEY"
-elif id www-data >/dev/null 2>&1; then
-  chgrp www-data "$KEY"
-fi
-
 detect_server_ip() {
   local ip app_url
   if [[ -f "${INSTALL_DIR}/.env" ]]; then
@@ -70,6 +61,14 @@ detect_server_ip() {
 
 SERVER_IP="$(detect_server_ip)"
 configure_dual_stack "$SERVER_IP" "$INSTALL_DIR" "$APP_USER"
+
+# Keep upload copies writable by the app user (panel re-upload); Nginx uses /etc/nginx/ssl/ copies.
+if id "$APP_USER" >/dev/null 2>&1; then
+  chown "${APP_USER}:${APP_USER}" "$CERT" "$KEY"
+fi
+chmod 644 "$CERT"
+chmod 600 "$KEY"
+
 systemctl restart "$SERVICE_NAME"
 
 CERT_HOST="$(extract_cert_primary_host "$CERT" 2>/dev/null || true)"

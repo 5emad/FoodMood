@@ -111,12 +111,25 @@ resolve_ssl_certificate_paths() {
 
 ensure_ssl_storage_permissions() {
   local install_dir="$1"
+  local app_user="${2:-foodapp}"
   mkdir -p "${install_dir}/certs/ssl"
   chmod 755 "${install_dir}" 2>/dev/null || true
   chmod 755 "${install_dir}/certs" 2>/dev/null || true
   chmod 755 "${install_dir}/certs/ssl" 2>/dev/null || true
+  if id "$app_user" >/dev/null 2>&1; then
+    chown "$app_user:$app_user" "${install_dir}/certs" "${install_dir}/certs/ssl" 2>/dev/null || true
+  fi
   if [[ -f "${install_dir}/certs/ssl/custom.crt" ]]; then
     chmod 644 "${install_dir}/certs/ssl/custom.crt" 2>/dev/null || true
+    if id "$app_user" >/dev/null 2>&1; then
+      chown "$app_user:$app_user" "${install_dir}/certs/ssl/custom.crt" 2>/dev/null || true
+    fi
+  fi
+  if [[ -f "${install_dir}/certs/ssl/custom.key" ]]; then
+    chmod 600 "${install_dir}/certs/ssl/custom.key" 2>/dev/null || true
+    if id "$app_user" >/dev/null 2>&1; then
+      chown "$app_user:$app_user" "${install_dir}/certs/ssl/custom.key" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -450,7 +463,7 @@ repair_tls_deployment() {
   local install_dir="$2"
   local app_user="$3"
 
-  ensure_ssl_storage_permissions "$install_dir"
+  ensure_ssl_storage_permissions "$install_dir" "$app_user"
 
   local custom_cert="${install_dir}/certs/ssl/custom.crt"
   local custom_key="${install_dir}/certs/ssl/custom.key"

@@ -168,10 +168,10 @@ async function saveCustomCertificate(certBuffer, keyBuffer) {
   const certText = certBuffer.toString('utf8').trim();
   const keyText = keyBuffer.toString('utf8').trim();
   if (!certText.includes('BEGIN CERTIFICATE')) {
-    throw Object.assign(new Error('فایل گواهی معتبر نیست (فرمت PEM)'), { status: 400 });
+    throw Object.assign(new Error('فایل گواهی معتبر نیست (فرمت PEM)'), { status: 400, expose: true });
   }
   if (!keyText.includes('BEGIN') || !keyText.includes('PRIVATE KEY')) {
-    throw Object.assign(new Error('فایل کلید خصوصی معتبر نیست (فرمت PEM)'), { status: 400 });
+    throw Object.assign(new Error('فایل کلید خصوصی معتبر نیست (فرمت PEM)'), { status: 400, expose: true });
   }
 
   let matched = false;
@@ -181,11 +181,21 @@ async function saveCustomCertificate(certBuffer, keyBuffer) {
     throw Object.assign(new Error('openssl روی سرور در دسترس نیست؛ نصب openssl الزامی است'), { status: 503, expose: true });
   }
   if (!matched) {
-    throw Object.assign(new Error('گواهی و کلید خصوصی با هم مطابقت ندارند'), { status: 400 });
+    throw Object.assign(new Error('گواهی و کلید خصوصی با هم مطابقت ندارند'), { status: 400, expose: true });
   }
 
-  fs.writeFileSync(CUSTOM_CERT, `${certText}\n`, { mode: 0o644 });
-  fs.writeFileSync(CUSTOM_KEY, `${keyText}\n`, { mode: 0o640 });
+  try {
+    fs.writeFileSync(CUSTOM_CERT, `${certText}\n`, { mode: 0o644 });
+    fs.writeFileSync(CUSTOM_KEY, `${keyText}\n`, { mode: 0o600 });
+  } catch (err) {
+    if (err && err.code === 'EACCES') {
+      throw Object.assign(
+        new Error('دسترسی نوشتن گواهی روی سرور نیست؛ یک‌بار update.sh را اجرا کنید'),
+        { status: 503, expose: true },
+      );
+    }
+    throw err;
+  }
 }
 
 function logSslEvent(level, message, detail) {
