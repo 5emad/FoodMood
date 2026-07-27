@@ -325,11 +325,14 @@ async function uploadSslCertificate(event) {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> در حال نصب...';
   try {
+    const token = typeof getCsrfToken === 'function' ? await getCsrfToken() : '';
+    const headers = { 'X-Requested-With': 'XMLHttpRequest' };
+    if (token) headers['X-CSRF-Token'] = token;
     const res = await fetch('/api/admin/settings/ssl-certificate', {
       method: 'POST',
       body: formData,
       credentials: 'same-origin',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      headers,
     });
     const data = await res.json();
     if (data.success) {

@@ -31,6 +31,14 @@ if ! openssl rsa -in "$KEY" -check -noout >/dev/null 2>&1 \
   exit 1
 fi
 
+# shellcheck source=/dev/null
+source "${INSTALL_DIR}/deploy/nginx-tls.sh"
+
+if ! verify_cert_key_match "$CERT" "$KEY"; then
+  echo "Certificate and private key do not match" >&2
+  exit 1
+fi
+
 chmod 644 "$CERT"
 chmod 640 "$KEY"
 chown root:root "$CERT" "$KEY"
@@ -57,11 +65,13 @@ detect_server_ip() {
   echo "$ip"
 }
 
-# shellcheck source=/dev/null
-source "${INSTALL_DIR}/deploy/nginx-tls.sh"
-
 SERVER_IP="$(detect_server_ip)"
 configure_dual_stack "$SERVER_IP" "$INSTALL_DIR" "$APP_USER"
 systemctl restart "$SERVICE_NAME"
 
-echo "Custom SSL certificate applied for https://${SERVER_IP}"
+CERT_HOST="$(extract_cert_primary_host "$CERT" 2>/dev/null || true)"
+if [[ -n "$CERT_HOST" ]]; then
+  echo "Custom SSL certificate applied for https://${CERT_HOST}"
+else
+  echo "Custom SSL certificate applied for https://${SERVER_IP}"
+fi

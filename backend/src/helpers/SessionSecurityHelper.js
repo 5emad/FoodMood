@@ -1,12 +1,14 @@
 const crypto = require('crypto');
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { revokeUserSessions, touchSession } = require('../services/SessionTokenService');
-const { clearAuthCookies } = require('./AuthCookieHelper');
+const { clearAuthCookies, clearSessionCookie, sessionCookieName } = require('./AuthCookieHelper');
 
 const DEFAULT_IDLE_MINUTES = 15;
 const DEFAULT_MAX_HOURS = 8;
 
-const SESSION_COOKIE_NAME = process.env.NODE_ENV === 'production' ? '__Host-sid' : 'sid';
+function getSessionCookieName() {
+  return sessionCookieName();
+}
 
 function getIdleMs() {
   const minutes = parseInt(process.env.SESSION_IDLE_MINUTES, 10);
@@ -165,12 +167,12 @@ async function invalidateSession(req, res, reason) {
 
   return new Promise((resolve) => {
     if (!req.session) {
-      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/', secure: process.env.TRUST_TLS === 'true' });
+      clearSessionCookie(res);
       clearAuthCookies(res);
       return resolve();
     }
     req.session.destroy(() => {
-      res?.clearCookie?.(SESSION_COOKIE_NAME, { path: '/', secure: process.env.TRUST_TLS === 'true' });
+      clearSessionCookie(res);
       clearAuthCookies(res);
       resolve();
     });
@@ -178,7 +180,8 @@ async function invalidateSession(req, res, reason) {
 }
 
 module.exports = {
-  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_NAME: getSessionCookieName(),
+  getSessionCookieName,
   getIdleMs,
   getMaxMs,
   initSessionSecurity,

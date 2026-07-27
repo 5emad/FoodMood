@@ -296,7 +296,16 @@ if (process.env.ALLOW_SYSTEM_TEST === 'true' && !isProduction) {
 }
 
 app.get('/api/auth/csrf', (req, res) => {
-  res.json({ success: true, csrfToken: ensureCsrfToken(req) });
+  if (!req.session) {
+    return res.status(500).json({ success: false, message: 'نشست امنیتی برقرار نشد' });
+  }
+  const csrfToken = ensureCsrfToken(req);
+  req.session.save((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'نشست امنیتی برقرار نشد' });
+    }
+    res.json({ success: true, csrfToken });
+  });
 });
 
 const appConfigRoutes = require('./src/routes/appConfigRoutes');

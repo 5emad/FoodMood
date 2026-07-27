@@ -148,6 +148,7 @@
   }
 
   window.api = api;
+  window.getCsrfToken = getCsrfToken;
   window.esc = esc;
   window.renderPaginationBar = renderPaginationBar;
   window.notify = notify;

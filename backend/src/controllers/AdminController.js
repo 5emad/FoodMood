@@ -1476,7 +1476,7 @@ class AdminController {
 
   static async getSslStatus(req, res, next) {
     try {
-      res.json({ success: true, data: getSslStatus() });
+      res.json({ success: true, data: await getSslStatus() });
     } catch (error) {
       next(error);
     }
@@ -1497,7 +1497,7 @@ class AdminController {
       res.json({
         success: true,
         message: 'گواهی SSL نصب شد. Nginx و سرویس بروزرسانی شدند.',
-        data: getSslStatus(),
+        data: await getSslStatus(),
       });
     } catch (error) {
       if (Number(error.status) > 0 && Number(error.status) < 500) {

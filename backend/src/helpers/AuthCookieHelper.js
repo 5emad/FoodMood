@@ -85,6 +85,19 @@ function clearAuthCookies(res) {
   // legacy names
   res.clearCookie('fm-auth', { path: '/', sameSite: 'strict' });
   res.clearCookie('fm-role', { path: '/', sameSite: 'strict' });
+  res.clearCookie('__Host-fm-auth', { path: '/', secure: true, sameSite: 'strict', httpOnly: true });
+  res.clearCookie('__Host-fm-role', { path: '/', secure: true, sameSite: 'strict', httpOnly: true });
+}
+
+function sessionCookieName() {
+  return prefersSecureCookies() ? '__Host-sid' : 'sid';
+}
+
+function clearSessionCookie(res) {
+  if (!res?.clearCookie) return;
+  const secure = prefersSecureCookies();
+  res.clearCookie('sid', { path: '/', sameSite: 'strict' });
+  res.clearCookie('__Host-sid', { path: '/', secure, sameSite: 'strict', httpOnly: true });
 }
 
 function readAuthTokenFromCookie(req) {
@@ -121,8 +134,11 @@ function isSuperadminRequest(req) {
 module.exports = {
   authCookieName,
   roleCookieName,
+  sessionCookieName,
+  prefersSecureCookies,
   setAuthCookies,
   clearAuthCookies,
+  clearSessionCookie,
   readAuthTokenFromCookie,
   readRoleFromCookie,
   isSuperadminRequest,
