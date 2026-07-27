@@ -310,13 +310,38 @@ export default function UserDashboardPage() {
           </div>
 
           <nav className="user-tabs user-tabs--vertical" role="tablist" aria-label="بخش‌های پرتال">
-            <button type="button" role="tab" aria-selected={tab === 'menu'} className={`tab-button${tab === 'menu' ? ' active' : ''}`} onClick={() => goTab('menu')}>
-              <span className="tab-button-ico"><i className="fas fa-utensils" /></span>
-              <span className="tab-button-copy">
-                <span className="tab-button-label">رزرو غذا</span>
-                <span className="tab-button-hint">برنامه غذایی</span>
-              </span>
-            </button>
+            <div className={`user-nav-group is-open${tab === 'menu' ? ' is-active' : ''}`}>
+              <button type="button" role="tab" aria-selected={tab === 'menu'} className={`tab-button${tab === 'menu' ? ' active' : ''}`} onClick={() => goTab('menu')}>
+                <span className="tab-button-ico"><i className="fas fa-utensils" /></span>
+                <span className="tab-button-copy">
+                  <span className="tab-button-label">رزرو غذا</span>
+                </span>
+              </button>
+              {activeWeeks.length > 0 && (
+                <div className="user-nav-sub" role="group" aria-label="هفته‌های فعال">
+                  {activeWeeks.map((w) => {
+                    const id = String(w._id);
+                    const label = w.name || `${w.jalaliStart} تا ${w.jalaliEnd}`;
+                    const isSelected = tab === 'menu' && String(selectedWeekId) === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`user-nav-sub-link${isSelected ? ' is-active' : ''}`}
+                        onClick={() => {
+                          goTab('menu');
+                          selectWeek(id);
+                        }}
+                        title={label}
+                      >
+                        <i className="fas fa-calendar-week" aria-hidden="true" />
+                        <span>{w.jalaliStart} تا {w.jalaliEnd}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <button type="button" role="tab" aria-selected={tab === 'orders'} className={`tab-button${tab === 'orders' ? ' active' : ''}`} onClick={() => goTab('orders')}>
               <span className="tab-button-ico"><i className="fas fa-clipboard-list" /></span>
               <span className="tab-button-copy">
@@ -399,23 +424,8 @@ export default function UserDashboardPage() {
               <header className="portal-stage-header">
                 <div>
                   <h1 className="portal-stage-title">{weekLabel}</h1>
-                  <p className="portal-stage-lead">روز را انتخاب کنید، غذای هر دسته را ببینید و رزرو کنید.</p>
                 </div>
               </header>
-              {activeWeeks.length > 1 && (
-                <div className="sub-tabs" style={{ marginBottom: 16 }} role="tablist" aria-label="هفته‌های فعال">
-                  {activeWeeks.map((w) => (
-                    <button
-                      key={w._id}
-                      type="button"
-                      className={`sub-tab-btn${String(selectedWeekId) === String(w._id) ? ' active' : ''}`}
-                      onClick={() => selectWeek(w._id)}
-                    >
-                      {w.jalaliStart} تا {w.jalaliEnd}
-                    </button>
-                  ))}
-                </div>
-              )}
               <CategoryWeekMenuSlider
                 menu={menu}
                 categories={categories}
