@@ -39,7 +39,7 @@ function renderFinanceStatementHtml(report = {}) {
       <td>${Number(user.mealCount || 0).toLocaleString('fa-IR')}</td>
       <td>${formatMoney(user.grossTotal)}</td>
       <td>${formatMoney(user.organizationAmount)}</td>
-      <td>${formatMoney(user.personalAmount)}</td>
+      <td>${formatMoney(user.personalAmount)}${Number(user.discountPercent || 0) > 0 ? `<br><small>تخفیف ${Number(user.discountPercent).toLocaleString('fa-IR')}٪ (−${formatMoney(user.discountAmount)})</small>` : ''}</td>
     </tr>`;
   }).join('');
 

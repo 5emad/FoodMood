@@ -122,11 +122,24 @@ export default function WeeksTab() {
 
   async function activate(id) {
     try {
-      const data = await api(`/api/admin/weeks/${id}/activate`, { method: 'POST' });
-      if (data.success) { toast('هفته فعال شد', 'success'); load(); }
+      const data = await api(`/api/admin/weeks/${id}/activate`, { method: 'POST', body: JSON.stringify({}) });
+      if (data.success) { toast(data.message || 'هفته فعال شد', 'success'); load(); }
       else toast(data.message || 'خطا در فعال‌سازی هفته', 'error');
     } catch (err) {
       toast(err?.message || 'خطا در فعال‌سازی هفته', 'error');
+    }
+  }
+
+  async function deactivate(id) {
+    try {
+      const data = await api(`/api/admin/weeks/${id}/activate`, {
+        method: 'POST',
+        body: JSON.stringify({ deactivate: true }),
+      });
+      if (data.success) { toast(data.message || 'هفته غیرفعال شد', 'success'); load(); }
+      else toast(data.message || 'خطا در غیرفعال‌سازی هفته', 'error');
+    } catch (err) {
+      toast(err?.message || 'خطا در غیرفعال‌سازی هفته', 'error');
     }
   }
 
@@ -415,7 +428,7 @@ export default function WeeksTab() {
                             <i className="far fa-calendar-alt" />
                             <span>{MONTHS[month - 1] || month}</span>
                             <span className="tree-count">{faDigits(list.length)} هفته</span>
-                            {hasActive && <span className="badge badge-success">هفته فعال</span>}
+                            {hasActive && <span className="badge badge-success">دارای هفته فعال</span>}
                           </button>
                           <div className="tree-children tree-weeks">
                             {list.map((w) => (
@@ -429,9 +442,13 @@ export default function WeeksTab() {
                                     <button type="button" className="btn btn-outline btn-sm" onClick={() => toggleEditor(w._id)}>
                                       <i className="fas fa-utensils" /> مدیریت غذاها
                                     </button>
-                                    {!w.isActive && (
+                                    {!w.isActive ? (
                                       <button type="button" className="btn btn-success btn-sm" onClick={() => activate(w._id)}>
                                         <i className="fas fa-check-circle" /> فعال کردن
+                                      </button>
+                                    ) : (
+                                      <button type="button" className="btn btn-outline btn-sm" onClick={() => deactivate(w._id)}>
+                                        <i className="fas fa-pause-circle" /> غیرفعال
                                       </button>
                                     )}
                                     <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(w._id)}>

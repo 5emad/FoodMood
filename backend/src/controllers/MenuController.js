@@ -39,11 +39,42 @@ async function attachMenuItems(dailyMenus, settings) {
 }
 
 class MenuController {
+  static async listActiveWeeks(req, res, next) {
+    try {
+      const weeks = await Week.find({ $or: [{ isActive: true }, { status: 'active' }] })
+        .sort({ startDate: 1 })
+        .lean();
+      const { formatJalaliDate } = require('../helpers/DateHelper');
+      res.json({
+        success: true,
+        data: weeks.map((week) => ({
+          _id: week._id,
+          name: week.name,
+          weekNumber: week.weekNumber,
+          startDate: week.startDate,
+          endDate: week.endDate,
+          jalaliStart: formatJalaliDate(week.startDate),
+          jalaliEnd: formatJalaliDate(week.endDate),
+          isActive: !!week.isActive,
+        })),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getWeeklyMenu(req, res, next) {
     try {
-      const week = req.params.weekId
-        ? await Week.findById(req.params.weekId).lean()
-        : await Week.findOne({ $or: [{ isActive: true }, { status: 'active' }] }).lean();
+      const requestedWeekId = req.params.weekId || req.query.weekId || '';
+      let week;
+      if (requestedWeekId) {
+        week = await Week.findById(requestedWeekId).lean();
+      } else {
+        const activeWeeks = await Week.find({ $or: [{ isActive: true }, { status: 'active' }] })
+          .sort({ startDate: 1 })
+          .lean();
+        week = activeWeeks[0] || null;
+      }
 
       if (!week) {
         return res.status(404).json({ message: 'برنامه فعالی وجود ندارد' });

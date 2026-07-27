@@ -15,6 +15,46 @@ const {
   isConfirmedReportOrder,
   CONFIRMED_REPORT_STATUSES,
 } = require('../services/ReportService');
+const {
+  getDiscount,
+  applyDiscountToAmounts,
+} = require('../services/StatementDiscountService');
+const { isLdapAuth } = require('../helpers/AuthUserHelper');
+const { normalizePeriodKey } = require('../helpers/StatementNumberHelper');
+
+function financeUserKeyFromUser(user = {}) {
+  if (isLdapAuth(user)) return `ldap:${user.username}`;
+  return String(user.id || user._id || '');
+}
+
+async function attachStatementDiscount(statement, user, periodType, periodKey) {
+  const userKey = financeUserKeyFromUser(user);
+  const key = normalizePeriodKey(periodType, periodKey, {
+    jalaliFrom: statement.range?.jalaliStart,
+    jalaliTo: statement.range?.jalaliEnd,
+  });
+  const stored = await getDiscount(userKey, periodType, key);
+  const percent = Number(stored?.discountPercent || 0);
+  const applied = applyDiscountToAmounts({
+    grossTotal: statement.summary?.grossTotal,
+    organizationAmount: statement.summary?.organizationAmount,
+    personalAmount: statement.summary?.personalAmount,
+    discountPercent: percent,
+  });
+  return {
+    ...statement,
+    userKey,
+    periodType,
+    periodKey: key,
+    summary: {
+      ...statement.summary,
+      ...applied,
+    },
+    discountPercent: applied.discountPercent,
+    discountAmount: applied.discountAmount,
+    hasDiscount: applied.discountPercent > 0,
+  };
+}
 
 const persianMonthNames = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
@@ -180,7 +220,7 @@ async function buildUserStatement(user, query = {}, settings = {}) {
     ? String(query.weekId || '')
     : (query.jalaliFrom || formatJalaliDate(range.start));
 
-  return {
+  const base = {
     statementNumber: buildStatementNumber(user, periodType, periodKey, {
       jalaliFrom: query.jalaliFrom || formatJalaliDate(range.start),
       jalaliTo: query.jalaliTo || formatJalaliDate(range.end),
@@ -200,6 +240,8 @@ async function buildUserStatement(user, query = {}, settings = {}) {
     summary,
     items,
   };
+
+  return attachStatementDiscount(base, user, periodType, periodKey);
 }
 
 async function listUserStatements(user, type = 'week', settings = {}) {
@@ -225,7 +267,7 @@ async function listUserStatements(user, type = 'week', settings = {}) {
       );
       if (!summary.mealCount) continue;
 
-      statements.push({
+      const base = {
         statementNumber: buildStatementNumber(user, 'month', month.key),
         periodType: 'month',
         periodKey: month.key,
@@ -238,7 +280,8 @@ async function listUserStatements(user, type = 'week', settings = {}) {
         },
         split: { organizationSharePercent, personalSharePercent },
         summary,
-      });
+      };
+      statements.push(await attachStatementDiscount(base, user, 'month', month.key));
     }
     return statements;
   }
@@ -253,7 +296,7 @@ async function listUserStatements(user, type = 'week', settings = {}) {
     );
     if (!summary.mealCount) continue;
 
-    statements.push({
+    const base = {
       statementNumber: buildStatementNumber(user, 'week', String(week.weekId)),
       periodType: 'week',
       periodKey: String(week.weekId),
@@ -267,7 +310,8 @@ async function listUserStatements(user, type = 'week', settings = {}) {
       split: { organizationSharePercent, personalSharePercent },
       summary,
       isActive: !!week.isActive,
-    });
+    };
+    statements.push(await attachStatementDiscount(base, user, 'week', String(week.weekId)));
   }
 
   return statements;

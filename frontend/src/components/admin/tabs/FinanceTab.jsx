@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, apiBlob, downloadBlob } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import SectionHeader from '../shared/SectionHeader';
@@ -17,6 +17,9 @@ export default function FinanceTab() {
   const [monthVal, setMonthVal] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [discountDrafts, setDiscountDrafts] = useState({});
+  const [savingKey, setSavingKey] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -51,7 +54,16 @@ export default function FinanceTab() {
       url += weekId ? `weekId=${weekId}` : 'type=week';
     }
     const res = await api(url);
-    setData(res.success ? res.data : null);
+    if (res.success) {
+      setData(res.data);
+      const drafts = {};
+      (res.data?.users || []).forEach((u) => {
+        drafts[u.userKey] = String(u.discountPercent || 0);
+      });
+      setDiscountDrafts(drafts);
+    } else {
+      setData(null);
+    }
   }
 
   async function saveSettings() {
@@ -81,11 +93,55 @@ export default function FinanceTab() {
     } catch { toast('خطا در PDF', 'error'); }
   }
 
-  if (loading) return <AdminSpinner />;
+  async function saveDiscount(row) {
+    const periodType = data?.type === 'month' ? 'month' : 'week';
+    const periodKey = data?.periodKey
+      || (periodType === 'week' ? weekId : (monthVal.split('|')[0] || ''));
+    const percent = Number(discountDrafts[row.userKey]);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      toast('درصد تخفیف باید بین ۰ تا ۱۰۰ باشد', 'error');
+      return;
+    }
+    setSavingKey(row.userKey);
+    const res = await api('/api/admin/finance-statements/discount', {
+      method: 'POST',
+      body: JSON.stringify({
+        userKey: row.userKey,
+        periodType,
+        periodKey,
+        discountPercent: percent,
+      }),
+    });
+    setSavingKey('');
+    if (!res.success) {
+      toast(res.message || 'خطا در ذخیره تخفیف', 'error');
+      return;
+    }
+    toast(res.message || 'تخفیف ذخیره شد', 'success');
+    await loadStatements();
+  }
 
   const summary = data?.summary || {};
   const split = data?.split || {};
   const users = data?.users || [];
+  const filteredUsers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const hay = [
+        u.fullName,
+        u.username,
+        u.department,
+        u.statementNumber,
+        u.guestCode,
+        u.kind === 'guest' ? 'مهمان' : 'پرسنل',
+      ].join(' ').toLowerCase();
+      return hay.includes(q);
+    });
+  }, [users, search]);
+
+  if (loading) return <AdminSpinner />;
+
   const org = Number(settings.organizationSharePercent || 0);
   const personal = 100 - org;
   const orgSplit = Number(split.organizationSharePercent ?? org);
@@ -94,7 +150,7 @@ export default function FinanceTab() {
 
   return (
     <section id="tab-finance" className="tab-pane active">
-      <SectionHeader title="مالی و حسابداری" sub="تنظیم سهم پرداخت و صدور صورتحساب کاربران" />
+      <SectionHeader title="مالی و حسابداری" sub="تنظیم سهم پرداخت، جستجوی صورتحساب و تخفیف" />
       <div className="finance-layout">
         <aside className="finance-sidebar card">
           <div className="card-header"><div className="card-title"><i className="fas fa-sliders" /> تنظیمات سهم</div></div>
@@ -116,7 +172,7 @@ export default function FinanceTab() {
               </div>
             </div>
             <button className="btn btn-primary btn-w100" type="button" id="financeSaveBtn" onClick={saveSettings}><i className="fas fa-save" /> ذخیره تنظیمات</button>
-            <p className="finance-sidebar-note"><i className="fas fa-circle-info" aria-hidden="true" /><span>فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند.</span></p>
+            <p className="finance-sidebar-note"><i className="fas fa-circle-info" aria-hidden="true" /><span>فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند. تخفیف از سهم شخص کم می‌شود.</span></p>
           </div>
         </aside>
         <div className="finance-main card">
@@ -136,6 +192,13 @@ export default function FinanceTab() {
                   {months.map((m) => <option key={`${m.from}|${m.to}`} value={`${m.from}|${m.to}`}>{m.label}</option>)}
                 </select>
               )}
+              <input
+                className="form-control"
+                style={{ minWidth: 180 }}
+                placeholder="جستجو نام، شماره، واحد…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
               <button type="button" className="btn btn-primary btn-sm" id="financePdfAllBtn" onClick={() => downloadPdf()}><i className="fas fa-file-pdf" /> PDF همه</button>
             </div>
           </div>
@@ -148,12 +211,15 @@ export default function FinanceTab() {
                 <div className="mini-card"><div className="stat-label">جمع کل</div><div className="stat-value">{money(summary.grossTotal || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم سازمان ({faDigits(orgSplit)}٪)</div><div className="stat-value">{money(summary.organizationAmount || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم شخص ({faDigits(personalSplit)}٪)</div><div className="stat-value">{money(summary.personalAmount || 0)}</div></div>
+                {Number(summary.discountAmount || 0) > 0 && (
+                  <div className="mini-card"><div className="stat-label">جمع تخفیف</div><div className="stat-value">{money(summary.discountAmount || 0)}</div></div>
+                )}
               </>
             )}
           </div>
           <div className="table-wrap finance-table-wrap" id="financeStatementsWrap">
-            {!users.length ? (
-              <EmptyState icon="fa-file-invoice-dollar" title="صورتحسابی برای این بازه ثبت نشده" desc="پس از تایید سفارش‌های کاربران و مهمان‌ها، صورتحساب‌ها در این بخش نمایش داده می‌شوند." />
+            {!filteredUsers.length ? (
+              <EmptyState icon="fa-file-invoice-dollar" title="صورتحسابی برای این بازه یافت نشد" desc="پس از تایید سفارش‌ها، یا با تغییر عبارت جستجو دوباره امتحان کنید." />
             ) : (
               <table className="table statement-table">
                 <thead>
@@ -166,11 +232,12 @@ export default function FinanceTab() {
                     <th>مبلغ کل</th>
                     <th>پرداختی سازمان</th>
                     <th>پرداختی شخص</th>
+                    <th>تخفیف ٪</th>
                     <th>عملیات</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => {
+                  {filteredUsers.map((u) => {
                     const isGuest = u.kind === 'guest';
                     const typeLabel = isGuest ? `مهمان ${u.guestTypeLabel || ''}`.trim() : 'پرسنل';
                     const typeClass = isGuest ? 'guest-type-chip temporary' : 'guest-status-chip active';
@@ -184,6 +251,11 @@ export default function FinanceTab() {
                               کد: <span className="guest-code-badge">{u.guestCode}</span>
                             </div>
                           )}
+                          {u.hasDiscount && (
+                            <div style={{ fontSize: '.75rem', color: 'var(--primary)', marginTop: 2 }}>
+                              تخفیف {faDigits(u.discountPercent)}٪ (−{money(u.discountAmount)})
+                            </div>
+                          )}
                         </td>
                         <td><span className={typeClass}>{typeLabel}</span></td>
                         <td>{u.department || '-'}</td>
@@ -191,6 +263,28 @@ export default function FinanceTab() {
                         <td>{money(u.grossTotal)}</td>
                         <td className="statement-org-col">{money(u.organizationAmount)}</td>
                         <td className="statement-personal-col">{money(u.personalAmount)}</td>
+                        <td style={{ minWidth: 110 }}>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input
+                              className="form-control"
+                              type="number"
+                              min={0}
+                              max={100}
+                              style={{ width: 72 }}
+                              value={discountDrafts[u.userKey] ?? '0'}
+                              onChange={(e) => setDiscountDrafts((prev) => ({ ...prev, [u.userKey]: e.target.value }))}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              disabled={savingKey === u.userKey}
+                              onClick={() => saveDiscount(u)}
+                              title="اعمال تخفیف"
+                            >
+                              <i className={`fas ${savingKey === u.userKey ? 'fa-circle-notch fa-spin' : 'fa-percent'}`} />
+                            </button>
+                          </div>
+                        </td>
                         <TableActions>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => downloadPdf(u.userKey)} title="دانلود PDF"><i className="fas fa-file-pdf" /></button>
                         </TableActions>

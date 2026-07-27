@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 
 const INSTALL_DIR = process.env.FOOD_INSTALL_DIR || '/opt/food';
 const SSL_DIR = path.join(INSTALL_DIR, 'certs', 'ssl');
-const STAGING_DIR = path.join(SSL_DIR, 'staging');
+const STAGING_DIR = '/tmp/foodmood-ssl-staging';
 const STAGING_CERT = path.join(STAGING_DIR, 'upload.crt');
 const STAGING_KEY = path.join(STAGING_DIR, 'upload.key');
 const CUSTOM_CERT = path.join(SSL_DIR, 'custom.crt');

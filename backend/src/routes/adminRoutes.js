@@ -41,6 +41,7 @@ router.put('/finance-settings', AdminController.updateFinanceSettings);
 router.get('/finance-statements', AdminController.getFinanceStatements);
 router.get('/finance-statements/months', AdminController.getFinanceMonths);
 router.get('/finance-statements/pdf', AdminController.getFinanceStatementPdf);
+router.post('/finance-statements/discount', roleMiddleware(['admin', 'superadmin']), AdminController.setFinanceStatementDiscount);
 router.get('/workspace-settings', AdminController.getWorkspaceSettings);
 router.get('/reports/access', AdminController.getReportsAccess);
 router.get('/reports/months', AdminController.getReportMonths);

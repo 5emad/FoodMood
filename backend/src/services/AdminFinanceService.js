@@ -3,6 +3,11 @@ const { buildReport, isSuperadminReportUser } = require('../services/ReportServi
 const { clampPercent, splitAmount } = require('../services/UserStatementService');
 const { buildStatementNumber, normalizePeriodKey } = require('../helpers/StatementNumberHelper');
 const { nextReportNumber } = require('../helpers/ReportNumberHelper');
+const {
+  loadDiscountMap,
+  applyDiscountMapToRow,
+  summarizeDiscountedRows,
+} = require('../services/StatementDiscountService');
 
 function userActorFromReportRow(row = {}) {
   const userKey = String(row.userId || '');
@@ -107,11 +112,15 @@ async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, quer
   const periodKey = periodKeyFromQuery(query, meta.range || {}, periodType);
   const mappedUsers = mapUsersToFinanceRows(report.byUser, settings, periodType, periodKey);
   const guests = mapGuestsToFinanceRows(report.byGuest, settings, periodType, periodKey);
-  const users = [...mappedUsers.users, ...guests];
-  const summary = summarizeFinanceRows(users);
+  const discountMap = await loadDiscountMap(periodType, periodKey);
+  const users = [...mappedUsers.users, ...guests].map((row) => (
+    applyDiscountMapToRow(row, discountMap, periodType, periodKey)
+  ));
+  const summary = summarizeDiscountedRows(users);
 
   return {
     type: periodType,
+    periodKey,
     title: meta.title || 'صورتحساب مالی',
     range: meta.range || {
       start: rangeStart,
@@ -151,8 +160,12 @@ async function buildAdminFinancePdfPayload(rangeStart, rangeEnd, settings = {}, 
       guestCount: user.kind === 'guest' ? 1 : 0,
       mealCount: user.mealCount,
       grossTotal: user.grossTotal,
+      grossTotalBefore: user.grossTotalBefore || user.grossTotal,
       organizationAmount: user.organizationAmount,
       personalAmount: user.personalAmount,
+      personalAmountBefore: user.personalAmountBefore || user.personalAmount,
+      discountAmount: user.discountAmount || 0,
+      discountPercent: user.discountPercent || 0,
     };
     title = user.kind === 'guest'
       ? `صورتحساب مهمان ${user.fullName} — ${base.title}`

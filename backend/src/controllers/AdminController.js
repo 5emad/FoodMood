@@ -950,9 +950,7 @@ class AdminController {
         normalizedWeekNumber = getPersianWeekNumber(normalizedStart);
       }
 
-      if (isActive || status === 'active') {
-        await Week.updateMany({}, { $set: { isActive: false, status: 'inactive' } });
-      }
+      // Multiple active weeks are allowed — do not clear other weeks.
 
       const weekLabel = name || getJalaliWeekTitle(normalizedStart, normalizedEnd);
 
@@ -1014,12 +1012,24 @@ class AdminController {
       if (!week) {
         return res.status(404).json({ message: 'هفته یافت نشد' });
       }
-      await Week.updateMany({}, { $set: { isActive: false, status: 'inactive' } });
+
+      const wantDeactivate = req.body?.deactivate === true
+        || req.query?.deactivate === '1'
+        || req.body?.isActive === false;
+
+      if (wantDeactivate) {
+        week.isActive = false;
+        week.status = 'inactive';
+        await week.save();
+        return res.json({ success: true, message: 'هفته غیرفعال شد', data: { isActive: false } });
+      }
+
+      // Activate without deactivating other weeks (multi-active).
       week.isActive = true;
       week.status = 'active';
       await week.save();
       await ensureDailyMenus(week);
-      res.json({ success: true, message: 'هفته فعال شد' });
+      res.json({ success: true, message: 'هفته فعال شد', data: { isActive: true } });
     } catch (error) {
       next(error);
     }
@@ -1035,9 +1045,7 @@ class AdminController {
         return res.status(404).json({ message: 'هفته یافت نشد' });
       }
 
-      if (isActive || status === 'active') {
-        await Week.updateMany({ _id: { $ne: id } }, { $set: { isActive: false, status: 'inactive' } });
-      }
+      // Multiple active weeks allowed — do not deactivate others.
 
       week.name = name ?? week.name;
       week.weekNumber = week_number || weekNumber || week.weekNumber;
@@ -1180,6 +1188,43 @@ class AdminController {
     try {
       const months = await getAvailableReportMonths();
       res.json({ success: true, data: months });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async setFinanceStatementDiscount(req, res, next) {
+    try {
+      const { userKey, periodType, periodKey, discountPercent, note } = req.body || {};
+      if (!userKey || !periodType || !periodKey) {
+        return res.status(400).json({
+          success: false,
+          message: 'userKey، periodType و periodKey الزامی است',
+        });
+      }
+      if (!['week', 'month'].includes(periodType)) {
+        return res.status(400).json({ success: false, message: 'نوع دوره نامعتبر است' });
+      }
+      const percent = Number(discountPercent);
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+        return res.status(400).json({ success: false, message: 'درصد تخفیف باید بین ۰ تا ۱۰۰ باشد' });
+      }
+
+      const { upsertDiscount } = require('../services/StatementDiscountService');
+      const saved = await upsertDiscount({
+        userKey,
+        periodType,
+        periodKey,
+        discountPercent: percent,
+        note,
+        updatedBy: req.user?.username || req.session?.username || '',
+      });
+
+      res.json({
+        success: true,
+        message: percent > 0 ? 'تخفیف ذخیره شد' : 'تخفیف حذف شد',
+        data: saved,
+      });
     } catch (error) {
       next(error);
     }

@@ -5,6 +5,7 @@ import { useToast } from '../components/ToastProvider';
 import AppVersionBadge from '../components/AppVersionBadge';
 import CategoryWeekMenuSlider from '../components/CategoryWeekMenuSlider';
 import PortalProfilePanel from '../components/PortalProfilePanel';
+import Pagination from '../components/admin/shared/Pagination';
 import { normalizeUserCapabilities } from '../lib/portalCapabilities';
 import { faDigits, jdate, money } from '../utils/format';
 
@@ -41,7 +42,12 @@ export default function UserDashboardPage() {
   const [version, setVersion] = useState(null);
   const [caps, setCaps] = useState(normalizeUserCapabilities(bootstrapData.capabilities || {}));
   const [menu, setMenu] = useState(null);
+  const [activeWeeks, setActiveWeeks] = useState([]);
+  const [selectedWeekId, setSelectedWeekId] = useState('');
   const [orders, setOrders] = useState([]);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersPagination, setOrdersPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [menuOrders, setMenuOrders] = useState([]);
   const [statements, setStatements] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -117,18 +123,48 @@ export default function UserDashboardPage() {
     }
   }
 
-  async function loadMenu() {
-    const [menuRes, ordersRes] = await Promise.all([
-      api('/api/menu/active'),
+  useEffect(() => {
+    if (tab === 'orders') loadOrdersPage(1);
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'statement' && caps.showStatement) {
+      refreshStatementConfig().then(loadStatements);
+    }
+  }, [tab, stmtSub, caps.showStatement]);
+
+  async function loadMenu(weekId = selectedWeekId) {
+    const [weeksRes, lockOrdersRes] = await Promise.all([
+      api('/api/menu/active-weeks'),
       api('/api/orders'),
     ]);
+    const weeks = weeksRes.success ? (weeksRes.data || []) : [];
+    setActiveWeeks(weeks);
+    setMenuOrders(lockOrdersRes.success ? (lockOrdersRes.data || []) : []);
+
+    let targetId = weekId ? String(weekId) : '';
+    if (!targetId || (weeks.length && !weeks.some((w) => String(w._id) === targetId))) {
+      targetId = weeks[0] ? String(weeks[0]._id) : '';
+    }
+    if (targetId) setSelectedWeekId(targetId);
+
+    const menuRes = targetId
+      ? await api(`/api/menu/weeks/${encodeURIComponent(targetId)}`)
+      : await api('/api/menu/active');
+
     if (!menuRes.success) {
       setMenu(null);
       return;
     }
     setMenu(menuRes.data);
-    setOrders(ordersRes.success ? ordersRes.data : []);
-    const settings = menuRes.data?.settings || {};
+    if (!targetId && menuRes.data?.week?._id) {
+      setSelectedWeekId(String(menuRes.data.week._id));
+    }
+    applyMenuCaps(menuRes.data);
+  }
+
+  function applyMenuCaps(menuData) {
+    const settings = menuData?.settings || {};
     setCaps((c) => normalizeUserCapabilities({
       ...c,
       showPrices: settings.showPricesToUsers,
@@ -136,6 +172,29 @@ export default function UserDashboardPage() {
       showStatement: settings.showFinancialStatementToUsers,
       showFinancialStatementToUsers: settings.showFinancialStatementToUsers,
     }));
+  }
+
+  async function loadOrdersPage(page = 1) {
+    const res = await api(`/api/orders?page=${page}&limit=10`);
+    if (res.success) {
+      setOrders(Array.isArray(res.data) ? res.data : []);
+      setOrdersPagination(res.pagination || { page, totalPages: 1, total: (res.data || []).length });
+      setOrdersPage(Number(res.pagination?.page || page));
+    } else {
+      setOrders([]);
+      setOrdersPagination({ page: 1, totalPages: 1, total: 0 });
+    }
+  }
+
+  async function selectWeek(weekId) {
+    setSelectedWeekId(String(weekId));
+    const menuRes = await api(`/api/menu/weeks/${encodeURIComponent(weekId)}`);
+    if (!menuRes.success) {
+      toast(menuRes.message || 'بارگذاری منوی هفته ناموفق بود', 'error');
+      return;
+    }
+    setMenu(menuRes.data);
+    applyMenuCaps(menuRes.data);
   }
 
   async function refreshStatementConfig() {
@@ -158,12 +217,6 @@ export default function UserDashboardPage() {
     else setStatements([]);
   }
 
-  useEffect(() => {
-    if (tab === 'statement' && caps.showStatement) {
-      refreshStatementConfig().then(loadStatements);
-    }
-  }, [tab, stmtSub, caps.showStatement]);
-
   async function placeOrder(menuItemId) {
     if (pendingItems.has(menuItemId)) return;
     setPendingItems((s) => new Set(s).add(menuItemId));
@@ -171,7 +224,8 @@ export default function UserDashboardPage() {
       const data = await api('/api/orders', { method: 'POST', body: JSON.stringify({ menuItemId }) });
       if (!data.success) return toast(data.message || 'ثبت سفارش ناموفق بود', 'error');
       toast(data.message || 'رزرو شما با موفقیت ثبت شد', 'success');
-      await loadMenu();
+      await loadMenu(selectedWeekId);
+      if (tab === 'orders') await loadOrdersPage(ordersPage);
     } catch {
       toast('خطا در اتصال', 'error');
     } finally {
@@ -183,7 +237,8 @@ export default function UserDashboardPage() {
     const data = await api(`/api/orders/${orderId}/cancel`, { method: 'POST' });
     if (!data.success) return toast(data.message || 'لغو ناموفق بود', 'error');
     toast('سفارش لغو شد', 'success');
-    await loadMenu();
+    await loadMenu(selectedWeekId);
+    if (tab === 'orders') await loadOrdersPage(ordersPage);
   }
 
   async function openReceipt(row) {
@@ -218,8 +273,8 @@ export default function UserDashboardPage() {
 
   const orderedDayCategories = new Set();
   const orderByItem = {};
-  orders.filter((o) => o.status !== 'cancelled').forEach((o) => {
-    const dayId = String(o.dailyMenuId?._id || o.dailyMenuId || '');
+  menuOrders.filter((o) => o.status !== 'cancelled').forEach((o) => {
+    const dayId = String(o.dailyMenuId?._id || o.dailyMenuId || o.menuItemId?.dailyMenuId?._id || '');
     const menuItemId = String(o.menuItemId?._id || o.menuItemId || '');
     const cat = String(
       o.foodCategory
@@ -234,9 +289,10 @@ export default function UserDashboardPage() {
   const showAdminLink = isAdminRole(user?.role);
   const receiptData = receipt?.detail;
   const orgName = version?.organizationName || 'سامانه تغذیه';
-  const weekLabel = menu?.weekId?.title
-    || (menu?.weekId?.startDate && menu?.weekId?.endDate
-      ? `${jdate(menu.weekId.startDate)} تا ${jdate(menu.weekId.endDate)}`
+  const week = menu?.week || menu?.weekId || {};
+  const weekLabel = week.name
+    || (week.startDate && week.endDate
+      ? `${jdate(week.startDate)} تا ${jdate(week.endDate)}`
       : 'برنامه غذایی');
 
   return (
@@ -346,6 +402,20 @@ export default function UserDashboardPage() {
                   <p className="portal-stage-lead">روز را انتخاب کنید، غذای هر دسته را ببینید و رزرو کنید.</p>
                 </div>
               </header>
+              {activeWeeks.length > 1 && (
+                <div className="sub-tabs" style={{ marginBottom: 16 }} role="tablist" aria-label="هفته‌های فعال">
+                  {activeWeeks.map((w) => (
+                    <button
+                      key={w._id}
+                      type="button"
+                      className={`sub-tab-btn${String(selectedWeekId) === String(w._id) ? ' active' : ''}`}
+                      onClick={() => selectWeek(w._id)}
+                    >
+                      {w.jalaliStart} تا {w.jalaliEnd}
+                    </button>
+                  ))}
+                </div>
+              )}
               <CategoryWeekMenuSlider
                 menu={menu}
                 categories={categories}
@@ -366,30 +436,38 @@ export default function UserDashboardPage() {
               </header>
               <div className="table-wrap">
                 {!orders.length ? <div className="orders-empty"><i className="fas fa-receipt" /><p>هنوز سفارشی ثبت نکرده‌اید.</p></div> : (
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>کد</th>
-                        <th>غذا</th>
-                        {caps.showPrices && <th>مبلغ</th>}
-                        <th>تاریخ ثبت</th>
-                        <th>تاریخ تحویل</th>
-                        <th>وضعیت</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map((o) => (
-                        <tr key={o._id}>
-                          <td>#{o.orderNumber || '-'}</td>
-                          <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}</td>
-                          {caps.showPrices && <td>{money(o.totalPrice)}</td>}
-                          <td>{jdate(o.orderDate)}</td>
-                          <td>{o.deliveryDate ? jdate(o.deliveryDate) : '—'}</td>
-                          <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
+                  <>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>کد</th>
+                          <th>غذا</th>
+                          {caps.showPrices && <th>مبلغ</th>}
+                          <th>تاریخ ثبت</th>
+                          <th>تاریخ تحویل</th>
+                          <th>وضعیت</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {orders.map((o) => (
+                          <tr key={o._id}>
+                            <td>#{o.orderNumber || '-'}</td>
+                            <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}</td>
+                            {caps.showPrices && <td>{money(o.totalPrice)}</td>}
+                            <td>{jdate(o.orderDate)}</td>
+                            <td>{o.deliveryDate ? jdate(o.deliveryDate) : '—'}</td>
+                            <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <Pagination
+                      page={ordersPagination.page}
+                      totalPages={ordersPagination.totalPages}
+                      total={ordersPagination.total}
+                      onPage={(p) => loadOrdersPage(p)}
+                    />
+                  </>
                 )}
               </div>
             </section>
@@ -429,7 +507,14 @@ export default function UserDashboardPage() {
                             {`${s.range?.jalaliStart || ''} تا ${s.range?.jalaliEnd || ''}`}
                             {s.isActive && <span className="badge badge-success" style={{ marginRight: 6 }}>جاری</span>}
                           </td>
-                          <td className="statement-personal-col">{money(s.summary?.personalAmount)}</td>
+                          <td className="statement-personal-col">
+                            {money(s.summary?.personalAmount)}
+                            {s.hasDiscount ? (
+                              <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
+                                تخفیف {faDigits(s.discountPercent)}٪
+                              </div>
+                            ) : null}
+                          </td>
                           <td>
                             <button type="button" className="btn btn-outline btn-sm" onClick={() => openReceipt(s)}>
                               <i className="fas fa-receipt" /> نمایش بیشتر
