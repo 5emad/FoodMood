@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import Swal from 'sweetalert2';
 import { api, apiBlob, downloadBlob } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import SectionHeader from '../shared/SectionHeader';
@@ -18,7 +19,6 @@ export default function FinanceTab() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [discountDrafts, setDiscountDrafts] = useState({});
   const [savingKey, setSavingKey] = useState('');
 
   useEffect(() => {
@@ -54,16 +54,7 @@ export default function FinanceTab() {
       url += weekId ? `weekId=${weekId}` : 'type=week';
     }
     const res = await api(url);
-    if (res.success) {
-      setData(res.data);
-      const drafts = {};
-      (res.data?.users || []).forEach((u) => {
-        drafts[u.userKey] = String(u.discountPercent || 0);
-      });
-      setDiscountDrafts(drafts);
-    } else {
-      setData(null);
-    }
+    setData(res.success ? res.data : null);
   }
 
   async function saveSettings() {
@@ -93,11 +84,57 @@ export default function FinanceTab() {
     } catch { toast('خطا در PDF', 'error'); }
   }
 
-  async function saveDiscount(row) {
+  async function openDiscountPopup(row) {
+    const personalBefore = Number(row.personalAmountBefore ?? row.personalAmount ?? 0);
+    const current = Number(row.discountPercent || 0);
+    const result = await Swal.fire({
+      heightAuto: false,
+      buttonsStyling: true,
+      reverseButtons: true,
+      customClass: {
+        container: 'app-swal-container',
+        popup: 'swal2-rtl app-swal-popup',
+        confirmButton: 'app-swal-confirm',
+        cancelButton: 'app-swal-cancel',
+      },
+      icon: 'info',
+      title: 'اعمال تخفیف',
+      html: `
+        <div style="text-align:right;line-height:1.9;font-size:.9rem">
+          <div><strong>${row.fullName || '-'}</strong></div>
+          <div style="color:#64748b">شماره: ${row.statementNumber || '—'}</div>
+          <div style="margin-top:8px">سهم شخص: <strong>${money(personalBefore)}</strong></div>
+          <div style="margin-top:4px;font-size:.82rem;color:#64748b">۰٪ = حذف تخفیف</div>
+        </div>
+      `,
+      input: 'number',
+      inputLabel: 'درصد تخفیف',
+      inputValue: current,
+      inputAttributes: {
+        min: 0,
+        max: 100,
+        step: 1,
+      },
+      showCancelButton: true,
+      confirmButtonText: 'ذخیره تخفیف',
+      cancelButtonText: 'انصراف',
+      inputValidator: (value) => {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          return 'درصد باید بین ۰ تا ۱۰۰ باشد';
+        }
+        return null;
+      },
+    });
+
+    if (!result.isConfirmed) return;
+    await saveDiscount(row, Number(result.value));
+  }
+
+  async function saveDiscount(row, percent) {
     const periodType = data?.type === 'month' ? 'month' : 'week';
     const periodKey = data?.periodKey
       || (periodType === 'week' ? weekId : (monthVal.split('|')[0] || ''));
-    const percent = Number(discountDrafts[row.userKey]);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
       toast('درصد تخفیف باید بین ۰ تا ۱۰۰ باشد', 'error');
       return;
@@ -232,7 +269,6 @@ export default function FinanceTab() {
                     <th>مبلغ کل</th>
                     <th>پرداختی سازمان</th>
                     <th>پرداختی شخص</th>
-                    <th>تخفیف ٪</th>
                     <th>عملیات</th>
                   </tr>
                 </thead>
@@ -263,29 +299,16 @@ export default function FinanceTab() {
                         <td>{money(u.grossTotal)}</td>
                         <td className="statement-org-col">{money(u.organizationAmount)}</td>
                         <td className="statement-personal-col">{money(u.personalAmount)}</td>
-                        <td style={{ minWidth: 110 }}>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <input
-                              className="form-control"
-                              type="number"
-                              min={0}
-                              max={100}
-                              style={{ width: 72 }}
-                              value={discountDrafts[u.userKey] ?? '0'}
-                              onChange={(e) => setDiscountDrafts((prev) => ({ ...prev, [u.userKey]: e.target.value }))}
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={savingKey === u.userKey}
-                              onClick={() => saveDiscount(u)}
-                              title="اعمال تخفیف"
-                            >
-                              <i className={`fas ${savingKey === u.userKey ? 'fa-circle-notch fa-spin' : 'fa-percent'}`} />
-                            </button>
-                          </div>
-                        </td>
                         <TableActions>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            disabled={savingKey === u.userKey}
+                            onClick={() => openDiscountPopup(u)}
+                            title="تخفیف"
+                          >
+                            <i className={`fas ${savingKey === u.userKey ? 'fa-circle-notch fa-spin' : 'fa-percent'}`} />
+                          </button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => downloadPdf(u.userKey)} title="دانلود PDF"><i className="fas fa-file-pdf" /></button>
                         </TableActions>
                       </tr>
