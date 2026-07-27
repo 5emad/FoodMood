@@ -6,7 +6,7 @@ const { getAdminCapabilities } = require('../helpers/PermissionHelper');
 const { getSettingsLean, adminWorkspaceSettings } = require('../services/SettingsService');
 
 const superadminOnly = roleMiddleware(['superadmin']);
-const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
+const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'surveys', 'backup'];
 
 async function renderDashboard(req, res, next, activePage) {
   try {

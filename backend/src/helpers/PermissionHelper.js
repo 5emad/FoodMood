@@ -2,7 +2,7 @@ const { getReportsAccessForUser } = require('./ReportsAccessHelper');
 const { getSettingsLean } = require('../services/SettingsService');
 const { isEnabledFlag } = require('./SettingFlags');
 
-const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
+const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'surveys', 'backup'];
 const STATEMENT_DISABLED_MESSAGE = 'در حال حاضر در دسترس نیست';
 
 function isSuperadmin(user = {}) {

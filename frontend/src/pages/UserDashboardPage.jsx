@@ -57,6 +57,10 @@ export default function UserDashboardPage() {
   const [categories, setCategories] = useState([]);
   const [receipt, setReceipt] = useState(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
+  const [surveyPrompt, setSurveyPrompt] = useState(null);
+  const [surveyBestFoodId, setSurveyBestFoodId] = useState('');
+  const [surveySelected, setSurveySelected] = useState([]);
+  const [surveySaving, setSurveySaving] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -69,9 +73,9 @@ export default function UserDashboardPage() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle('ann-drawer-open', drawerOpen || !!receipt || profileOpen);
+    document.body.classList.toggle('ann-drawer-open', drawerOpen || !!receipt || profileOpen || !!surveyPrompt);
     return () => document.body.classList.remove('ann-drawer-open');
-  }, [drawerOpen, receipt, profileOpen]);
+  }, [drawerOpen, receipt, profileOpen, surveyPrompt]);
 
   useEffect(() => {
     if (!userMenuOpen) return undefined;
@@ -118,6 +122,14 @@ export default function UserDashboardPage() {
       if (ann.success) setAnnouncements((ann.data || []).filter((a) => a.title && a.body));
       if (cats.success) setCategories(cats.data || []);
       await loadMenu();
+      try {
+        const survey = await api('/api/survey/active');
+        if (survey.success && survey.hasActive && survey.data) {
+          setSurveyPrompt(survey.data);
+          setSurveyBestFoodId('');
+          setSurveySelected([]);
+        }
+      } catch { /* ignore survey errors */ }
     } finally {
       setLoading(false);
     }
@@ -269,6 +281,39 @@ export default function UserDashboardPage() {
   function closeReceipt() {
     setReceipt(null);
     setReceiptLoading(false);
+  }
+
+  function toggleSurveyStatement(id) {
+    setSurveySelected((list) => (
+      list.includes(id) ? list.filter((x) => x !== id) : [...list, id]
+    ));
+  }
+
+  async function submitSurvey({ skipped = false } = {}) {
+    if (!surveyPrompt?.activationId || surveySaving) return;
+    if (!skipped && !surveyBestFoodId && !(surveySelected.length)) {
+      // still allow submit with empty? Plan says optional - allow skip via later button.
+      // For submit, require at least best food or one statement
+      toast('یک غذا یا حداقل یک جمله را انتخاب کنید، یا بعداً را بزنید', 'error');
+      return;
+    }
+    setSurveySaving(true);
+    const res = await api('/api/survey/respond', {
+      method: 'POST',
+      body: JSON.stringify({
+        activationId: surveyPrompt.activationId,
+        bestFoodId: skipped ? '' : surveyBestFoodId,
+        selectedStatementIds: skipped ? [] : surveySelected,
+        skipped: !!skipped,
+      }),
+    });
+    setSurveySaving(false);
+    if (!res.success) {
+      toast(res.message || 'خطا در ثبت نظرسنجی', 'error');
+      return;
+    }
+    setSurveyPrompt(null);
+    if (!skipped) toast(res.message || 'از مشارکت شما سپاسگزاریم', 'success');
   }
 
   const orderedDayCategories = new Set();
@@ -696,6 +741,87 @@ export default function UserDashboardPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {surveyPrompt && (
+        <div className="survey-modal-root">
+          <div className="survey-modal-overlay" />
+          <div className="survey-modal" role="dialog" aria-modal="true" aria-label="نظرسنجی غذا">
+            <div className="survey-modal-head">
+              <div>
+                <div className="survey-modal-kicker">اختیاری</div>
+                <h2 className="survey-modal-title">نظرسنجی غذا</h2>
+              </div>
+              <button type="button" className="btn-icon" disabled={surveySaving} onClick={() => submitSurvey({ skipped: true })} aria-label="بستن">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+
+            <div className="survey-modal-body">
+              <section className="survey-block">
+                <h3>کدام غذا بهترین بود؟</h3>
+                {!(surveyPrompt.foods || []).length ? (
+                  <p className="survey-muted">غذای فعالی برای انتخاب نیست.</p>
+                ) : (
+                  <div className="survey-food-grid">
+                    {(surveyPrompt.foods || []).map((food) => (
+                      <label key={food._id} className={`survey-food-chip${surveyBestFoodId === food._id ? ' is-selected' : ''}`}>
+                        <input
+                          type="radio"
+                          name="surveyBestFood"
+                          checked={surveyBestFoodId === food._id}
+                          onChange={() => setSurveyBestFoodId(food._id)}
+                        />
+                        <span>{food.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="survey-block">
+                <h3>نکات مثبت</h3>
+                <div className="survey-statement-grid">
+                  {(surveyPrompt.statements || []).filter((s) => s.sentiment === 'positive').map((s) => (
+                    <label key={s.id} className={`survey-statement-chip survey-statement-chip--pos${surveySelected.includes(s.id) ? ' is-selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={surveySelected.includes(s.id)}
+                        onChange={() => toggleSurveyStatement(s.id)}
+                      />
+                      <span>{s.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <section className="survey-block">
+                <h3>نکات منفی</h3>
+                <div className="survey-statement-grid">
+                  {(surveyPrompt.statements || []).filter((s) => s.sentiment === 'negative').map((s) => (
+                    <label key={s.id} className={`survey-statement-chip survey-statement-chip--neg${surveySelected.includes(s.id) ? ' is-selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={surveySelected.includes(s.id)}
+                        onChange={() => toggleSurveyStatement(s.id)}
+                      />
+                      <span>{s.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="survey-modal-actions">
+              <button type="button" className="btn btn-outline" disabled={surveySaving} onClick={() => submitSurvey({ skipped: true })}>
+                بعداً
+              </button>
+              <button type="button" className="btn btn-primary" disabled={surveySaving} onClick={() => submitSurvey({ skipped: false })}>
+                {surveySaving ? 'در حال ارسال...' : 'ارسال نظر'}
+              </button>
+            </div>
           </div>
         </div>
       )}

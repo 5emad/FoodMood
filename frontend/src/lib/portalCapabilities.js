@@ -18,7 +18,7 @@ export function normalizeAdminCapabilities(raw, fallback = {}) {
   const caps = raw || {};
   const fb = fallback || {};
   const tabs = caps.tabs || {};
-  const defaultTabs = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
+  const defaultTabs = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'surveys', 'backup'];
   const resolvedTabs = Object.keys(tabs).length
     ? tabs
     : defaultTabs.reduce((acc, tab) => { acc[tab] = true; return acc; }, {});

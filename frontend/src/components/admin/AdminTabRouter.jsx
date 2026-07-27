@@ -7,6 +7,7 @@ import DepartmentsTab from './tabs/DepartmentsTab';
 import FinanceTab from './tabs/FinanceTab';
 import GuestsTab from './tabs/GuestsTab';
 import AnnouncementsTab from './tabs/AnnouncementsTab';
+import SurveysTab from './tabs/SurveysTab';
 import BackupTab from './tabs/BackupTab';
 
 const TABS = {
@@ -19,6 +20,7 @@ const TABS = {
   finance: FinanceTab,
   guests: GuestsTab,
   announcements: AnnouncementsTab,
+  surveys: SurveysTab,
   backup: BackupTab,
 };
 

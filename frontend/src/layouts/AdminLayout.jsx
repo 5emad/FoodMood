@@ -14,6 +14,7 @@ const TAB_META = {
   departments: { label: 'واحدها', icon: 'fa-building', sub: 'ساختار سازمانی' },
   finance: { label: 'مالی و حسابداری', icon: 'fa-coins', sub: 'سهم سازمان و صورتحساب' },
   announcements: { label: 'اطلاعیه', icon: 'fa-bullhorn', sub: 'پیام به کاربران' },
+  surveys: { label: 'نظرسنجی', icon: 'fa-poll', sub: 'رضایت و بهترین غذا' },
   backup: { label: 'پشتیبان', icon: 'fa-database', sub: 'خروجی و بازیابی داده‌ها' },
 };
 
@@ -23,7 +24,7 @@ const MENU_GROUPS = [
   { id: 'orders-guests', label: 'سفارش و مهمان', icon: 'fa-clipboard-list', tabs: ['orders', 'guests'] },
   { id: 'organization', label: 'سازمان', icon: 'fa-sitemap', tabs: ['users', 'departments'] },
   { id: 'finance-info', label: 'مالی و اطلاعیه', icon: 'fa-coins', tabs: ['finance', 'announcements'] },
-  { id: 'system', label: 'سامانه', icon: 'fa-hard-drive', tabs: ['backup'] },
+  { id: 'system', label: 'سامانه', icon: 'fa-hard-drive', tabs: ['surveys', 'backup'] },
 ];
 
 const SUPER_GROUP = { id: 'super', label: 'سوپر ادمین', icon: 'fa-shield-halved' };

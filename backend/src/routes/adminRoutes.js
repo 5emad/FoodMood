@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const AdminController = require('../controllers/AdminController');
 const AnnouncementController = require('../controllers/AnnouncementController');
+const SurveyController = require('../controllers/SurveyController');
 const GuestController = require('../controllers/GuestController');
 const MenuController = require('../controllers/MenuController');
 const authMiddleware = require('../middleware/authMiddleware');
@@ -91,6 +92,11 @@ router.get('/announcements', AnnouncementController.list);
 router.post('/announcements', AnnouncementController.create);
 router.put('/announcements/:id', AnnouncementController.update);
 router.delete('/announcements/:id', AnnouncementController.remove);
+
+router.get('/survey', SurveyController.adminGet);
+router.put('/survey/statements', SurveyController.adminUpdateStatements);
+router.post('/survey/active', SurveyController.adminSetActive);
+router.get('/survey/results', SurveyController.adminResults);
 
 router.get('/departments', AdminController.getDepartments);
 router.post('/departments', AdminController.createDepartment);

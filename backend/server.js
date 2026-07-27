@@ -28,6 +28,7 @@ const viewRoutes      = require('./src/routes/viewRoutes');
 const userRoutes           = require('./src/routes/userRoutes');
 const userApiRoutes        = require('./src/routes/userApiRoutes');
 const announcementRoutes   = require('./src/routes/announcementRoutes');
+const surveyRoutes         = require('./src/routes/surveyRoutes');
 const adminViewRoutes = require('./src/routes/adminViewRoutes');
 const ThemeController = require('./src/controllers/ThemeController');
 const MongoSessionStore = require('./src/config/MongoSessionStore');
@@ -325,6 +326,7 @@ app.use('/api/admin',  adminRoutes);
 app.use('/api/menu',          menuRoutes);
 app.use('/api/user',          ensureDbMiddleware, userApiRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/survey', surveyRoutes);
 
 const spaMiddleware = require('./src/middleware/spaMiddleware');
 // Root URL must always land on login (spa/index.html must not capture "/")
