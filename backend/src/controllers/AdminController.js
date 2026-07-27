@@ -36,7 +36,7 @@ const { buildAdminFinanceReport, buildAdminFinancePdfPayload } = require('../ser
 const { renderFinanceStatementHtml } = require('../views/FinanceStatementPdfView');
 const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper');
 const { normalizePublicUrl, refreshPublicUrlCache, requestOrigin } = require('../helpers/AppUrlHelper');
-const { getSslStatus, saveCustomCertificate, applyCustomCertificate } = require('../helpers/SslCertHelper');
+const { getSslStatus, installCustomCertificate } = require('../helpers/SslCertHelper');
 const { isWafRuntimeEnabled, setWafRuntimeEnabled } = require('../services/WafStateService');
 
 function firstString(value) {
@@ -1490,8 +1490,7 @@ class AdminController {
         return res.status(400).json({ success: false, message: 'فایل گواهی (.crt/.pem) و کلید خصوصی (.key) الزامی است.' });
       }
 
-      await saveCustomCertificate(certFile.buffer, keyFile.buffer);
-      await applyCustomCertificate();
+      await installCustomCertificate(certFile.buffer, keyFile.buffer);
       try {
         await refreshOriginPublicUrlCache();
       } catch {
@@ -1506,7 +1505,11 @@ class AdminController {
     } catch (error) {
       if (error.expose || (Number(error.status) > 0 && Number(error.status) < 600)) {
         const status = Number(error.status) || 400;
-        return res.status(status >= 500 ? 503 : status).json({ success: false, message: error.message });
+        return res.status(status >= 500 ? 503 : status).json({
+          success: false,
+          message: error.message,
+          detail: error.detail || undefined,
+        });
       }
       next(error);
     }

@@ -195,7 +195,7 @@ export default function SuperSettingsPanel() {
       setCertFiles({ certificate: null, privateKey: null });
       const r = await api('/api/admin/settings/ssl-status');
       if (r.success) setSsl(r.data);
-    } else toast(data.message || 'خطا', 'error');
+    } else toast(data.detail ? `${data.message || 'خطا'} — ${data.detail}` : (data.message || 'خطا'), 'error');
   }
 
   function onSslFileChange(which, file) {

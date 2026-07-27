@@ -341,7 +341,8 @@ async function uploadSslCertificate(event) {
       keyInput.value = '';
       loadSslStatus();
     } else {
-      notify(data.message || 'خطا در نصب گواهی', 'error');
+      const msg = data.detail ? `${data.message || 'خطا در نصب گواهی'} — ${data.detail}` : (data.message || 'خطا در نصب گواهی');
+      notify(msg, 'error');
     }
   } catch {
     notify('خطا در ارتباط با سرور', 'error');

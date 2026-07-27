@@ -71,13 +71,13 @@ extract_cert_primary_host() {
 verify_cert_key_match() {
   local cert="$1" key="$2"
   local cert_pub key_pub
-  cert_pub="$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null)" || return 1
-  key_pub="$(openssl pkey -in "$key" -pubout 2>/dev/null)" || return 1
-  [[ -n "$cert_pub" && "$cert_pub" == "$key_pub" ]]
+  cert_pub="$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null | tr -d '\r')" || return 1
+  key_pub="$(openssl pkey -in "$key" -pubout 2>/dev/null | tr -d '\r')" || return 1
+  [[ -n "$cert_pub" && -n "$key_pub" && "$cert_pub" == "$key_pub" ]]
 }
 
 nginx_ssl_listen_args() {
-  if nginx -V 2>&1 | grep -qE 'http_v2_module|http2'; then
+  if command -v nginx >/dev/null 2>&1 && nginx -V 2>&1 | grep -qE 'http_v2_module|http2'; then
     echo "443 ssl http2"
     return 0
   fi

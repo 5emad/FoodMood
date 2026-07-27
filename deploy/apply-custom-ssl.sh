@@ -1,32 +1,37 @@
 #!/usr/bin/env bash
-# Apply uploaded SSL certificate from /opt/food/certs/ssl/ and reload Nginx.
-# Called by superadmin panel (sudo) or manually: sudo bash /opt/food/deploy/apply-custom-ssl.sh
+# Apply uploaded SSL certificate and reload Nginx.
+# Usage:
+#   sudo bash apply-custom-ssl.sh
+#   sudo bash apply-custom-ssl.sh /tmp/staging.crt /tmp/staging.key
 set -euo pipefail
 
 INSTALL_DIR="/opt/food"
-APP_USER="foodapp"
+APP_USER="$(stat -c '%U' "${INSTALL_DIR}" 2>/dev/null || true)"
+APP_USER="${APP_USER:-foodapp}"
 SERVICE_NAME="foodmood"
+
+CERT="${INSTALL_DIR}/certs/ssl/custom.crt"
+KEY="${INSTALL_DIR}/certs/ssl/custom.key"
+SOURCE_CERT="${1:-$CERT}"
+SOURCE_KEY="${2:-$KEY}"
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   echo "Run as root: sudo bash $0" >&2
   exit 1
 fi
 
-CERT="${INSTALL_DIR}/certs/ssl/custom.crt"
-KEY="${INSTALL_DIR}/certs/ssl/custom.key"
-
-if [[ ! -f "$CERT" || ! -f "$KEY" ]]; then
-  echo "Missing custom.crt or custom.key in ${INSTALL_DIR}/certs/ssl/" >&2
+if [[ ! -f "$SOURCE_CERT" || ! -f "$SOURCE_KEY" ]]; then
+  echo "Missing certificate or private key file" >&2
   exit 1
 fi
 
-if ! openssl x509 -in "$CERT" -noout >/dev/null 2>&1; then
+if ! openssl x509 -in "$SOURCE_CERT" -noout >/dev/null 2>&1; then
   echo "Invalid certificate file" >&2
   exit 1
 fi
 
-if ! openssl pkey -in "$KEY" -noout >/dev/null 2>&1; then
-  if grep -q 'ENCRYPTED' "$KEY" 2>/dev/null; then
+if ! openssl pkey -in "$SOURCE_KEY" -noout >/dev/null 2>&1; then
+  if grep -q 'ENCRYPTED' "$SOURCE_KEY" 2>/dev/null; then
     echo "Private key is encrypted; upload an unencrypted PEM key" >&2
     exit 1
   fi
@@ -37,9 +42,19 @@ fi
 # shellcheck source=/dev/null
 source "${INSTALL_DIR}/deploy/nginx-tls.sh"
 
-if ! verify_cert_key_match "$CERT" "$KEY"; then
+if ! verify_cert_key_match "$SOURCE_CERT" "$SOURCE_KEY"; then
   echo "Certificate and private key do not match" >&2
   exit 1
+fi
+
+mkdir -p "${INSTALL_DIR}/certs/ssl"
+ensure_ssl_storage_permissions "$INSTALL_DIR" "$APP_USER"
+
+if [[ "$SOURCE_CERT" != "$CERT" || "$SOURCE_KEY" != "$KEY" ]]; then
+  install -m 644 -o "${APP_USER}:${APP_USER}" "$SOURCE_CERT" "$CERT"
+  install -m 600 -o "${APP_USER}:${APP_USER}" "$SOURCE_KEY" "$KEY"
+  rm -f "$SOURCE_CERT" "$SOURCE_KEY" 2>/dev/null || true
+  rmdir "$(dirname "$SOURCE_CERT")" 2>/dev/null || true
 fi
 
 detect_server_ip() {
@@ -60,16 +75,21 @@ detect_server_ip() {
 }
 
 SERVER_IP="$(detect_server_ip)"
-configure_dual_stack "$SERVER_IP" "$INSTALL_DIR" "$APP_USER"
+if ! configure_dual_stack "$SERVER_IP" "$INSTALL_DIR" "$APP_USER"; then
+  echo "nginx config test failed during SSL apply" >&2
+  exit 1
+fi
 
-# Keep upload copies writable by the app user (panel re-upload); Nginx uses /etc/nginx/ssl/ copies.
 if id "$APP_USER" >/dev/null 2>&1; then
-  chown "${APP_USER}:${APP_USER}" "$CERT" "$KEY"
+  chown "${APP_USER}:${APP_USER}" "$CERT" "$KEY" 2>/dev/null || true
 fi
 chmod 644 "$CERT"
 chmod 600 "$KEY"
 
-systemctl restart "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME" || {
+  echo "foodmood service restart failed" >&2
+  exit 1
+}
 
 CERT_HOST="$(extract_cert_primary_host "$CERT" 2>/dev/null || true)"
 if [[ -n "$CERT_HOST" ]]; then
