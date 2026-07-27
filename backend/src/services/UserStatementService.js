@@ -6,6 +6,7 @@ const {
   startOfDay,
   formatJalaliDate,
   parseJalaliDate,
+  daysInJalaliMonth,
 } = require('../helpers/DateHelper');
 const { buildStatementNumber } = require('../helpers/StatementNumberHelper');
 const { finalizeExpiredOrders } = require('../helpers/OrderStatusHelper');
@@ -157,12 +158,12 @@ function reportDateOfOrder(order) {
 
 function jalaliMonthRangeValue(year, month) {
   const monthText = String(month).padStart(2, '0');
-  const lastDay = month <= 6 ? 31 : (month <= 11 ? 30 : 29);
+  const lastDay = daysInJalaliMonth(year, month);
   return {
     key: `${year}-${monthText}`,
     label: `${persianMonthNames[month - 1]} ${year}`,
     from: `${year}/${monthText}/01`,
-    to: `${year}/${monthText}/${lastDay}`,
+    to: `${year}/${monthText}/${String(lastDay).padStart(2, '0')}`,
   };
 }
 

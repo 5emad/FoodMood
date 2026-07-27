@@ -1,7 +1,7 @@
 {
   "name": "foodmood-frontend",
   "private": true,
-  "version": "1.9.33",
+  "version": "1.9.34",
   "description": "React SPA — وابستگی‌های UI؛ بک‌اند در ریشه پروژه",
   "type": "module",
   "scripts": {

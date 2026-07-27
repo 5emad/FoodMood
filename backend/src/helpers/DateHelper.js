@@ -141,27 +141,33 @@ function getPersianWeekNumber(date = new Date()) {
 }
 
 function getPersianMonthRange(date = new Date()) {
-  const current = startOfDay(date);
-  const currentParts = getCurrentPersianParts(current);
-  let start = current;
-
-  while (true) {
-    const previous = addDays(start, -1);
-    const parts = getCurrentPersianParts(previous);
-    if (parts.year !== currentParts.year || parts.month !== currentParts.month) break;
-    start = previous;
+  const currentParts = getCurrentPersianParts(date);
+  const year = currentParts.year;
+  const month = currentParts.month;
+  const lastDay = daysInJalaliMonth(year, month);
+  const start = parseJalaliDate(`${year}/${month}/01`);
+  const endDay = parseJalaliDate(`${year}/${month}/${lastDay}`);
+  if (!start || !endDay) {
+    const current = startOfDay(date);
+    return { start: current, end: current };
   }
+  // Keep end as start-of-last-day; callers that need inclusive EOD use endOfRange/endOfJalaliDay.
+  // Avoid setHours(23:59) which can roll into the next Jalali day when server TZ ≠ Tehran.
+  return { start, end: endDay };
+}
 
-  let end = current;
-  while (true) {
-    const next = addDays(end, 1);
-    const parts = getCurrentPersianParts(next);
-    if (parts.year !== currentParts.year || parts.month !== currentParts.month) break;
-    end = next;
-  }
-  end.setHours(23, 59, 59, 999);
-
-  return { start, end };
+/** تعداد روزهای ماه شمسی (اسفند ۲۹ یا ۳۰) */
+function daysInJalaliMonth(year, month) {
+  const y = Number(year);
+  const m = Number(month);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return 30;
+  if (m <= 6) return 31;
+  if (m <= 11) return 30;
+  // اسفند: اگر ۳۰ معتبر باشد سال کبیسه است
+  const probe = parseJalaliDate(`${y}/12/30`);
+  if (!probe) return 29;
+  const parts = getCurrentPersianParts(probe);
+  return (parts.year === y && parts.month === 12) ? 30 : 29;
 }
 
 function getJalaliWeekTitle(start, end) {
@@ -179,5 +185,6 @@ module.exports = {
   getPersianWeekStart,
   getPersianWeekNumber,
   getPersianMonthRange,
+  daysInJalaliMonth,
   getJalaliWeekTitle,
 };

@@ -42,9 +42,15 @@ function mapUsersToFinanceRows(byUser = [], settings = {}, periodType = 'week', 
     .map((row) => {
       const split = splitAmount(row.totalPrice, organizationSharePercent);
       const actor = userActorFromReportRow(row);
+      const rawId = row.userId;
+      const userKey = String(
+        (rawId && typeof rawId === 'object' && (rawId._id || rawId.id))
+          ? (rawId._id || rawId.id)
+          : (rawId || ''),
+      );
       return {
         kind: 'user',
-        userKey: String(row.userId),
+        userKey,
         fullName: row.fullName || row.username || '-',
         username: row.username || '',
         department: row.department || 'بدون واحد',

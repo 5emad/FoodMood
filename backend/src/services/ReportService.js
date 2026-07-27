@@ -17,6 +17,7 @@ const {
   formatJalaliMonth,
   getPersianWeekRange,
   getPersianMonthRange,
+  daysInJalaliMonth,
   getJalaliWeekTitle,
   parseJalaliDate,
 } = require('../helpers/DateHelper');
@@ -68,14 +69,7 @@ function getJalaliYearMonth(date) {
 
 function jalaliMonthRangeValue(year, month) {
   const monthText = String(month).padStart(2, '0');
-  const start = parseJalaliDate(`${year}/${month}/01`);
-  let lastDay = month <= 6 ? 31 : (month <= 11 ? 30 : 29);
-  if (start) {
-    const { end } = getPersianMonthRange(start);
-    const endNorm = normalizeReportDigits(formatJalaliDate(end)).replace(/-/g, '/');
-    const dayPart = endNorm.split('/')[2];
-    if (dayPart) lastDay = Number(dayPart);
-  }
+  const lastDay = daysInJalaliMonth(year, month);
   return {
     key: `${year}-${monthText}`,
     label: `${persianMonthNames[month - 1]} ${year}`,

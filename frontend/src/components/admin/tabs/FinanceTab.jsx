@@ -8,6 +8,22 @@ import EmptyState from '../shared/EmptyState';
 import TableActions from '../shared/TableActions';
 import { faDigits, money } from '../../../utils/format';
 
+function normalizeFaNumber(value) {
+  const map = {
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  };
+  return String(value ?? '').replace(/[۰-۹٠-٩]/g, (d) => map[d] || d).trim();
+}
+
+function monthPeriodKeyFromValue(monthVal = '') {
+  const from = String(monthVal).split('|')[0] || '';
+  const normalized = normalizeFaNumber(from);
+  const match = normalized.match(/(\d{4})\D+(\d{1,2})/);
+  if (!match) return '';
+  return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}`;
+}
+
 export default function FinanceTab() {
   const { toast } = useToast();
   const [settings, setSettings] = useState({ showFinancialStatementToUsers: true, organizationSharePercent: 50 });
@@ -103,8 +119,9 @@ export default function FinanceTab() {
         <div style="text-align:right;line-height:1.9;font-size:.9rem">
           <div><strong>${row.fullName || '-'}</strong></div>
           <div style="color:#64748b">شماره: ${row.statementNumber || '—'}</div>
-          <div style="margin-top:8px">سهم شخص: <strong>${money(personalBefore)}</strong></div>
-          <div style="margin-top:4px;font-size:.82rem;color:#64748b">۰٪ = حذف تخفیف</div>
+          <div style="margin-top:8px">سهم شخص فعلی: <strong>${money(row.personalAmount)}</strong></div>
+          <div>سهم شخص قبل از تخفیف: <strong>${money(personalBefore)}</strong></div>
+          <div style="margin-top:4px;font-size:.82rem;color:#64748b">تخفیف فقط از سهم شخص کم می‌شود. ۰٪ = حذف تخفیف</div>
         </div>
       `,
       input: 'number',
@@ -114,12 +131,13 @@ export default function FinanceTab() {
         min: 0,
         max: 100,
         step: 1,
+        dir: 'ltr',
       },
       showCancelButton: true,
       confirmButtonText: 'ذخیره تخفیف',
       cancelButtonText: 'انصراف',
       inputValidator: (value) => {
-        const n = Number(value);
+        const n = Number(normalizeFaNumber(value));
         if (!Number.isFinite(n) || n < 0 || n > 100) {
           return 'درصد باید بین ۰ تا ۱۰۰ باشد';
         }
@@ -128,13 +146,24 @@ export default function FinanceTab() {
     });
 
     if (!result.isConfirmed) return;
-    await saveDiscount(row, Number(result.value));
+    await saveDiscount(row, Number(normalizeFaNumber(result.value)));
+  }
+
+  function resolveDiscountPeriod() {
+    if (subTab === 'monthly' || data?.type === 'month') {
+      const periodKey = data?.periodKey || monthPeriodKeyFromValue(monthVal);
+      return { periodType: 'month', periodKey };
+    }
+    const periodKey = String(weekId || data?.periodKey || '').trim();
+    return { periodType: 'week', periodKey };
   }
 
   async function saveDiscount(row, percent) {
-    const periodType = data?.type === 'month' ? 'month' : 'week';
-    const periodKey = data?.periodKey
-      || (periodType === 'week' ? weekId : (monthVal.split('|')[0] || ''));
+    const { periodType, periodKey } = resolveDiscountPeriod();
+    if (!periodKey) {
+      toast('بازه صورتحساب مشخص نیست', 'error');
+      return;
+    }
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
       toast('درصد تخفیف باید بین ۰ تا ۱۰۰ باشد', 'error');
       return;
@@ -143,7 +172,7 @@ export default function FinanceTab() {
     const res = await api('/api/admin/finance-statements/discount', {
       method: 'POST',
       body: JSON.stringify({
-        userKey: row.userKey,
+        userKey: String(row.userKey || ''),
         periodType,
         periodKey,
         discountPercent: percent,
@@ -248,10 +277,7 @@ export default function FinanceTab() {
                 <div className="mini-card"><div className="stat-label">جمع کل</div><div className="stat-value">{money(summary.grossTotal || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم سازمان ({faDigits(orgSplit)}٪)</div><div className="stat-value">{money(summary.organizationAmount || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم شخص ({faDigits(personalSplit)}٪)</div><div className="stat-value">{money(summary.personalAmount || 0)}</div></div>
-                {Number(summary.discountAmount || 0) > 0 && (
-                  <div className="mini-card"><div className="stat-label">جمع تخفیف</div><div className="stat-value">{money(summary.discountAmount || 0)}</div></div>
-                )}
-              </>
+                <div className="mini-card"><div className="stat-label">جمع تخفیف</div><div className="stat-value">{money(summary.discountAmount || 0)}</div></div>              </>
             )}
           </div>
           <div className="table-wrap finance-table-wrap" id="financeStatementsWrap">
@@ -300,7 +326,14 @@ export default function FinanceTab() {
                         <td>{faDigits(u.mealCount || 0)}</td>
                         <td>{money(u.grossTotal)}</td>
                         <td className="statement-org-col">{money(u.organizationAmount)}</td>
-                        <td className="statement-personal-col">{money(u.personalAmount)}</td>
+                        <td className="statement-personal-col">
+                          {money(u.personalAmount)}
+                          {u.hasDiscount && Number(u.personalAmountBefore) > Number(u.personalAmount) && (
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', textDecoration: 'line-through' }}>
+                              {money(u.personalAmountBefore)}
+                            </div>
+                          )}
+                        </td>
                         <TableActions>
                           <button
                             type="button"
