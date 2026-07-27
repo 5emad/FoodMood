@@ -186,18 +186,22 @@ source_nginx_tls_lib() {
 
 configure_tls_deployment() {
   local server_ip
-  server_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 127.0.0.1)"
+  server_ip="$(detect_server_ip)"
   source_nginx_tls_lib || return 1
   sync_runtime_url_from_settings || true
-  log_info "Configuring HTTPS (IP ${server_ip}, URL from settings/.env)…"
-  configure_https_only "$server_ip" "$INSTALL_DIR" "$APP_USER"
 
-  if [[ ! -f /etc/sudoers.d/foodmood-ssl ]]; then
-    cat > /etc/sudoers.d/foodmood-ssl <<EOF
+  log_info "Repairing HTTPS / Nginx (SSL, theme colors, proxy)…"
+  repair_tls_deployment "$server_ip" "$INSTALL_DIR" "$APP_USER"
+
+  cat > /etc/sudoers.d/foodmood-ssl <<EOF
 ${APP_USER} ALL=(root) NOPASSWD: ${INSTALL_DIR}/deploy/apply-custom-ssl.sh
 EOF
-    chmod 440 /etc/sudoers.d/foodmood-ssl
-    visudo -cf /etc/sudoers.d/foodmood-ssl >/dev/null 2>&1 || rm -f /etc/sudoers.d/foodmood-ssl
+  chmod 440 /etc/sudoers.d/foodmood-ssl
+  if ! visudo -cf /etc/sudoers.d/foodmood-ssl >/dev/null 2>&1; then
+    rm -f /etc/sudoers.d/foodmood-ssl
+    log_warn "Could not install SSL sudoers rule — panel upload may fail"
+  else
+    log_ok "SSL panel sudo access configured"
   fi
 
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'Status: active'; then
@@ -205,7 +209,14 @@ EOF
     ufw allow 443/tcp comment 'HTTPS / Nginx' >/dev/null 2>&1 || true
   fi
 
-  log_ok "HTTPS ready on port 443"
+  if verify_https_only_deployment "$server_ip"; then
+    log_ok "HTTPS ready (443, CSS, theme-vars)"
+  else
+    log_warn "HTTPS verification had issues — retrying Nginx once"
+    systemctl restart nginx 2>/dev/null || true
+    verify_https_only_deployment "$server_ip" && log_ok "HTTPS recovered after retry" \
+      || log_warn "HTTPS checks still failing — see journalctl -u nginx"
+  fi
 }
 
 migrate_env_keys() {

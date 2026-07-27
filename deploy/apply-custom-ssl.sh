@@ -25,8 +25,11 @@ if ! openssl x509 -in "$CERT" -noout >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! openssl rsa -in "$KEY" -check -noout >/dev/null 2>&1 \
-  && ! openssl ec -in "$KEY" -check -noout >/dev/null 2>&1; then
+if ! openssl pkey -in "$KEY" -noout >/dev/null 2>&1; then
+  if grep -q 'ENCRYPTED' "$KEY" 2>/dev/null; then
+    echo "Private key is encrypted; upload an unencrypted PEM key" >&2
+    exit 1
+  fi
   echo "Invalid private key file" >&2
   exit 1
 fi

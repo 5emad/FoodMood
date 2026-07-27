@@ -914,7 +914,10 @@ verify_fonts_and_site() {
   [[ -z "$https_login" ]] && https_login="000"
   https_css="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/css/enterprise-theme.css" 2>/dev/null || true)"
   [[ -z "$https_css" ]] && https_css="000"
-  echo "node_font=${node_font} https_login=${https_login} https_css=${https_css}"
+  local https_theme
+  https_theme="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 15 "https://${server_ip}/css/theme-vars.css" 2>/dev/null || true)"
+  [[ -z "$https_theme" ]] && https_theme="000"
+  echo "node_font=${node_font} https_login=${https_login} https_css=${https_css} https_theme=${https_theme}"
 }
 
 reset_superadmin_credentials() {

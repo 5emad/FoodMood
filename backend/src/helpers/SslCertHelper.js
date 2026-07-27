@@ -33,17 +33,45 @@ async function verifyCertKeyPair(certText, keyText) {
   try {
     fs.writeFileSync(certPath, certText);
     fs.writeFileSync(keyPath, keyText);
-    const certMod = await opensslArgs(['x509', '-noout', '-modulus', '-in', certPath]);
-    let keyMod = '';
-    try {
-      keyMod = await opensslArgs(['rsa', '-noout', '-modulus', '-in', keyPath]);
-    } catch {
-      keyMod = await opensslArgs(['ec', '-noout', '-modulus', '-in', keyPath]);
-    }
-    return Boolean(certMod && keyMod && certMod === keyMod);
+    const certPub = await opensslArgs(['x509', '-in', certPath, '-noout', '-pubkey']);
+    const keyPub = await opensslArgs(['pkey', '-in', keyPath, '-pubout']);
+    return Boolean(certPub && keyPub && certPub === keyPub);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+}
+
+function translateSslApplyError(raw) {
+  const text = String(raw || '');
+  if (/sudo: a password is required/i.test(text)) {
+    return 'دسترسی sudo برای اعمال گواهی تنظیم نشده است؛ یک‌بار deploy/update.sh را اجرا کنید';
+  }
+  if (/do not match|Certificate and private key/i.test(text)) {
+    return 'گواهی و کلید خصوصی با هم مطابقت ندارند';
+  }
+  if (/encrypted/i.test(text)) {
+    return 'کلید خصوصی رمزدار است؛ نسخهٔ بدون رمز (PEM) آپلود کنید';
+  }
+  if (/Invalid certificate/i.test(text)) {
+    return 'فایل گواهی معتبر نیست (فرمت PEM)';
+  }
+  if (/Invalid private key/i.test(text)) {
+    return 'فایل کلید خصوصی معتبر نیست (فرمت PEM)';
+  }
+  if (/nginx config test failed/i.test(text)) {
+    const line = text.split('\n').find((l) => /\[emerg\]|\[alert\]|error/i.test(l));
+    if (line && /ssl_certificate/i.test(line)) {
+      return 'Nginx گواهی را قبول نکرد؛ فایل full chain (.crt) و کلید جفت‌شده را بررسی کنید';
+    }
+    return 'پیکربندی Nginx نامعتبر شد؛ جزئیات در لاگ سیستم ثبت شد';
+  }
+  if (/nginx failed to start|not listening on port 443/i.test(text)) {
+    return 'Nginx بعد از نصب گواهی بالا نیامد؛ journalctl -u nginx را بررسی کنید';
+  }
+  if (/Missing custom\.crt/i.test(text)) {
+    return 'فایل گواهی روی سرور یافت نشد؛ دوباره آپلود کنید';
+  }
+  return 'اعمال گواهی ناموفق بود؛ جزئیات در لاگ سیستم ثبت شد';
 }
 
 async function parseCertificateInfo(certPath) {
@@ -192,15 +220,9 @@ async function applyCustomCertificate() {
 
     return { applied: true };
   } catch (error) {
-    const raw = String(error.stderr || error.message || '');
+    const raw = [error.stderr, error.stdout, error.message].filter(Boolean).join('\n');
     logSslEvent('error', 'اعمال گواهی SSL ناموفق بود', raw);
-    if (/sudo: a password is required/i.test(raw)) {
-      throw Object.assign(new Error('دسترسی sudo برای اعمال گواهی تنظیم نشده است؛ راهنمای استقرار را ببینید'), { status: 503, expose: true });
-    }
-    if (/do not match/i.test(raw)) {
-      throw Object.assign(new Error('گواهی و کلید خصوصی با هم مطابقت ندارند'), { status: 400, expose: true });
-    }
-    throw Object.assign(new Error('اعمال گواهی ناموفق بود؛ جزئیات در لاگ سیستم ثبت شد'), { status: 503, expose: true });
+    throw Object.assign(new Error(translateSslApplyError(raw)), { status: 503, expose: true });
   }
 }
 

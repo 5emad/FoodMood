@@ -1500,8 +1500,8 @@ class AdminController {
         data: await getSslStatus(),
       });
     } catch (error) {
-      if (Number(error.status) > 0 && Number(error.status) < 500) {
-        return res.status(error.status).json({ success: false, message: error.message });
+      if (error.expose || (Number(error.status) > 0 && Number(error.status) < 500)) {
+        return res.status(error.status || 400).json({ success: false, message: error.message });
       }
       next(error);
     }
