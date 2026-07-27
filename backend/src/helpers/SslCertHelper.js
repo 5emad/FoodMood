@@ -8,6 +8,9 @@ const execFileAsync = promisify(execFile);
 
 const INSTALL_DIR = process.env.FOOD_INSTALL_DIR || '/opt/food';
 const SSL_DIR = path.join(INSTALL_DIR, 'certs', 'ssl');
+const STAGING_DIR = path.join(SSL_DIR, 'staging');
+const STAGING_CERT = path.join(STAGING_DIR, 'upload.crt');
+const STAGING_KEY = path.join(STAGING_DIR, 'upload.key');
 const CUSTOM_CERT = path.join(SSL_DIR, 'custom.crt');
 const CUSTOM_KEY = path.join(SSL_DIR, 'custom.key');
 const APPLY_SCRIPT = path.join(INSTALL_DIR, 'deploy', 'apply-custom-ssl.sh');
@@ -46,7 +49,8 @@ function extractSslErrorDetail(raw) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .filter((line) => !/^sudo:/i.test(line));
+    .filter((line) => !/^sudo:/i.test(line))
+    .filter((line) => !/^Command failed:/i.test(line));
   return lines.slice(-4).join(' | ').slice(0, 400);
 }
 
@@ -185,12 +189,18 @@ function validatePemPayload(certText, keyText) {
   }
 }
 
-async function runSslApplyScript(stageCert, stageKey) {
+function writeStagingFiles(certText, keyText) {
+  fs.mkdirSync(STAGING_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(STAGING_CERT, `${certText}\n`, { mode: 0o600 });
+  fs.writeFileSync(STAGING_KEY, `${keyText}\n`, { mode: 0o600 });
+}
+
+async function runSslApplyScript() {
   if (!fs.existsSync(APPLY_SCRIPT)) {
     throw Object.assign(new Error('اسکریپت اعمال گواهی روی سرور یافت نشد'), { status: 500, expose: true });
   }
   try {
-    const { stdout, stderr } = await execFileAsync('sudo', ['-n', APPLY_SCRIPT, stageCert, stageKey], {
+    const { stdout, stderr } = await execFileAsync('sudo', ['-n', APPLY_SCRIPT], {
       timeout: 120000,
       maxBuffer: 2 * 1024 * 1024,
     });
@@ -200,10 +210,11 @@ async function runSslApplyScript(stageCert, stageKey) {
     const raw = [error.stderr, error.stdout, error.message].filter(Boolean).join('\n');
     logSslEvent('error', 'اعمال گواهی SSL ناموفق بود', raw);
     const detail = extractSslErrorDetail(raw);
-    throw Object.assign(new Error(translateSslApplyError(raw)), {
+    const message = translateSslApplyError(raw);
+    throw Object.assign(new Error(message), {
       status: 503,
       expose: true,
-      detail,
+      detail: detail || undefined,
     });
   }
 }
@@ -223,16 +234,8 @@ async function installCustomCertificate(certBuffer, keyBuffer) {
     throw Object.assign(new Error('گواهی و کلید خصوصی با هم مطابقت ندارند'), { status: 400, expose: true });
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fm-ssl-'));
-  const stageCert = path.join(tmpDir, 'upload.crt');
-  const stageKey = path.join(tmpDir, 'upload.key');
-  try {
-    fs.writeFileSync(stageCert, `${certText}\n`, { mode: 0o600 });
-    fs.writeFileSync(stageKey, `${keyText}\n`, { mode: 0o600 });
-    await runSslApplyScript(stageCert, stageKey);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  writeStagingFiles(certText, keyText);
+  await runSslApplyScript();
 
   try {
     const { syncPublicUrlToEnv } = require('./EnvFileHelper');
@@ -261,23 +264,15 @@ async function saveCustomCertificate(certBuffer, keyBuffer) {
     throw Object.assign(new Error('گواهی و کلید خصوصی با هم مطابقت ندارند'), { status: 400, expose: true });
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fm-ssl-'));
-  const stageCert = path.join(tmpDir, 'upload.crt');
-  const stageKey = path.join(tmpDir, 'upload.key');
-  try {
-    fs.writeFileSync(stageCert, `${certText}\n`, { mode: 0o600 });
-    fs.writeFileSync(stageKey, `${keyText}\n`, { mode: 0o600 });
-    await runSslApplyScript(stageCert, stageKey);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  writeStagingFiles(certText, keyText);
+  await runSslApplyScript();
 }
 
 async function applyCustomCertificate() {
   if (!hasCustomCertificate()) {
     throw Object.assign(new Error('گواهی سفارشی روی سرور یافت نشد'), { status: 400, expose: true });
   }
-  return runSslApplyScript(CUSTOM_CERT, CUSTOM_KEY);
+  return runSslApplyScript();
 }
 
 function logSslEvent(level, message, detail) {

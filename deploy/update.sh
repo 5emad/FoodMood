@@ -202,6 +202,11 @@ EOF
     log_warn "Could not install SSL sudoers rule — panel upload may fail"
   else
     log_ok "SSL panel sudo access configured"
+    if sudo -u "$APP_USER" sudo -n "${INSTALL_DIR}/deploy/apply-custom-ssl.sh" --verify-access >/dev/null 2>&1; then
+      log_ok "SSL sudo self-check passed for ${APP_USER}"
+    else
+      log_warn "SSL sudo self-check failed — re-run update or fix /etc/sudoers.d/foodmood-ssl"
+    fi
   fi
 
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi 'Status: active'; then

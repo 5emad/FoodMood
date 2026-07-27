@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Apply uploaded SSL certificate and reload Nginx.
-# Usage:
-#   sudo bash apply-custom-ssl.sh
-#   sudo bash apply-custom-ssl.sh /tmp/staging.crt /tmp/staging.key
+# Panel flow: foodapp writes /opt/food/certs/ssl/staging/* then runs:
+#   sudo -n /opt/food/deploy/apply-custom-ssl.sh
 set -euo pipefail
 
 INSTALL_DIR="/opt/food"
@@ -12,12 +11,30 @@ SERVICE_NAME="foodmood"
 
 CERT="${INSTALL_DIR}/certs/ssl/custom.crt"
 KEY="${INSTALL_DIR}/certs/ssl/custom.key"
-SOURCE_CERT="${1:-$CERT}"
-SOURCE_KEY="${2:-$KEY}"
+STAGING_CERT="${INSTALL_DIR}/certs/ssl/staging/upload.crt"
+STAGING_KEY="${INSTALL_DIR}/certs/ssl/staging/upload.key"
+
+if [[ "${1:-}" == "--verify-access" ]]; then
+  echo "apply-custom-ssl: sudo access OK"
+  exit 0
+fi
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   echo "Run as root: sudo bash $0" >&2
   exit 1
+fi
+
+SOURCE_CERT="$CERT"
+SOURCE_KEY="$KEY"
+FROM_STAGING=0
+
+if [[ -f "$STAGING_CERT" && -f "$STAGING_KEY" ]]; then
+  SOURCE_CERT="$STAGING_CERT"
+  SOURCE_KEY="$STAGING_KEY"
+  FROM_STAGING=1
+elif [[ -n "${1:-}" && -n "${2:-}" ]]; then
+  SOURCE_CERT="$1"
+  SOURCE_KEY="$2"
 fi
 
 if [[ ! -f "$SOURCE_CERT" || ! -f "$SOURCE_KEY" ]]; then
@@ -53,8 +70,10 @@ ensure_ssl_storage_permissions "$INSTALL_DIR" "$APP_USER"
 if [[ "$SOURCE_CERT" != "$CERT" || "$SOURCE_KEY" != "$KEY" ]]; then
   install -m 644 -o "${APP_USER}:${APP_USER}" "$SOURCE_CERT" "$CERT"
   install -m 600 -o "${APP_USER}:${APP_USER}" "$SOURCE_KEY" "$KEY"
-  rm -f "$SOURCE_CERT" "$SOURCE_KEY" 2>/dev/null || true
-  rmdir "$(dirname "$SOURCE_CERT")" 2>/dev/null || true
+fi
+
+if [[ "$FROM_STAGING" == "1" ]]; then
+  rm -f "$STAGING_CERT" "$STAGING_KEY" 2>/dev/null || true
 fi
 
 detect_server_ip() {
