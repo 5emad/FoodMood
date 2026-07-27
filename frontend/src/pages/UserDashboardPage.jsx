@@ -511,7 +511,9 @@ export default function UserDashboardPage() {
                             {money(s.summary?.personalAmount)}
                             {s.hasDiscount ? (
                               <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>
-                                تخفیف {faDigits(s.discountPercent)}٪
+                                تخفیف
+                                {Number(s.discountPercent) > 0 ? ` ${faDigits(s.discountPercent)}٪` : ''}
+                                {' '}(−{money(s.discountAmount || s.summary?.discountAmount || 0)})
                               </div>
                             ) : null}
                           </td>

@@ -6,6 +6,9 @@ const { nextReportNumber } = require('../helpers/ReportNumberHelper');
 const {
   loadDiscountMap,
   applyDiscountMapToRow,
+  applyStackedDiscountsToRow,
+  accumulateWeeklyPersonalDiscounts,
+  discountKey,
   summarizeDiscountedRows,
 } = require('../services/StatementDiscountService');
 
@@ -112,10 +115,46 @@ async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, quer
   const periodKey = periodKeyFromQuery(query, meta.range || {}, periodType);
   const mappedUsers = mapUsersToFinanceRows(report.byUser, settings, periodType, periodKey);
   const guests = mapGuestsToFinanceRows(report.byGuest, settings, periodType, periodKey);
-  const discountMap = await loadDiscountMap(periodType, periodKey);
-  const users = [...mappedUsers.users, ...guests].map((row) => (
-    applyDiscountMapToRow(row, discountMap, periodType, periodKey)
-  ));
+  const organizationSharePercent = mappedUsers.organizationSharePercent;
+  let users;
+
+  if (periodType === 'month') {
+    const weeklyDiscountByUser = await accumulateWeeklyPersonalDiscounts({
+      rangeStart,
+      rangeEnd,
+      summarizeSlice: async (sliceStart, sliceEnd) => {
+        const weekReport = await buildReport(sliceStart, sliceEnd);
+        const entries = [];
+        for (const row of weekReport.byUser || []) {
+          const split = splitAmount(row.totalPrice, organizationSharePercent);
+          entries.push({ userKey: String(row.userId), personalAmount: split.personalAmount });
+        }
+        for (const row of weekReport.byGuest || []) {
+          const split = splitAmount(row.totalPrice, organizationSharePercent);
+          entries.push({
+            userKey: `guest:${row.guestId || row.guestCode}`,
+            personalAmount: split.personalAmount,
+          });
+        }
+        return entries;
+      },
+    });
+    const monthDiscountMap = await loadDiscountMap('month', periodKey);
+    users = [...mappedUsers.users, ...guests].map((row) => {
+      const stored = monthDiscountMap.get(discountKey(row.userKey, 'month', periodKey));
+      return applyStackedDiscountsToRow(row, {
+        fixedDiscountAmount: weeklyDiscountByUser.get(row.userKey) || 0,
+        periodPercent: stored ? stored.discountPercent : 0,
+        periodNote: stored?.note || '',
+      });
+    });
+  } else {
+    const discountMap = await loadDiscountMap(periodType, periodKey);
+    users = [...mappedUsers.users, ...guests].map((row) => (
+      applyDiscountMapToRow(row, discountMap, periodType, periodKey)
+    ));
+  }
+
   const summary = summarizeDiscountedRows(users);
 
   return {

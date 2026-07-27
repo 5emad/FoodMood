@@ -1,5 +1,7 @@
 const StatementDiscount = require('../models/StatementDiscount');
+const Week = require('../models/Week');
 const { normalizePeriodKey } = require('../helpers/StatementNumberHelper');
+const { startOfDay } = require('../helpers/DateHelper');
 
 function clampPercent(value) {
   const n = Number(value);
@@ -54,6 +56,44 @@ function applyDiscountMapToRow(row, discountMap, periodType, periodKey) {
   };
 }
 
+/**
+ * Apply a fixed discount amount (e.g. sum of weekly discounts) onto a finance row,
+ * then optionally stack a period percent (month-level) on the remaining personal share.
+ */
+function applyStackedDiscountsToRow(row, {
+  fixedDiscountAmount = 0,
+  periodPercent = 0,
+  periodNote = '',
+} = {}) {
+  const org = Math.max(0, Number(row.organizationAmount) || 0);
+  const personalBefore = Math.max(0, Number(row.personalAmountBefore ?? row.personalAmount) || 0);
+  const grossBefore = Math.max(
+    0,
+    Number(row.grossTotalBefore ?? row.grossTotal) || (org + personalBefore),
+  );
+
+  const fixed = Math.min(personalBefore, Math.max(0, Math.round(Number(fixedDiscountAmount) || 0)));
+  const afterFixed = Math.max(0, personalBefore - fixed);
+  const percent = clampPercent(periodPercent);
+  const percentDisc = Math.round(afterFixed * percent / 100);
+  const personalAfter = Math.max(0, afterFixed - percentDisc);
+  const discountAmount = fixed + percentDisc;
+
+  return {
+    ...row,
+    discountPercent: percent,
+    discountAmount,
+    weeklyDiscountAmount: fixed,
+    personalAmountBefore: personalBefore,
+    personalAmount: personalAfter,
+    organizationAmount: org,
+    grossTotal: org + personalAfter,
+    grossTotalBefore: grossBefore,
+    discountNote: periodNote || row.discountNote || '',
+    hasDiscount: discountAmount > 0,
+  };
+}
+
 async function loadDiscountMap(periodType, periodKey) {
   const type = periodType === 'month' ? 'month' : 'week';
   const key = normalizePeriodKey(type, periodKey);
@@ -63,6 +103,103 @@ async function loadDiscountMap(periodType, periodKey) {
     map.set(discountKey(row.userKey, row.periodType, row.periodKey), row);
   });
   return map;
+}
+
+async function loadWeekDiscountRows(weekIds = []) {
+  const ids = [...new Set((weekIds || []).map((id) => String(id)).filter(Boolean))];
+  if (!ids.length) return [];
+  return StatementDiscount.find({
+    periodType: 'week',
+    periodKey: { $in: ids },
+  }).lean();
+}
+
+async function findWeeksOverlappingRange(rangeStart, rangeEnd) {
+  const start = startOfDay(rangeStart);
+  const end = startOfDay(rangeEnd);
+  if (!start || !end || start > end) return [];
+  return Week.find({
+    startDate: { $lte: end },
+    endDate: { $gte: start },
+  }).select('_id startDate endDate').lean();
+}
+
+/**
+ * For each overlapping week that has a stored discount, call `summarizeSlice(start, end)`
+ * and accumulate personal-share discounts per userKey.
+ *
+ * summarizeSlice must return { byUserKey: Map|Object of userKey -> personalAmount }
+ * or an array of { userKey, personalAmount }.
+ */
+async function accumulateWeeklyPersonalDiscounts({
+  rangeStart,
+  rangeEnd,
+  summarizeSlice,
+}) {
+  const weeks = await findWeeksOverlappingRange(rangeStart, rangeEnd);
+  if (!weeks.length) return new Map();
+
+  const weekIds = weeks.map((w) => String(w._id));
+  const discountRows = await loadWeekDiscountRows(weekIds);
+  if (!discountRows.length) return new Map();
+
+  const percentByUserWeek = new Map();
+  discountRows.forEach((row) => {
+    percentByUserWeek.set(
+      `${String(row.userKey)}|${String(row.periodKey)}`,
+      clampPercent(row.discountPercent),
+    );
+  });
+
+  const weeksWithDiscount = new Set(discountRows.map((r) => String(r.periodKey)));
+  const discountByUser = new Map();
+
+  for (const week of weeks) {
+    const weekId = String(week._id);
+    if (!weeksWithDiscount.has(weekId)) continue;
+
+    const sliceStart = startOfDay(new Date(Math.max(+startOfDay(week.startDate), +startOfDay(rangeStart))));
+    const sliceEnd = startOfDay(new Date(Math.min(+startOfDay(week.endDate), +startOfDay(rangeEnd))));
+    if (sliceStart > sliceEnd) continue;
+
+    const slice = await summarizeSlice(sliceStart, sliceEnd, weekId);
+    const entries = normalizeSliceEntries(slice);
+
+    for (const { userKey, personalAmount } of entries) {
+      const pct = percentByUserWeek.get(`${userKey}|${weekId}`) || 0;
+      if (pct <= 0) continue;
+      const personal = Math.max(0, Number(personalAmount) || 0);
+      if (personal <= 0) continue;
+      const amount = Math.round(personal * pct / 100);
+      if (amount <= 0) continue;
+      discountByUser.set(userKey, (discountByUser.get(userKey) || 0) + amount);
+    }
+  }
+
+  return discountByUser;
+}
+
+function normalizeSliceEntries(slice) {
+  if (!slice) return [];
+  if (Array.isArray(slice)) {
+    return slice.map((item) => ({
+      userKey: String(item.userKey),
+      personalAmount: Number(item.personalAmount) || 0,
+    }));
+  }
+  if (slice.byUserKey instanceof Map) {
+    return [...slice.byUserKey.entries()].map(([userKey, personalAmount]) => ({
+      userKey: String(userKey),
+      personalAmount: Number(personalAmount) || 0,
+    }));
+  }
+  if (slice.byUserKey && typeof slice.byUserKey === 'object') {
+    return Object.entries(slice.byUserKey).map(([userKey, personalAmount]) => ({
+      userKey: String(userKey),
+      personalAmount: Number(personalAmount) || 0,
+    }));
+  }
+  return [];
 }
 
 async function getDiscount(userKey, periodType, periodKey) {
@@ -141,7 +278,11 @@ module.exports = {
   discountKey,
   applyDiscountToAmounts,
   applyDiscountMapToRow,
+  applyStackedDiscountsToRow,
   loadDiscountMap,
+  loadWeekDiscountRows,
+  findWeeksOverlappingRange,
+  accumulateWeeklyPersonalDiscounts,
   getDiscount,
   upsertDiscount,
   summarizeDiscountedRows,

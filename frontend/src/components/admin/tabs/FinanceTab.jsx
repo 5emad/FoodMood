@@ -289,7 +289,9 @@ export default function FinanceTab() {
                           )}
                           {u.hasDiscount && (
                             <div style={{ fontSize: '.75rem', color: 'var(--primary)', marginTop: 2 }}>
-                              تخفیف {faDigits(u.discountPercent)}٪ (−{money(u.discountAmount)})
+                              تخفیف
+                              {Number(u.discountPercent) > 0 ? ` ${faDigits(u.discountPercent)}٪` : ''}
+                              {' '}(−{money(u.discountAmount)})
                             </div>
                           )}
                         </td>

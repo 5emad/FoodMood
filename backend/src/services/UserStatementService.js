@@ -18,6 +18,8 @@ const {
 const {
   getDiscount,
   applyDiscountToAmounts,
+  applyStackedDiscountsToRow,
+  accumulateWeeklyPersonalDiscounts,
 } = require('../services/StatementDiscountService');
 const { isLdapAuth } = require('../helpers/AuthUserHelper');
 const { normalizePeriodKey } = require('../helpers/StatementNumberHelper');
@@ -33,6 +35,49 @@ async function attachStatementDiscount(statement, user, periodType, periodKey) {
     jalaliFrom: statement.range?.jalaliStart,
     jalaliTo: statement.range?.jalaliEnd,
   });
+  const orgShare = Number(statement.split?.organizationSharePercent || 0);
+
+  if (periodType === 'month' && statement.range?.start && statement.range?.end) {
+    const weeklyDiscountByUser = await accumulateWeeklyPersonalDiscounts({
+      rangeStart: statement.range.start,
+      rangeEnd: statement.range.end,
+      summarizeSlice: async (sliceStart, sliceEnd) => {
+        const { summary } = await summarizeUserOrdersInRange(
+          user,
+          sliceStart,
+          sliceEnd,
+          orgShare,
+        );
+        return [{ userKey, personalAmount: summary.personalAmount || 0 }];
+      },
+    });
+    const stored = await getDiscount(userKey, 'month', key);
+    const baseRow = {
+      userKey,
+      grossTotal: statement.summary?.grossTotal,
+      organizationAmount: statement.summary?.organizationAmount,
+      personalAmount: statement.summary?.personalAmount,
+    };
+    const applied = applyStackedDiscountsToRow(baseRow, {
+      fixedDiscountAmount: weeklyDiscountByUser.get(userKey) || 0,
+      periodPercent: Number(stored?.discountPercent || 0),
+      periodNote: stored?.note || '',
+    });
+    return {
+      ...statement,
+      userKey,
+      periodType,
+      periodKey: key,
+      summary: {
+        ...statement.summary,
+        ...applied,
+      },
+      discountPercent: applied.discountPercent,
+      discountAmount: applied.discountAmount,
+      hasDiscount: applied.hasDiscount,
+    };
+  }
+
   const stored = await getDiscount(userKey, periodType, key);
   const percent = Number(stored?.discountPercent || 0);
   const applied = applyDiscountToAmounts({

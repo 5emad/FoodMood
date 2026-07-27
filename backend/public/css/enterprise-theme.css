@@ -1925,9 +1925,6 @@ body.admin-body { min-height: 100vh; }
   min-width: 180px;
   max-width: 280px;
 }
-.finance-table-wrap {
-  overflow-x: auto;
-}
 .finance-toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border);
@@ -1975,8 +1972,21 @@ body.admin-body { min-height: 100vh; }
 .finance-table-wrap {
   margin: 22px 18px 18px;
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+}
+.finance-table-wrap .table {
+  min-width: 980px;
+}
+.finance-table-wrap .table-actions-cell {
+  min-width: 5.75rem;
+  width: 1%;
+  white-space: nowrap;
+}
+.finance-table-wrap .table-actions {
+  flex-wrap: nowrap;
 }
 .finance-table-wrap .empty-state { margin: 12px 0; }
 
