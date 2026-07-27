@@ -1,6 +1,6 @@
 {
   "name": "foodmood-backend",
-  "version": "1.9.35",
+  "version": "1.9.36",
   "description": "Backend (Express) — وابستگی‌های سرور؛ فرانت در frontend/",
   "main": "backend/server.js",
   "scripts": {

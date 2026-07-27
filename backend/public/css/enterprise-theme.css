@@ -3823,6 +3823,16 @@ body.ann-drawer-open .top-nav {
   font-size: 1.05rem;
 }
 
+.receipt-total-row--discount {
+  color: var(--primary-dark, #115E59);
+  font-weight: 600;
+}
+
+.receipt-total-row--discount span {
+  width: 100%;
+  text-align: right;
+}
+
 .receipt-footer {
   text-align: center;
   font-size: .72rem;

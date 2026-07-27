@@ -655,6 +655,36 @@ export default function UserDashboardPage() {
                     <span>سهم سازمان ({faDigits(receiptData?.split?.organizationSharePercent ?? caps.organizationSharePercent)}٪)</span>
                     <strong>{money(receiptData?.summary?.organizationAmount ?? receipt?.preview?.summary?.organizationAmount)}</strong>
                   </div>
+                  {(() => {
+                    const discountAmount = Number(
+                      receiptData?.summary?.discountAmount
+                      ?? receiptData?.discountAmount
+                      ?? receipt?.preview?.summary?.discountAmount
+                      ?? receipt?.preview?.discountAmount
+                      ?? 0,
+                    );
+                    const discountPercent = Number(
+                      receiptData?.summary?.discountPercent
+                      ?? receiptData?.discountPercent
+                      ?? receipt?.preview?.summary?.discountPercent
+                      ?? receipt?.preview?.discountPercent
+                      ?? 0,
+                    );
+                    const hasDiscount = discountAmount > 0
+                      || discountPercent > 0
+                      || receiptData?.hasDiscount
+                      || receipt?.preview?.hasDiscount;
+                    if (!hasDiscount) return null;
+                    return (
+                      <div className="receipt-total-row receipt-total-row--discount">
+                        <span>
+                          تخفیف
+                          {discountPercent > 0 ? ` ${faDigits(discountPercent)}٪` : ''}
+                          {' '}(−{money(discountAmount)})
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <div className="receipt-total-row receipt-total-row--pay">
                     <span>قابل پرداخت شما</span>
                     <strong>{money(receiptData?.summary?.personalAmount ?? receipt?.preview?.summary?.personalAmount)}</strong>

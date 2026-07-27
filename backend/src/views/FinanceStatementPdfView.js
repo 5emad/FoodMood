@@ -13,6 +13,14 @@ function formatMoney(value) {
   return `${Number(value || 0).toLocaleString('fa-IR')} ت`;
 }
 
+function formatDiscountLabel(user = {}) {
+  const amount = Number(user.discountAmount || 0);
+  const percent = Number(user.discountPercent || 0);
+  if (!(amount > 0 || percent > 0 || user.hasDiscount)) return '';
+  const percentPart = percent > 0 ? ` ${percent.toLocaleString('fa-IR')}٪` : '';
+  return `<br><small class="discount-note">تخفیف${percentPart} (−${formatMoney(amount)})</small>`;
+}
+
 function renderFinanceStatementHtml(report = {}) {
   const generatedAt = escapeHtml(formatJalaliDate(new Date()));
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
@@ -20,6 +28,7 @@ function renderFinanceStatementHtml(report = {}) {
   const split = report.split || {};
   const summary = report.summary || {};
   const users = report.users || [];
+  const summaryDiscount = Number(summary.discountAmount || 0);
 
   const rows = users.map((user, index) => {
     const isGuest = user.kind === 'guest';
@@ -39,7 +48,7 @@ function renderFinanceStatementHtml(report = {}) {
       <td>${Number(user.mealCount || 0).toLocaleString('fa-IR')}</td>
       <td>${formatMoney(user.grossTotal)}</td>
       <td>${formatMoney(user.organizationAmount)}</td>
-      <td>${formatMoney(user.personalAmount)}${Number(user.discountPercent || 0) > 0 ? `<br><small>تخفیف ${Number(user.discountPercent).toLocaleString('fa-IR')}٪ (−${formatMoney(user.discountAmount)})</small>` : ''}</td>
+      <td>${formatMoney(user.personalAmount)}${formatDiscountLabel(user)}</td>
     </tr>`;
   }).join('');
 
@@ -69,7 +78,7 @@ function renderFinanceStatementHtml(report = {}) {
     .lh-subject { padding: 6pt 10pt; font-size: 9pt; }
     .lh-subject-label { font-weight: 700; }
     .summary-grid {
-      display: grid; grid-template-columns: repeat(6, 1fr); gap: 6pt; margin: 10pt 0;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6pt; margin: 10pt 0;
     }
     .summary-card {
       border: 1pt solid #bbb; padding: 7pt; border-radius: 4pt; background: #fafafa;
@@ -82,6 +91,7 @@ function renderFinanceStatementHtml(report = {}) {
     td.num { direction: ltr; font-weight: 700; }
     tr:nth-child(even) td { background: #f7f4fb; }
     .total-row td { background: #2b1b3d !important; color: #fff; font-weight: 800; }
+    .discount-note { display: inline-block; margin-top: 2pt; color: #115E59; font-size: 7.5pt; font-weight: 700; }
     .doc-footer {
       margin-top: 10pt; padding-top: 5pt; border-top: 1pt solid #000;
       display: flex; justify-content: space-between; font-size: 7pt; gap: 8pt;
@@ -125,6 +135,7 @@ function renderFinanceStatementHtml(report = {}) {
     <div class="summary-card"><div class="summary-label">جمع کل</div><div class="summary-value">${formatMoney(summary.grossTotal)}</div></div>
     <div class="summary-card"><div class="summary-label">سهم سازمان (${Number(split.organizationSharePercent || 0).toLocaleString('fa-IR')}٪)</div><div class="summary-value">${formatMoney(summary.organizationAmount)}</div></div>
     <div class="summary-card"><div class="summary-label">سهم شخص (${Number(split.personalSharePercent || 0).toLocaleString('fa-IR')}٪)</div><div class="summary-value">${formatMoney(summary.personalAmount)}</div></div>
+    ${summaryDiscount > 0 ? `<div class="summary-card"><div class="summary-label">جمع تخفیف</div><div class="summary-value">${formatMoney(summaryDiscount)}</div></div>` : ''}
   </div>
 
   <table>
