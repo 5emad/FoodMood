@@ -1,11 +1,11 @@
-﻿/* =================================================================
-   SAZMAN FOOD SYSTEM â€” Dark Premium / Glassmorphism
+/* =================================================================
+   SAZMAN FOOD SYSTEM — Dark Premium / Glassmorphism
    All assets are served locally from /public (no CDN).
    ================================================================= */
 
-/* â”€â”€ Variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Variables ──────────────────────────────────────────────────── */
 :root {
-  /* Brand â€” Teal (Ø«Ø§Ø¨ØªØŒ Ø¨Ø¯ÙˆÙ† Ø§Ù†ØªØ®Ø§Ø¨) */
+  /* Brand — Teal (ثابت، بدون انتخاب) */
   --primary:        #0F766E;
   --primary-light:  #14B8A6;
   --primary-dark:   #115E59;
@@ -14,13 +14,13 @@
   --primary-bg-soft: rgba(15, 118, 110, .05);
   --primary-bg-strong: rgba(15, 118, 110, .14);
 
-  /* Soft amber accent (ØºØ°Ø§ / Ø§Ù†Ø±Ú˜ÛŒ) */
+  /* Soft amber accent (غذا / انرژی) */
   --gold:           #C27803;
   --gold-light:     #E8A317;
   --gold-glow:      rgba(194, 120, 3, .22);
   --gold-bg:        rgba(194, 120, 3, .08);
 
-  /* Surfaces â€” cool mint-gray */
+  /* Surfaces — cool mint-gray */
   --bg-body:        #F3F7F6;
   --bg-section:     #EAF2F0;
   --surface:        rgba(255, 255, 255, .88);
@@ -80,7 +80,7 @@
   --glass-blur:     blur(18px) saturate(140%);
 }
 
-/* â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Reset & Base ───────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; outline: none; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
@@ -102,13 +102,13 @@ a { text-decoration: none; color: var(--primary-light); transition: color .2s; }
 a:hover { color: var(--gold); }
 h1,h2,h3,h4,h5,h6 { font-weight: 600; line-height: 1.3; color: var(--text-main); }
 
-/* â”€â”€ SCROLLBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── SCROLLBAR ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--primary), var(--primary-dark)); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
-/* â”€â”€ NOISE texture (subtle grain) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── NOISE texture (subtle grain) ────────────────────────────── */
 body::before {
   content: '';
   position: fixed; inset: 0;
@@ -119,9 +119,9 @@ body::before {
 }
 body > * { position: relative; z-index: 1; }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
-       ADMIN LAYOUT â€” SIDEBAR
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+/* ── ═══════════════════════════════════ ──
+       ADMIN LAYOUT — SIDEBAR
+   ── ═══════════════════════════════════ ── */
 
 .sidebar {
   width: var(--sidebar-width);
@@ -302,9 +302,9 @@ body > * { position: relative; z-index: 1; }
 /* Content wrapper */
 .content-wrapper { padding: 28px 32px; flex: 1; }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
-       USER LAYOUT â€” TOP NAV
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+/* ── ═══════════════════════════════════ ──
+       USER LAYOUT — TOP NAV
+   ── ═══════════════════════════════════ ── */
 
 .top-nav {
   background: rgba(255,252,252,.94);
@@ -344,9 +344,9 @@ body > * { position: relative; z-index: 1; }
 .btn-icon:hover { background: var(--primary-bg-strong); color: var(--primary-light); border-color: var(--border-accent); }
 .btn-icon.logout-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        PAGE HEADER (hero strip)
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .page-header {
   background: linear-gradient(125deg, var(--primary-dark) 0%, var(--primary) 55%, #0D9488 100%);
@@ -396,9 +396,9 @@ body > * { position: relative; z-index: 1; }
   position: relative; z-index: 1;
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        CARDS (Glassmorphism)
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .card {
   background: var(--surface-solid);
@@ -584,9 +584,9 @@ body > * { position: relative; z-index: 1; }
 .food-name  { font-weight: 400; font-size: .9rem; color: var(--text-main); }
 .food-price { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        BADGES
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
@@ -599,9 +599,9 @@ body > * { position: relative; z-index: 1; }
 .badge-primary { background: var(--primary-bg); color: var(--primary-light); border: 1px solid var(--border-accent); }
 .badge-gray    { background: rgba(255,255,255,.05); color: var(--text-muted); border: 1px solid var(--border); }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        BUTTONS
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
@@ -699,9 +699,9 @@ body > * { position: relative; z-index: 1; }
   padding: 6px 12px; border-radius: 8px;
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        FORMS
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .form-group  { margin-bottom: 18px; }
 .form-label  {
@@ -728,7 +728,7 @@ select.form-control { background-color: var(--surface-solid); color: var(--text-
 select.form-control option { background: var(--surface-solid); color: var(--text-main); }
 textarea.form-control { min-height: 90px; resize: vertical; }
 
-/* ÙØ±Ù… ÙˆØ±ÙˆØ¯: Ù…ØªÙ† ÙØ§Ø±Ø³ÛŒ Ø±Ø§Ø³Øªâ€ŒÚ†ÛŒÙ†ØŒ Ø±Ù…Ø² Ø¨Ø§ ØªØ±ØªÛŒØ¨ ØªØ§ÛŒÙ¾ LTR */
+/* فرم ورود: متن فارسی راست‌چین، رمز با ترتیب تایپ LTR */
 .auth-card .form-control {
   text-align: right;
 }
@@ -741,9 +741,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   text-align: right;
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        TABLES
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .table-wrap {
   background: var(--glass);
@@ -811,9 +811,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   color: var(--text-muted);
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        ALERTS
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .alert {
   padding: 13px 18px; border-radius: var(--radius);
@@ -826,9 +826,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .alert-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(154,107,63,.22); border-right: 4px solid var(--warning); }
 .alert-info    { background: var(--primary-bg); color: var(--primary-dark); border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent); border-right: 4px solid var(--primary); }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        LOGIN
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .auth-body {
   min-height: 100vh;
@@ -881,7 +881,7 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   min-height: 520px;
 }
 
-/* Ø¨Ø±Ù†Ø¯ Ø«Ø§Ø¨Øª â€” Ù¾Ù†Ù„ Ú©Ù†Ø§Ø±ÛŒ ÙˆØ±ÙˆØ¯ */
+/* برند ثابت — پنل کناری ورود */
 .auth-side--brand,
 .auth-side--wine {
   background: linear-gradient(165deg, #042F2E 0%, #115E59 48%, #0F766E 100%);
@@ -1010,9 +1010,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   .auth-card { padding: 28px 22px; }
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        TOAST NOTIFICATIONS (unified AppToast)
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 #toast-container {
   position: fixed;
@@ -1138,7 +1138,7 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   .app-toast { font-size: .84rem; padding: 12px 40px 12px 14px; }
 }
 
-/* Legacy class aliases (foods demo page) â€” ÙÙ‚Ø· Ú©Ù„Ø§Ø³ Ø¯Ù‚ÛŒÙ‚ toastØŒ Ù†Ù‡ sonner */
+/* Legacy class aliases (foods demo page) — فقط کلاس دقیق toast، نه sonner */
 .toast:not([data-sonner-toast]):not(.app-sonner-toast):not(.app-toast) {
   display: none !important;
 }
@@ -1146,9 +1146,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 @keyframes slideInToast { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes fadeOut     { to   { opacity: 0; transform: translateY(-16px); } }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        GLASS OVERLAY
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .glass-overlay {
   position: fixed; inset: 0;
@@ -1191,9 +1191,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .btn-modal-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 36px var(--primary-glow); }
 @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        MODAL (Bootstrap style)
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .modal-content { border-radius: var(--radius-lg); border: 1px solid var(--border); background: #FDFCFF; font-family: var(--font-family, 'Vazirmatn', sans-serif); }
 .modal-header  { border-bottom: 1px solid var(--border); padding: 16px 22px; }
@@ -1201,9 +1201,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .modal-body    { padding: 20px 22px; }
 .modal-footer  { padding: 14px 22px; border-top: 1px solid var(--border); }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        SECTION TITLE
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .section-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1212,9 +1212,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .section-title { font-size: 1rem; font-weight: 400; color: var(--text-main); margin: 0; }
 .section-sub   { font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        EMPTY STATE
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .empty-state {
   display: flex;
@@ -1291,9 +1291,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   font-size: 2.5rem;
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        FOOTER
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .site-footer {
   background: rgba(255,255,255,.02);
@@ -1303,9 +1303,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   margin-top: 40px;
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        HOME PAGE
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .home-hero {
   background: linear-gradient(160deg, #0D0B1A 0%, #1A0E38 50%, #0D0B1A 100%);
@@ -1409,9 +1409,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .feature-title { font-size: 1rem; font-weight: 400; color: var(--text-main); margin-bottom: 8px; }
 .feature-desc  { font-size: .85rem; color: var(--text-muted); line-height: 1.7; }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        UTILITIES
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 .text-center  { text-align: center; }
 .text-muted   { color: var(--text-muted) !important; }
@@ -1440,9 +1440,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        RESPONSIVE
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 @media (max-width: 992px) {
   .sidebar { transform: translateX(100%); }
@@ -1466,9 +1466,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+/* ── ═══════════════════════════════════ ──
        PRINT
-   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
+   ── ═══════════════════════════════════ ── */
 
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
@@ -1945,7 +1945,7 @@ body.admin-body { min-height: 100vh; }
   min-width: 300px;
   max-width: min(420px, 100%);
   padding: 8px 14px;
-  padding-left: 2.25rem; /* ÙØ¶Ø§ÛŒ ÙÙ„Ø´ select Ø¯Ø± RTL */
+  padding-left: 2.25rem; /* فضای فلش select در RTL */
   white-space: nowrap;
 }
 .finance-toolbar-actions #financePdfAllBtn {
@@ -2193,7 +2193,7 @@ body.guest-drawer-open { overflow: hidden; }
 
 body.admin-guests-tab .page-header { display: none; }
 
-/* â”€â”€ Admin surface refresh (v1.6.9) â€” flatter, cleaner panel â”€â”€ */
+/* ── Admin surface refresh (v1.6.9) — flatter, cleaner panel ── */
 body.admin-body {
   background: #f4f7fb;
 }
@@ -2386,14 +2386,14 @@ body.admin-body .stat-grid .stat-card {
 }
 .print-title { display: none; text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px; font-size: 1.1rem; font-weight: 400; }
 
-/* SweetAlert2 â€” center modals (not toasts) */
+/* SweetAlert2 — center modals (not toasts) */
 .swal2-container {
   position: fixed !important;
   inset: 0 !important;
   z-index: 1000000 !important;
   pointer-events: auto !important;
 }
-/* Ù…ÙˆØ¯Ø§Ù„ ØªØ£ÛŒÛŒØ¯ Ø¨Ø§ÛŒØ¯ Ú©Ù„ÛŒÚ© Ø±Ø§ Ø¨Ú¯ÛŒØ±Ø¯Ø› toastÙ‡Ø§ Ù‡Ù…Ú†Ù†Ø§Ù† pass-through Ù…ÛŒâ€ŒÙ…Ø§Ù†Ù†Ø¯ */
+/* مودال تأیید باید کلیک را بگیرد؛ toastها همچنان pass-through می‌مانند */
 .swal2-container.swal2-backdrop-show,
 .swal2-container.swal2-center:not(.swal2-toast-shown) {
   pointer-events: auto !important;
@@ -2555,7 +2555,7 @@ html[dir="rtl"] .swal2-container.swal2-bottom-start {
 .tab-button.active { background: var(--primary); color: #fff; box-shadow: 0 3px 12px var(--primary-glow); }
 .tab-button.active i { color: #fff; }
 
-/* Ù…Ù†ÙˆÛŒ Ø¹Ù…ÙˆØ¯ÛŒ Ù¾Ø±ØªØ§Ù„ Ú©Ø§Ø±Ú©Ù†Ø§Ù† â€” Claude-like rail (RTL) */
+/* منوی عمودی پرتال کارکنان — Claude-like rail (RTL) */
 .user-portal-shell--split {
   --user-side-nav-w: 248px;
   display: block;
@@ -2743,6 +2743,8 @@ body.user-portal-body .top-nav {
   gap: 8px;
   width: 100%;
   border: 0;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   color: var(--text-muted, #64748b);
   font-family: inherit;
@@ -3229,7 +3231,7 @@ body.user-portal-body .top-nav {
   }
 }
 
-/* Version badge sits in the rail on employee portal â€” not floating over content */
+/* Version badge sits in the rail on employee portal — not floating over content */
 .user-side-nav .app-version-badge {
   position: static;
   inset: auto;
@@ -3339,7 +3341,7 @@ body.user-portal-body .top-nav {
   min-width: 0;
 }
 
-/* Ø¯Ú©Ù…Ù‡ Ø´Ù†Ø§ÙˆØ± Ø§Ø·Ù„Ø§Ø¹ÛŒÙ‡ â€” Ù‚Ø±Ù…Ø² Ú©Ù…â€ŒØ±Ù†Ú¯ Ø³Ø§Ø¯Ù‡ */
+/* دکمه شناور اطلاعیه — قرمز کم‌رنگ ساده */
 .announcements-ui {
   position: relative;
   z-index: 9600;
@@ -3410,7 +3412,7 @@ body.user-portal-body .top-nav {
   box-shadow: none;
 }
 
-/* Ú©Ø´ÙˆÛŒ Ø§Ø·Ù„Ø§Ø¹ÛŒÙ‡ â€” Ù‡Ø¯Ø± Ù‚Ø±Ù…Ø² Ú©Ù…â€ŒØ±Ù†Ú¯ØŒ Ø¨Ø¯Ù†Ù‡ Ù…Ø«Ù„ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯Ø› Ø³ÙØ§Ø±Ø´ÛŒâ€ŒØ³Ø§Ø²ÛŒ Ø§Ø±ØªÙØ§Ø¹ Ù¾ÙˆÛŒØ§ Ø¬Ù‡Øª Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ÙØ¶Ø§ÛŒ Ø®Ø§Ù„ÛŒ Ø§Ø¶Ø§ÙÛŒ */
+/* کشوی اطلاعیه — هدر قرمز کم‌رنگ، بدنه مثل داشبورد؛ سفارشی‌سازی ارتفاع پویا جهت جلوگیری از فضای خالی اضافی */
 .ann-drawer-overlay {
   position: fixed;
   inset: 0;
@@ -3590,7 +3592,7 @@ body.ann-drawer-open .top-nav {
   }
 }
 
-/* ÙÛŒØ´ ØµÙˆØ±ØªØ­Ø³Ø§Ø¨ â€” Ø´Ø¨ÛŒÙ‡ Ø±Ø³ÛŒØ¯ Ú©Ø§ØºØ°ÛŒ */
+/* فیش صورتحساب — شبیه رسید کاغذی */
 .receipt-modal-root {
   position: fixed;
   inset: 0;
@@ -3616,7 +3618,7 @@ body.ann-drawer-open .top-nav {
   overflow: visible;
 }
 
-/* ÙÛŒØ´ Ù…Ø§Ù‡ÛŒØ§Ù†Ù‡ Ùˆ Ù‡ÙØªÚ¯ÛŒ Ø¨Ø¯ÙˆÙ† Ø§Ø³Ú©Ø±ÙˆÙ„ */
+/* فیش ماهیانه و هفتگی بدون اسکرول */
 .receipt-modal.receipt-modal--compact {
   max-height: none;
   overflow: visible;
@@ -3935,7 +3937,7 @@ body.home-page { background: var(--bg-body); }
 .home-page .top-nav .nav-brand-title { color: var(--text-main); }
 .home-page .top-nav .nav-brand-sub { color: var(--text-muted); }
 
-/* â”€â”€ App version badge (all pages) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── App version badge (all pages) ─────────────────────────────── */
 .app-version-badge {
   position: fixed;
   inset-inline-start: 14px;
@@ -3992,4 +3994,3 @@ body.home-page { background: var(--bg-body); }
 .stats-bar-inner { max-width: 1100px; margin: 0 auto; padding: 0 32px; display: flex; gap: 32px; align-items: center; flex-wrap: wrap; }
 .stats-bar-item { display: flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--text-muted); }
 .stats-bar-item i { color: var(--primary); font-size: .85rem; }
-
