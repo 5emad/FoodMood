@@ -1,11 +1,11 @@
-/* =================================================================
-   SAZMAN FOOD SYSTEM — Dark Premium / Glassmorphism
+﻿/* =================================================================
+   SAZMAN FOOD SYSTEM â€” Dark Premium / Glassmorphism
    All assets are served locally from /public (no CDN).
    ================================================================= */
 
-/* ── Variables ──────────────────────────────────────────────────── */
+/* â”€â”€ Variables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 :root {
-  /* Brand — Teal (ثابت، بدون انتخاب) */
+  /* Brand â€” Teal (Ø«Ø§Ø¨ØªØŒ Ø¨Ø¯ÙˆÙ† Ø§Ù†ØªØ®Ø§Ø¨) */
   --primary:        #0F766E;
   --primary-light:  #14B8A6;
   --primary-dark:   #115E59;
@@ -14,13 +14,13 @@
   --primary-bg-soft: rgba(15, 118, 110, .05);
   --primary-bg-strong: rgba(15, 118, 110, .14);
 
-  /* Soft amber accent (غذا / انرژی) */
+  /* Soft amber accent (ØºØ°Ø§ / Ø§Ù†Ø±Ú˜ÛŒ) */
   --gold:           #C27803;
   --gold-light:     #E8A317;
   --gold-glow:      rgba(194, 120, 3, .22);
   --gold-bg:        rgba(194, 120, 3, .08);
 
-  /* Surfaces — cool mint-gray */
+  /* Surfaces â€” cool mint-gray */
   --bg-body:        #F3F7F6;
   --bg-section:     #EAF2F0;
   --surface:        rgba(255, 255, 255, .88);
@@ -80,7 +80,7 @@
   --glass-blur:     blur(18px) saturate(140%);
 }
 
-/* ── Reset & Base ───────────────────────────────────────────────── */
+/* â”€â”€ Reset & Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 *, *::before, *::after { box-sizing: border-box; outline: none; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
 body {
@@ -102,13 +102,13 @@ a { text-decoration: none; color: var(--primary-light); transition: color .2s; }
 a:hover { color: var(--gold); }
 h1,h2,h3,h4,h5,h6 { font-weight: 600; line-height: 1.3; color: var(--text-main); }
 
-/* ── SCROLLBAR ────────────────────────────────────────────────── */
+/* â”€â”€ SCROLLBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--primary), var(--primary-dark)); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
 
-/* ── NOISE texture (subtle grain) ────────────────────────────── */
+/* â”€â”€ NOISE texture (subtle grain) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 body::before {
   content: '';
   position: fixed; inset: 0;
@@ -119,9 +119,9 @@ body::before {
 }
 body > * { position: relative; z-index: 1; }
 
-/* ── ═══════════════════════════════════ ──
-       ADMIN LAYOUT — SIDEBAR
-   ── ═══════════════════════════════════ ── */
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+       ADMIN LAYOUT â€” SIDEBAR
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .sidebar {
   width: var(--sidebar-width);
@@ -302,9 +302,9 @@ body > * { position: relative; z-index: 1; }
 /* Content wrapper */
 .content-wrapper { padding: 28px 32px; flex: 1; }
 
-/* ── ═══════════════════════════════════ ──
-       USER LAYOUT — TOP NAV
-   ── ═══════════════════════════════════ ── */
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
+       USER LAYOUT â€” TOP NAV
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .top-nav {
   background: rgba(255,252,252,.94);
@@ -344,9 +344,9 @@ body > * { position: relative; z-index: 1; }
 .btn-icon:hover { background: var(--primary-bg-strong); color: var(--primary-light); border-color: var(--border-accent); }
 .btn-icon.logout-btn:hover { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        PAGE HEADER (hero strip)
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .page-header {
   background: linear-gradient(125deg, var(--primary-dark) 0%, var(--primary) 55%, #0D9488 100%);
@@ -396,9 +396,9 @@ body > * { position: relative; z-index: 1; }
   position: relative; z-index: 1;
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        CARDS (Glassmorphism)
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .card {
   background: var(--surface-solid);
@@ -584,9 +584,9 @@ body > * { position: relative; z-index: 1; }
 .food-name  { font-weight: 400; font-size: .9rem; color: var(--text-main); }
 .food-price { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        BADGES
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .badge {
   display: inline-flex; align-items: center; gap: 5px;
@@ -599,9 +599,9 @@ body > * { position: relative; z-index: 1; }
 .badge-primary { background: var(--primary-bg); color: var(--primary-light); border: 1px solid var(--border-accent); }
 .badge-gray    { background: rgba(255,255,255,.05); color: var(--text-muted); border: 1px solid var(--border); }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        BUTTONS
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
@@ -699,9 +699,9 @@ body > * { position: relative; z-index: 1; }
   padding: 6px 12px; border-radius: 8px;
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        FORMS
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .form-group  { margin-bottom: 18px; }
 .form-label  {
@@ -728,7 +728,7 @@ select.form-control { background-color: var(--surface-solid); color: var(--text-
 select.form-control option { background: var(--surface-solid); color: var(--text-main); }
 textarea.form-control { min-height: 90px; resize: vertical; }
 
-/* فرم ورود: متن فارسی راست‌چین، رمز با ترتیب تایپ LTR */
+/* ÙØ±Ù… ÙˆØ±ÙˆØ¯: Ù…ØªÙ† ÙØ§Ø±Ø³ÛŒ Ø±Ø§Ø³Øªâ€ŒÚ†ÛŒÙ†ØŒ Ø±Ù…Ø² Ø¨Ø§ ØªØ±ØªÛŒØ¨ ØªØ§ÛŒÙ¾ LTR */
 .auth-card .form-control {
   text-align: right;
 }
@@ -741,9 +741,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   text-align: right;
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        TABLES
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .table-wrap {
   background: var(--glass);
@@ -811,9 +811,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   color: var(--text-muted);
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        ALERTS
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .alert {
   padding: 13px 18px; border-radius: var(--radius);
@@ -826,9 +826,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .alert-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(154,107,63,.22); border-right: 4px solid var(--warning); }
 .alert-info    { background: var(--primary-bg); color: var(--primary-dark); border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent); border-right: 4px solid var(--primary); }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        LOGIN
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .auth-body {
   min-height: 100vh;
@@ -881,7 +881,7 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   min-height: 520px;
 }
 
-/* برند ثابت — پنل کناری ورود */
+/* Ø¨Ø±Ù†Ø¯ Ø«Ø§Ø¨Øª â€” Ù¾Ù†Ù„ Ú©Ù†Ø§Ø±ÛŒ ÙˆØ±ÙˆØ¯ */
 .auth-side--brand,
 .auth-side--wine {
   background: linear-gradient(165deg, #042F2E 0%, #115E59 48%, #0F766E 100%);
@@ -1010,9 +1010,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   .auth-card { padding: 28px 22px; }
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        TOAST NOTIFICATIONS (unified AppToast)
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 #toast-container {
   position: fixed;
@@ -1138,7 +1138,7 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   .app-toast { font-size: .84rem; padding: 12px 40px 12px 14px; }
 }
 
-/* Legacy class aliases (foods demo page) — فقط کلاس دقیق toast، نه sonner */
+/* Legacy class aliases (foods demo page) â€” ÙÙ‚Ø· Ú©Ù„Ø§Ø³ Ø¯Ù‚ÛŒÙ‚ toastØŒ Ù†Ù‡ sonner */
 .toast:not([data-sonner-toast]):not(.app-sonner-toast):not(.app-toast) {
   display: none !important;
 }
@@ -1146,9 +1146,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 @keyframes slideInToast { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 @keyframes fadeOut     { to   { opacity: 0; transform: translateY(-16px); } }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        GLASS OVERLAY
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .glass-overlay {
   position: fixed; inset: 0;
@@ -1191,9 +1191,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .btn-modal-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 36px var(--primary-glow); }
 @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        MODAL (Bootstrap style)
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .modal-content { border-radius: var(--radius-lg); border: 1px solid var(--border); background: #FDFCFF; font-family: var(--font-family, 'Vazirmatn', sans-serif); }
 .modal-header  { border-bottom: 1px solid var(--border); padding: 16px 22px; }
@@ -1201,9 +1201,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .modal-body    { padding: 20px 22px; }
 .modal-footer  { padding: 14px 22px; border-top: 1px solid var(--border); }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        SECTION TITLE
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .section-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -1212,9 +1212,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .section-title { font-size: 1rem; font-weight: 400; color: var(--text-main); margin: 0; }
 .section-sub   { font-size: .8rem; color: var(--text-muted); margin-top: 2px; }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        EMPTY STATE
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .empty-state {
   display: flex;
@@ -1291,9 +1291,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   font-size: 2.5rem;
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        FOOTER
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .site-footer {
   background: rgba(255,255,255,.02);
@@ -1303,9 +1303,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   margin-top: 40px;
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        HOME PAGE
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .home-hero {
   background: linear-gradient(160deg, #0D0B1A 0%, #1A0E38 50%, #0D0B1A 100%);
@@ -1409,9 +1409,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 .feature-title { font-size: 1rem; font-weight: 400; color: var(--text-main); margin-bottom: 8px; }
 .feature-desc  { font-size: .85rem; color: var(--text-muted); line-height: 1.7; }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        UTILITIES
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 .text-center  { text-align: center; }
 .text-muted   { color: var(--text-muted) !important; }
@@ -1440,9 +1440,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        RESPONSIVE
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 @media (max-width: 992px) {
   .sidebar { transform: translateX(100%); }
@@ -1466,9 +1466,9 @@ textarea.form-control { min-height: 90px; resize: vertical; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
-/* ── ═══════════════════════════════════ ──
+/* â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€
        PRINT
-   ── ═══════════════════════════════════ ── */
+   â”€â”€ â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• â”€â”€ */
 
 @media print {
   @page { size: A4 landscape; margin: 10mm; }
@@ -1945,7 +1945,7 @@ body.admin-body { min-height: 100vh; }
   min-width: 300px;
   max-width: min(420px, 100%);
   padding: 8px 14px;
-  padding-left: 2.25rem; /* فضای فلش select در RTL */
+  padding-left: 2.25rem; /* ÙØ¶Ø§ÛŒ ÙÙ„Ø´ select Ø¯Ø± RTL */
   white-space: nowrap;
 }
 .finance-toolbar-actions #financePdfAllBtn {
@@ -2193,7 +2193,7 @@ body.guest-drawer-open { overflow: hidden; }
 
 body.admin-guests-tab .page-header { display: none; }
 
-/* ── Admin surface refresh (v1.6.9) — flatter, cleaner panel ── */
+/* â”€â”€ Admin surface refresh (v1.6.9) â€” flatter, cleaner panel â”€â”€ */
 body.admin-body {
   background: #f4f7fb;
 }
@@ -2386,14 +2386,14 @@ body.admin-body .stat-grid .stat-card {
 }
 .print-title { display: none; text-align: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px; font-size: 1.1rem; font-weight: 400; }
 
-/* SweetAlert2 — center modals (not toasts) */
+/* SweetAlert2 â€” center modals (not toasts) */
 .swal2-container {
   position: fixed !important;
   inset: 0 !important;
   z-index: 1000000 !important;
   pointer-events: auto !important;
 }
-/* مودال تأیید باید کلیک را بگیرد؛ toastها همچنان pass-through می‌مانند */
+/* Ù…ÙˆØ¯Ø§Ù„ ØªØ£ÛŒÛŒØ¯ Ø¨Ø§ÛŒØ¯ Ú©Ù„ÛŒÚ© Ø±Ø§ Ø¨Ú¯ÛŒØ±Ø¯Ø› toastÙ‡Ø§ Ù‡Ù…Ú†Ù†Ø§Ù† pass-through Ù…ÛŒâ€ŒÙ…Ø§Ù†Ù†Ø¯ */
 .swal2-container.swal2-backdrop-show,
 .swal2-container.swal2-center:not(.swal2-toast-shown) {
   pointer-events: auto !important;
@@ -2555,7 +2555,7 @@ html[dir="rtl"] .swal2-container.swal2-bottom-start {
 .tab-button.active { background: var(--primary); color: #fff; box-shadow: 0 3px 12px var(--primary-glow); }
 .tab-button.active i { color: #fff; }
 
-/* منوی عمودی پرتال کارکنان — Claude-like rail (RTL) */
+/* Ù…Ù†ÙˆÛŒ Ø¹Ù…ÙˆØ¯ÛŒ Ù¾Ø±ØªØ§Ù„ Ú©Ø§Ø±Ú©Ù†Ø§Ù† â€” Claude-like rail (RTL) */
 .user-portal-shell--split {
   --user-side-nav-w: 248px;
   display: block;
@@ -3229,7 +3229,7 @@ body.user-portal-body .top-nav {
   }
 }
 
-/* Version badge sits in the rail on employee portal — not floating over content */
+/* Version badge sits in the rail on employee portal â€” not floating over content */
 .user-side-nav .app-version-badge {
   position: static;
   inset: auto;
@@ -3339,7 +3339,7 @@ body.user-portal-body .top-nav {
   min-width: 0;
 }
 
-/* دکمه شناور اطلاعیه — قرمز کم‌رنگ ساده */
+/* Ø¯Ú©Ù…Ù‡ Ø´Ù†Ø§ÙˆØ± Ø§Ø·Ù„Ø§Ø¹ÛŒÙ‡ â€” Ù‚Ø±Ù…Ø² Ú©Ù…â€ŒØ±Ù†Ú¯ Ø³Ø§Ø¯Ù‡ */
 .announcements-ui {
   position: relative;
   z-index: 9600;
@@ -3410,7 +3410,7 @@ body.user-portal-body .top-nav {
   box-shadow: none;
 }
 
-/* کشوی اطلاعیه — هدر قرمز کم‌رنگ، بدنه مثل داشبورد؛ سفارشی‌سازی ارتفاع پویا جهت جلوگیری از فضای خالی اضافی */
+/* Ú©Ø´ÙˆÛŒ Ø§Ø·Ù„Ø§Ø¹ÛŒÙ‡ â€” Ù‡Ø¯Ø± Ù‚Ø±Ù…Ø² Ú©Ù…â€ŒØ±Ù†Ú¯ØŒ Ø¨Ø¯Ù†Ù‡ Ù…Ø«Ù„ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯Ø› Ø³ÙØ§Ø±Ø´ÛŒâ€ŒØ³Ø§Ø²ÛŒ Ø§Ø±ØªÙØ§Ø¹ Ù¾ÙˆÛŒØ§ Ø¬Ù‡Øª Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ÙØ¶Ø§ÛŒ Ø®Ø§Ù„ÛŒ Ø§Ø¶Ø§ÙÛŒ */
 .ann-drawer-overlay {
   position: fixed;
   inset: 0;
@@ -3590,7 +3590,7 @@ body.ann-drawer-open .top-nav {
   }
 }
 
-/* فیش صورتحساب — شبیه رسید کاغذی */
+/* ÙÛŒØ´ ØµÙˆØ±ØªØ­Ø³Ø§Ø¨ â€” Ø´Ø¨ÛŒÙ‡ Ø±Ø³ÛŒØ¯ Ú©Ø§ØºØ°ÛŒ */
 .receipt-modal-root {
   position: fixed;
   inset: 0;
@@ -3616,7 +3616,7 @@ body.ann-drawer-open .top-nav {
   overflow: visible;
 }
 
-/* فیش ماهیانه و هفتگی بدون اسکرول */
+/* ÙÛŒØ´ Ù…Ø§Ù‡ÛŒØ§Ù†Ù‡ Ùˆ Ù‡ÙØªÚ¯ÛŒ Ø¨Ø¯ÙˆÙ† Ø§Ø³Ú©Ø±ÙˆÙ„ */
 .receipt-modal.receipt-modal--compact {
   max-height: none;
   overflow: visible;
@@ -3935,7 +3935,7 @@ body.home-page { background: var(--bg-body); }
 .home-page .top-nav .nav-brand-title { color: var(--text-main); }
 .home-page .top-nav .nav-brand-sub { color: var(--text-muted); }
 
-/* ── App version badge (all pages) ─────────────────────────────── */
+/* â”€â”€ App version badge (all pages) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .app-version-badge {
   position: fixed;
   inset-inline-start: 14px;
@@ -3993,174 +3993,3 @@ body.home-page { background: var(--bg-body); }
 .stats-bar-item { display: flex; align-items: center; gap: 8px; font-size: .82rem; font-weight: 600; color: var(--text-muted); }
 .stats-bar-item i { color: var(--primary); font-size: .85rem; }
 
-/* --- Survey (???????) --- */
-.survey-admin-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.survey-help {
-  margin: 12px 0 0;
-  font-size: .82rem;
-  color: var(--text-muted, #64748b);
-  line-height: 1.7;
-}
-.survey-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.survey-statement-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-.survey-col-title {
-  margin: 0 0 10px;
-  font-size: .92rem;
-}
-.survey-col-title--pos { color: #0f766e; }
-.survey-col-title--neg { color: #b91c1c; }
-.survey-statement-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.survey-statement-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 12px;
-  background: #fff;
-}
-.survey-add-row {
-  display: grid;
-  grid-template-columns: 120px 1fr auto;
-  gap: 10px;
-  margin-top: 16px;
-}
-.survey-bar-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.survey-bar {
-  height: 8px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--primary, #1B3F8D), var(--primary-dark, #122A62));
-  min-width: 4px;
-  max-width: 180px;
-}
-.survey-momentum-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-.survey-empty-chart,
-.survey-momentum-legend,
-.survey-muted {
-  color: var(--text-muted, #64748b);
-  font-size: .84rem;
-}
-.survey-momentum-legend { margin-top: 10px; }
-
-.survey-modal-root {
-  position: fixed;
-  inset: 0;
-  z-index: 120000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-.survey-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, .45);
-}
-.survey-modal {
-  position: relative;
-  width: min(560px, 100%);
-  max-height: min(88vh, 760px);
-  overflow: auto;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
-  padding: 18px 18px 16px;
-  direction: rtl;
-}
-.survey-modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.survey-modal-kicker {
-  font-size: .72rem;
-  color: var(--text-muted, #64748b);
-  margin-bottom: 2px;
-}
-.survey-modal-title {
-  margin: 0;
-  font-size: 1.15rem;
-  color: var(--primary-dark, #122A62);
-}
-.survey-modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.survey-block h3 {
-  margin: 0 0 8px;
-  font-size: .92rem;
-}
-.survey-food-grid,
-.survey-statement-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.survey-food-chip,
-.survey-statement-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 999px;
-  padding: 8px 12px;
-  cursor: pointer;
-  background: #fff;
-  font-size: .84rem;
-}
-.survey-food-chip input,
-.survey-statement-chip input { accent-color: var(--primary, #1B3F8D); }
-.survey-food-chip.is-selected,
-.survey-statement-chip.is-selected {
-  border-color: var(--primary, #1B3F8D);
-  background: color-mix(in srgb, var(--primary, #1B3F8D) 10%, #fff);
-  color: var(--primary-dark, #122A62);
-  font-weight: 600;
-}
-.survey-statement-chip--pos.is-selected { border-color: #0f766e; background: #f0fdfa; color: #0f766e; }
-.survey-statement-chip--neg.is-selected { border-color: #b91c1c; background: #fef2f2; color: #b91c1c; }
-.survey-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border, #e2e8f0);
-}
-@media (max-width: 900px) {
-  .survey-admin-grid,
-  .survey-statement-cols,
-  .survey-stats { grid-template-columns: 1fr; }
-  .survey-add-row { grid-template-columns: 1fr; }
-}

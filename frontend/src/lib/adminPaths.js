@@ -8,7 +8,6 @@ export const ADMIN_TAB_NAMES = [
   'finance',
   'guests',
   'announcements',
-  'surveys',
   'backup',
 ];
 
