@@ -192,7 +192,8 @@ function endOfRange(date) {
  * Loads only confirmed orders relevant to the range (lean + field-limited).
  * Prefer dailyMenuId (indexed) over scanning all orderDates.
  */
-async function findOrdersInRange(rangeStart, rangeEnd) {
+async function findOrdersInRange(rangeStart, rangeEnd, options = {}) {
+  const light = options.light === true;
   const dailyMenus = await DailyMenu.find({
     date: { $gte: rangeStart, $lte: rangeEnd },
   }).select('_id').lean();
@@ -215,6 +216,16 @@ async function findOrdersInRange(rangeStart, rangeEnd) {
       ...statusFilter,
       orderDate: { $gte: rangeStart, $lte: rangeEnd },
     };
+  }
+
+  // Finance/summary path: tiny projection + minimal populate (no items/menuItem trees)
+  if (light) {
+    return Order.find(query)
+      .select('status quantity totalPrice orderDate userId ldapUsername guestId dailyMenuId orderUserName orderUserDepartment')
+      .populate({ path: 'userId', select: 'username fullName departmentId', populate: { path: 'departmentId', select: 'name' } })
+      .populate({ path: 'guestId', select: 'guestCode fullName guestType department' })
+      .populate({ path: 'dailyMenuId', select: 'date' })
+      .lean();
   }
 
   return Order.find(query)
@@ -253,11 +264,12 @@ const MONTHS_CACHE_MS = 90 * 1000;
 /**
  * @param {Date} rangeStartInput
  * @param {Date} rangeEndInput
- * @param {{ mode?: 'full'|'prep' }} [options]
+ * @param {{ mode?: 'full'|'prep'|'finance' }} [options]
  *   prep = supplier-only (skip users/LDAP/personnel rows)
+ *   finance = totals by user/guest only (no day grids, no full user directory scan)
  */
 async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
-  const mode = options.mode === 'prep' ? 'prep' : 'full';
+  const mode = options.mode === 'prep' ? 'prep' : options.mode === 'finance' ? 'finance' : 'full';
 
   // Do not block report on finalize — interval job already handles this
   finalizeExpiredOrders().catch(() => {});
@@ -265,13 +277,17 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
   const rangeStart = rangeStartInput ? startOfDay(rangeStartInput) : null;
   const rangeEnd = rangeEndInput ? startOfDay(rangeEndInput) : null;
   const reportDates = [];
-  if (rangeStart && rangeEnd) {
+  if (rangeStart && rangeEnd && mode !== 'finance') {
     for (let cursor = new Date(rangeStart); cursor <= rangeEnd; cursor = addDays(cursor, 1)) {
       reportDates.push({ date: new Date(cursor), jalaliDate: formatJalaliDate(cursor) });
     }
   }
 
-  const candidateOrders = await findOrdersInRange(rangeStartInput, endOfRange(rangeEndInput));
+  const candidateOrders = await findOrdersInRange(
+    rangeStartInput,
+    endOfRange(rangeEndInput),
+    { light: mode === 'finance' },
+  );
 
   const reportDateOfOrder = (order) => startOfDay(
     order.dailyMenuId?.date || order.menuItemId?.dailyMenuId?.date || order.orderDate,
@@ -289,11 +305,13 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     return acc;
   }, { totalOrders: 0, totalMeals: 0, totalPrice: 0, statuses: {} });
 
+  // Finance: skip day/food/department grids — jump to owner totals
   const byDayMap = new Map();
   const byFoodMap = new Map();
   const byDepartmentMap = new Map();
   const byDayPrepMap = new Map();
 
+  if (mode !== 'finance') {
   for (const order of orders) {
     const reportDate = reportDateOfOrder(order);
     const dayKey = formatJalaliDate(reportDate);
@@ -360,6 +378,7 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
       }
     }
   }
+  }
 
   const byDayPrep = reportDates.map((dateInfo) => {
     const prep = byDayPrepMap.get(dateInfo.jalaliDate);
@@ -392,10 +411,12 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     return acc;
   }, { totalMeals: 0, userMeals: 0, guestMeals: 0 });
 
-  const categoriesPromise = FoodCategory.find({ status: 'active' })
-    .select('key name sortOrder')
-    .sort({ sortOrder: 1, name: 1 })
-    .lean();
+  const categoriesPromise = mode === 'finance'
+    ? Promise.resolve([])
+    : FoodCategory.find({ status: 'active' })
+      .select('key name sortOrder')
+      .sort({ sortOrder: 1, name: 1 })
+      .lean();
 
   // Supplier path: skip personnel / LDAP scaffolding
   if (mode === 'prep') {
@@ -425,7 +446,7 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     };
   }
 
-  const emptyDays = () => reportDates.map((date) => ({ ...date, foods: [] }));
+  const emptyDays = () => (mode === 'finance' ? [] : reportDates.map((date) => ({ ...date, foods: [] })));
   const orderedUserIds = new Set();
   const byUserMap = new Map();
 
@@ -473,11 +494,13 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
 
     if (row) {
       orderedUserIds.add(ownerKey);
-      const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-      const day = row.days.find((item) => (
-        normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
-      ));
-      if (day) pushFoodEntries(day, order);
+      if (mode !== 'finance' && row.days?.length) {
+        const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
+        const day = row.days.find((item) => (
+          normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
+        ));
+        if (day) pushFoodEntries(day, order);
+      }
       row.total += orderMealCount(order);
       row.totalPrice += Number(order.totalPrice || 0);
     }
@@ -503,13 +526,36 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
       });
     }
     const row = byGuestMap.get(guestKey);
-    const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
-    const day = row.days.find((item) => (
-      normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
-    ));
-    if (day) pushFoodEntries(day, order);
+    if (mode !== 'finance' && row.days?.length) {
+      const jalaliDate = formatJalaliDate(reportDateOfOrder(order));
+      const day = row.days.find((item) => (
+        normalizeReportDigits(item.jalaliDate) === normalizeReportDigits(jalaliDate)
+      ));
+      if (day) pushFoodEntries(day, order);
+    }
     row.total += orderMealCount(order);
     row.totalPrice += Number(order.totalPrice || 0);
+  }
+
+  // Finance: skip full directory scans (huge RAM on large orgs)
+  if (mode === 'finance') {
+    const byUser = [...byUserMap.values()].filter((item) => item.total > 0);
+    const byGuest = [...byGuestMap.values()].filter((item) => item.total > 0)
+      .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'fa'));
+    return {
+      totals,
+      prepTotals: { totalMeals: 0, userMeals: 0, guestMeals: 0 },
+      days: [],
+      categories: [],
+      byDay: [],
+      byDayPrep: [],
+      byFood: [],
+      byDepartment: [],
+      byUser,
+      byGuest,
+      missingUsers: {},
+      orders: [],
+    };
   }
 
   // missingUsers: light query — no pre-scaffold of every profile with day grids
@@ -587,27 +633,44 @@ async function getAvailableReportMonths() {
     return monthsCache.data;
   }
 
-  const orders = await Order.find({ status: { $in: CONFIRMED_REPORT_STATUSES } })
-    .select('orderDate dailyMenuId')
-    .lean();
-
-  const menuIds = [...new Set(
-    orders.map((o) => (o.dailyMenuId ? String(o.dailyMenuId) : '')).filter(Boolean),
-  )];
-  const menus = menuIds.length
-    ? await DailyMenu.find({ _id: { $in: menuIds } }).select('date').lean()
-    : [];
-  const menuDate = new Map(menus.map((m) => [String(m._id), m.date]));
+  // Aggregation in Mongo — never hydrate all confirmed orders into Node heap
+  const rows = await Order.aggregate([
+    { $match: { status: { $in: CONFIRMED_REPORT_STATUSES } } },
+    {
+      $lookup: {
+        from: 'dailymenus',
+        localField: 'dailyMenuId',
+        foreignField: '_id',
+        as: 'dm',
+      },
+    },
+    {
+      $project: {
+        reportDate: {
+          $ifNull: [{ $arrayElemAt: ['$dm.date', 0] }, '$orderDate'],
+        },
+      },
+    },
+    { $match: { reportDate: { $type: 'date' } } },
+    {
+      $group: {
+        _id: {
+          $dateToString: { format: '%Y-%m-%d', date: '$reportDate', timezone: 'Asia/Tehran' },
+        },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
 
   const monthMap = new Map();
-  for (const order of orders) {
-    const reportDate = (order.dailyMenuId && menuDate.get(String(order.dailyMenuId))) || order.orderDate;
-    if (!reportDate) continue;
+  for (const row of rows) {
+    if (!row._id) continue;
+    const reportDate = new Date(`${row._id}T12:00:00+03:30`);
     const { year, month } = getJalaliYearMonth(reportDate);
     if (!year || !month) continue;
     const item = jalaliMonthRangeValue(year, month);
     const current = monthMap.get(item.key) || { ...item, year, month, count: 0 };
-    current.count += 1;
+    current.count += Number(row.count || 0);
     monthMap.set(item.key, current);
   }
 
@@ -619,10 +682,67 @@ async function getAvailableReportMonths() {
   return data;
 }
 
+/**
+ * Lightweight owner totals for finance week-slices (no populate trees / day grids).
+ * Returns [{ userKey, personalAmount, totalPrice, mealCount }]
+ */
+async function sumOwnerTotalsInRange(rangeStartInput, rangeEndInput, organizationSharePercent = 0) {
+  const rangeStart = startOfDay(rangeStartInput);
+  const rangeEnd = startOfDay(rangeEndInput);
+  const dailyMenus = await DailyMenu.find({
+    date: { $gte: rangeStart, $lte: rangeEnd },
+  }).select('_id').lean();
+  const dailyMenuIds = dailyMenus.map((m) => m._id);
+
+  const match = dailyMenuIds.length
+    ? {
+      status: { $in: CONFIRMED_REPORT_STATUSES },
+      dailyMenuId: { $in: dailyMenuIds },
+    }
+    : {
+      status: { $in: CONFIRMED_REPORT_STATUSES },
+      orderDate: { $gte: rangeStart, $lte: endOfRange(rangeEnd) },
+    };
+
+  const rows = await Order.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: {
+          ldapUsername: '$ldapUsername',
+          userId: '$userId',
+          guestId: '$guestId',
+        },
+        totalPrice: { $sum: { $ifNull: ['$totalPrice', 0] } },
+        mealCount: { $sum: { $ifNull: ['$quantity', 1] } },
+      },
+    },
+  ]);
+
+  const orgPercent = Math.min(100, Math.max(0, Number(organizationSharePercent) || 0));
+  return rows.map((row) => {
+    const total = Math.max(0, Number(row.totalPrice) || 0);
+    const organizationAmount = Math.round(total * orgPercent / 100);
+    const personalAmount = total - organizationAmount;
+    let userKey = '';
+    if (row._id?.ldapUsername) userKey = `ldap:${row._id.ldapUsername}`;
+    else if (row._id?.guestId) userKey = `guest:${row._id.guestId}`;
+    else if (row._id?.userId) userKey = String(row._id.userId);
+    return {
+      userKey,
+      totalPrice: total,
+      mealCount: Number(row.mealCount || 0),
+      personalAmount,
+      organizationAmount,
+    };
+  }).filter((r) => r.userKey);
+}
+
 module.exports = {
   resolveReportRange,
   buildReport,
   getAvailableReportMonths,
+  sumOwnerTotalsInRange,
   isSuperadminReportUser,
   isConfirmedReportOrder,
   CONFIRMED_REPORT_STATUSES,

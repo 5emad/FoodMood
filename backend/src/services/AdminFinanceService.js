@@ -1,5 +1,5 @@
 const { formatJalaliDate } = require('../helpers/DateHelper');
-const { buildReport, isSuperadminReportUser } = require('../services/ReportService');
+const { buildReport, isSuperadminReportUser, sumOwnerTotalsInRange } = require('../services/ReportService');
 const { clampPercent, splitAmount } = require('../services/UserStatementService');
 const { buildStatementNumber, normalizePeriodKey } = require('../helpers/StatementNumberHelper');
 const { nextReportNumber } = require('../helpers/ReportNumberHelper');
@@ -116,7 +116,8 @@ function summarizeFinanceRows(rows = []) {
 }
 
 async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, query = {}, meta = {}) {
-  const report = await buildReport(rangeStart, rangeEnd);
+  // Finance mode: no day-grids / full org directory scan
+  const report = await buildReport(rangeStart, rangeEnd, { mode: 'finance' });
   const periodType = meta.type === 'month' ? 'month' : 'week';
   const periodKey = periodKeyFromQuery(query, meta.range || {}, periodType);
   const mappedUsers = mapUsersToFinanceRows(report.byUser, settings, periodType, periodKey);
@@ -128,21 +129,13 @@ async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, quer
     const weeklyDiscountByUser = await accumulateWeeklyPersonalDiscounts({
       rangeStart,
       rangeEnd,
+      // Aggregation per week slice — never re-run full buildReport
       summarizeSlice: async (sliceStart, sliceEnd) => {
-        const weekReport = await buildReport(sliceStart, sliceEnd);
-        const entries = [];
-        for (const row of weekReport.byUser || []) {
-          const split = splitAmount(row.totalPrice, organizationSharePercent);
-          entries.push({ userKey: String(row.userId), personalAmount: split.personalAmount });
-        }
-        for (const row of weekReport.byGuest || []) {
-          const split = splitAmount(row.totalPrice, organizationSharePercent);
-          entries.push({
-            userKey: `guest:${row.guestId || row.guestCode}`,
-            personalAmount: split.personalAmount,
-          });
-        }
-        return entries;
+        const rows = await sumOwnerTotalsInRange(sliceStart, sliceEnd, organizationSharePercent);
+        return rows.map((row) => ({
+          userKey: row.userKey,
+          personalAmount: row.personalAmount,
+        }));
       },
     });
     const monthDiscountMap = await loadDiscountMap('month', periodKey);

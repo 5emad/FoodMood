@@ -31,9 +31,24 @@ async function syncMenuItemReservedCount(menuItemId) {
 }
 
 async function syncAllMenuItemReservedCounts() {
+  // One aggregation instead of N sequential updates (startup CPU killer)
+  const rows = await Order.aggregate([
+    { $match: { status: { $ne: 'cancelled' }, menuItemId: { $type: 'objectId' } } },
+    { $group: { _id: '$menuItemId', total: { $sum: '$quantity' } } },
+  ]);
+  const counts = new Map(rows.map((r) => [String(r._id), Number(r.total || 0)]));
   const ids = await MenuItem.find().select('_id').lean();
-  for (const row of ids) {
-    await syncMenuItemReservedCount(row._id);
+  const ops = ids.map((row) => ({
+    updateOne: {
+      filter: { _id: row._id },
+      update: { $set: { reservedCount: counts.get(String(row._id)) || 0, updatedAt: new Date() } },
+    },
+  }));
+  if (ops.length) {
+    const chunk = 500;
+    for (let i = 0; i < ops.length; i += chunk) {
+      await MenuItem.bulkWrite(ops.slice(i, i + chunk), { ordered: false });
+    }
   }
 }
 

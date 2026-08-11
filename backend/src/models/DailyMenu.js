@@ -27,6 +27,8 @@ const dailyMenuSchema = new mongoose.Schema({
 
 dailyMenuSchema.index({ weekId: 1, dayId: 1 }, { unique: true });
 dailyMenuSchema.index({ weekId: 1, date: 1 }, { unique: true });
+// Range scans for reports/finance (DailyMenu.find({ date: { $gte, $lte } }))
+dailyMenuSchema.index({ date: 1 }, { background: true });
 
 dailyMenuSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

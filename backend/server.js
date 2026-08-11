@@ -369,13 +369,19 @@ ensureLogDir();
 let reconnectTimer = null;
 let postConnectDone = false;
 
+/** Only one process runs cron/migrations when CLUSTER_WORKERS > 1 */
+function isBackgroundJobWorker() {
+  if (!cluster.isWorker) return true;
+  return Number(cluster.worker?.id) === 1;
+}
+
 async function runPostConnectTasks() {
   if (postConnectDone) return;
   postConnectDone = true;
   const { ensureCurrentWeek }                       = require('./src/controllers/AdminController');
   const { finalizeExpiredOrders, ensureOrderNumbers } = require('./src/helpers/OrderStatusHelper');
   const AppSetting = require('./src/models/AppSetting');
-  const { normalizePublicUrl, refreshPublicUrlCache, prefersHttps } = require('./src/helpers/AppUrlHelper');
+  const { normalizePublicUrl, refreshPublicUrlCache } = require('./src/helpers/AppUrlHelper');
   const { refreshOriginPublicUrlCache } = require('./src/helpers/OriginPolicyHelper');
 
   if (process.env.APP_URL) {
@@ -393,12 +399,21 @@ async function runPostConnectTasks() {
     }
   }
 
+  // Light per-worker caches (safe under cluster)
+  const { syncInstalledVersionToDb } = require('./src/helpers/AppVersionHelper');
+  await syncInstalledVersionToDb().catch(() => {});
+  const { syncWafStateFromDb } = require('./src/services/WafStateService');
+  await syncWafStateFromDb().catch(() => {});
+
+  // Heavy / periodic work: single worker only (avoids N× sync + N× finalize)
+  if (!isBackgroundJobWorker()) return;
+
   await ensureCurrentWeek();
   const { dedupeWeeks } = require('./src/services/WeekService');
   await dedupeWeeks().catch(() => {});
   const { syncAllMenuItemReservedCounts } = require('./src/helpers/ReservationHelper');
   await syncAllMenuItemReservedCounts().catch(() => {});
-  // پر کردن dailyMenuId برای سفارش‌های قدیمی (ایندکس یک‌روزه)
+  // پر کردن dailyMenuId برای سفارش‌های قدیمی — یک $in + bulkWrite (بدون N+1)
   try {
     const Order = require('./src/models/Order');
     const MenuItem = require('./src/models/MenuItem');
@@ -406,10 +421,24 @@ async function runPostConnectTasks() {
       menuItemId: { $ne: null },
       $or: [{ dailyMenuId: null }, { dailyMenuId: { $exists: false } }],
     }).select('_id menuItemId').lean();
-    for (const row of orphan) {
-      const item = await MenuItem.findById(row.menuItemId).select('dailyMenuId').lean();
-      if (item?.dailyMenuId) {
-        await Order.updateOne({ _id: row._id }, { $set: { dailyMenuId: item.dailyMenuId } });
+    if (orphan.length) {
+      const menuIds = [...new Set(orphan.map((row) => String(row.menuItemId)).filter(Boolean))];
+      const items = await MenuItem.find({ _id: { $in: menuIds } }).select('_id dailyMenuId').lean();
+      const menuMap = new Map(items.map((item) => [String(item._id), item.dailyMenuId]));
+      const ops = [];
+      for (const row of orphan) {
+        const dailyMenuId = menuMap.get(String(row.menuItemId));
+        if (!dailyMenuId) continue;
+        ops.push({
+          updateOne: {
+            filter: { _id: row._id },
+            update: { $set: { dailyMenuId } },
+          },
+        });
+      }
+      const chunk = 500;
+      for (let i = 0; i < ops.length; i += chunk) {
+        await Order.bulkWrite(ops.slice(i, i + chunk), { ordered: false });
       }
     }
   } catch {
@@ -420,14 +449,6 @@ async function runPostConnectTasks() {
 
   const { runDataMigrations } = require('./src/services/DataMigrationService');
   await runDataMigrations().catch(() => {});
-
-  // Persist installed version into AppSetting (shown on login/admin from DB)
-  const { syncInstalledVersionToDb } = require('./src/helpers/AppVersionHelper');
-  await syncInstalledVersionToDb().catch(() => {});
-
-  // همگام‌سازی وضعیت WAF از دیتابیس
-  const { syncWafStateFromDb } = require('./src/services/WafStateService');
-  await syncWafStateFromDb().catch(() => {});
 
   setInterval(() => {
     finalizeExpiredOrders().catch((err) => {
@@ -558,9 +579,12 @@ function startServer() {
   });
 }
 
+// CLUSTER_WORKERS: 0 = single process | N = N workers | auto = min(cpus, CLUSTER_MAX||2)
+// Default cap 2 keeps RAM safe on 8GB hosts (Node + Mongo + Chrome PDF).
 const clusterWorkersRaw = String(process.env.CLUSTER_WORKERS || '0').trim().toLowerCase();
+const clusterMax = Math.max(1, Number(process.env.CLUSTER_MAX || 2) || 2);
 const clusterWorkers = clusterWorkersRaw === 'auto'
-  ? os.cpus().length
+  ? Math.min(os.cpus().length, clusterMax)
   : Math.max(0, Number(clusterWorkersRaw) || 0);
 if (clusterWorkers > 1 && cluster.isPrimary) {
   const count = Math.min(clusterWorkers, os.cpus().length);

@@ -142,6 +142,8 @@ orderSchema.index({ menuItemId: 1 });
 orderSchema.index({ status: 1, orderDate: 1 });
 orderSchema.index({ dailyMenuId: 1, status: 1 });
 orderSchema.index({ status: 1 });
+// ESR: equality(status) + range(orderDate) for legacy rows / month picker
+orderSchema.index({ status: 1, dailyMenuId: 1, orderDate: 1 }, { background: true });
 
 orderSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

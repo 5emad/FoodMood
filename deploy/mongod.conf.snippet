@@ -1,0 +1,19 @@
+# MongoDB WiredTiger — leave RAM for Node.js (8GB host, ~360k docs)
+# Apply: sudo nano /etc/mongod.conf  then  sudo systemctl restart mongod
+#
+# storage:
+#   wiredTiger:
+#     engineConfig:
+#       cacheSizeGB: 1.5
+#
+# Optional (recommended on same host as Node):
+#   journal:
+#     commitIntervalMs: 100
+
+storage:
+  dbPath: /var/lib/mongodb
+  journal:
+    enabled: true
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 1.5

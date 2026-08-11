@@ -11,6 +11,8 @@ User=foodapp
 Group=foodapp
 WorkingDirectory=/opt/food
 Environment=NODE_ENV=production
+# Cap V8 heap so one worker cannot eat the whole 8GB box
+Environment=NODE_OPTIONS=--max-old-space-size=1024
 EnvironmentFile=/opt/food/.env
 ExecStartPre=/opt/food/deploy/wait-for-mongo.sh
 ExecStart=/usr/bin/node backend/server.js

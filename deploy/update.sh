@@ -288,9 +288,20 @@ migrate_env_keys() {
   ensure_env_default WAF_RATE_LIMIT_MAX 2000
   ensure_env_default WAF_BURST_MAX 120
   ensure_env_default WAF_FP_MAX 500
-  ensure_env_default CLUSTER_WORKERS 0
-  ensure_env_default MONGODB_MAX_POOL_SIZE 50
-  ensure_env_default MONGODB_MIN_POOL_SIZE 5
+  # 2 workers = use 2 CPU cores without starving Mongo/PDF on 8GB hosts
+  ensure_env_default CLUSTER_WORKERS 2
+  ensure_env_default CLUSTER_MAX 2
+  ensure_env_default MONGODB_MAX_POOL_SIZE 25
+  ensure_env_default MONGODB_MIN_POOL_SIZE 2
+  # One-time upgrade from legacy single-process default
+  if grep -qE '^CLUSTER_WORKERS=0[[:space:]]*$' "$env_file" 2>/dev/null; then
+    ensure_env_force CLUSTER_WORKERS 2
+    log_ok "Enabled CLUSTER_WORKERS=2 (multi-core; set 0 to disable)"
+  fi
+  # WiredTiger cache cap so Node has RAM (idempotent)
+  if declare -F ensure_mongod_wiredtiger_cache >/dev/null 2>&1; then
+    ensure_mongod_wiredtiger_cache || true
+  fi
   ensure_env_force TRUSTED_PROXIES '127.0.0.1,::1'
   ensure_env_force WAF_TRUSTED_PROXIES '127.0.0.1,::1'
   # Default off; superadmin toggle in DB wins at runtime (do not force every update)

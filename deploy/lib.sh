@@ -233,6 +233,9 @@ auth = bool(re.search(r'authorization:\s*enabled', text))
 body = f"""# FoodMood — repaired mongod.conf ({time.strftime('%Y-%m-%d %H:%M:%S')})
 storage:
   dbPath: {db_path}
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 1.5
 
 systemLog:
   destination: file
@@ -278,6 +281,63 @@ fix_mongod_conf() {
     || grep -A2 'unixDomainSocket' "$conf" 2>/dev/null | grep -q 'enabled: true'; then
     repair_mongod_conf
   fi
+}
+
+# Cap WiredTiger cache at 1.5GB so Node has RAM on 8GB hosts (idempotent, no full rewrite).
+ensure_mongod_wiredtiger_cache() {
+  local conf="/etc/mongod.conf"
+  [[ -f "$conf" ]] || return 0
+  if grep -qE '^\s*cacheSizeGB:' "$conf" 2>/dev/null; then
+    return 0
+  fi
+  cp -a "$conf" "${conf}.bak.cache.$(date +%s)" 2>/dev/null || true
+  python3 - "$conf" <<'PY'
+import sys, re
+path = sys.argv[1]
+text = open(path, encoding='utf-8').read()
+if re.search(r'^\s*cacheSizeGB:', text, re.M):
+    print('exists')
+    sys.exit(0)
+block = (
+    "  wiredTiger:\n"
+    "    engineConfig:\n"
+    "      cacheSizeGB: 1.5\n"
+)
+# Insert under storage: after dbPath line if present
+m = re.search(r'(^storage:\s*\n(?:^[ \t]+.+\n)*)', text, re.M)
+if m:
+    section = m.group(1)
+    if 'wiredTiger:' in section:
+        section2 = re.sub(
+            r'(^\s*engineConfig:\s*\n)',
+            r'\1      cacheSizeGB: 1.5\n',
+            section,
+            count=1,
+            flags=re.M,
+        )
+        if section2 == section:
+            section2 = section.rstrip('\n') + '\n' + block
+        text = text[:m.start(1)] + section2 + text[m.end(1):]
+    else:
+        # after first storage child line (dbPath)
+        text = re.sub(
+            r'(^storage:\s*\n(?:^[ \t]+\S.*\n)?)',
+            r'\1' + block,
+            text,
+            count=1,
+            flags=re.M,
+        )
+else:
+    text = 'storage:\n  dbPath: /var/lib/mongodb\n' + block + '\n' + text
+open(path, 'w', encoding='utf-8').write(text)
+print('updated')
+PY
+  local rc=$?
+  if [[ $rc -eq 0 ]]; then
+    log_ok "Set WiredTiger cacheSizeGB=1.5 in ${conf}"
+    systemctl restart mongod 2>/dev/null || true
+  fi
+  return 0
 }
 
 stop_stray_mongod_processes() {
