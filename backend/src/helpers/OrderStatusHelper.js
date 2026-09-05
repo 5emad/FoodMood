@@ -20,7 +20,7 @@ async function finalizeExpiredOrders(_filter = {}) {
 function decorateOrder(order) {
   const raw = typeof order.toObject === 'function' ? order.toObject() : order;
   const cancelDeadline = getCancelDeadline(raw);
-  const deliveryDate = raw.menuItemId?.dailyMenuId?.date || null;
+  const deliveryDate = raw.dailyMenuId?.date || raw.menuItemId?.dailyMenuId?.date || null;
   return {
     ...raw,
     cancelDeadline,

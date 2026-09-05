@@ -78,7 +78,7 @@ export default function OrdersTab({ onReportsAccessChange }) {
         {loading ? <AdminSpinner /> : (
           <>
             <table className="table">
-              <thead><tr><th>کد</th><th>نام مشتری</th><th>غذا</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead>
+              <thead><tr><th>کد</th><th>نام مشتری</th><th>غذا</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ ثبت سفارش</th><th>تاریخ تحویل</th><th>عملیات</th></tr></thead>
               <tbody>
                 {orders.length ? orders.map((o) => (
                   <tr key={o._id}>
@@ -87,14 +87,15 @@ export default function OrdersTab({ onReportsAccessChange }) {
                     <td>{o.menuItemId?.foodId?.name || o.items?.[0]?.foodId?.name || '-'}</td>
                     <td>{money(o.totalPrice)}</td>
                     <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS[o.status] || o.status}</span></td>
-                    <td>{jdate(o.orderDate)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{jdate(o.createdAt || o.orderDate)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{jdate(o.deliveryDate) || '-'}</td>
                     <TableActions>
                       {o.status !== 'cancelled' ? (
                         <button type="button" className="btn btn-danger btn-sm" onClick={() => cancelOrder(o.orderNumber || o._id)}><i className="fas fa-ban" /> لغو</button>
                       ) : <span className="badge badge-gray">لغو شده</span>}
                     </TableActions>
                   </tr>
-                )) : <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>سفارشی ثبت نشده</td></tr>}
+                )) : <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>سفارشی ثبت نشده</td></tr>}
               </tbody>
             </table>
             <Pagination page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} onPage={load} />

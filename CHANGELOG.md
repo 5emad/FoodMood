@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.45] - 2026-09-05
+
+### Added
+- Separate order registration and delivery dates in the admin orders table, using the daily menu for delivery dates.
+
 ## [1.9.44] - 2026-09-05
 
 ### Fixed

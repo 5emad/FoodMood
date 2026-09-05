@@ -271,6 +271,7 @@ class OrderController {
           .skip(pageInfo.skip)
           .limit(pageInfo.limit)
           .populate('userId', 'username fullName')
+          .populate('dailyMenuId', 'date')
           .populate('items.foodId')
           .populate({
             path: 'menuItemId',
@@ -371,4 +372,3 @@ class OrderController {
 }
 
 module.exports = OrderController;
-

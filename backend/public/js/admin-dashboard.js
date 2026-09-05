@@ -900,7 +900,7 @@ async function loadOrders(page = orderPagination.page || 1) {
   const clsMap = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
   document.getElementById('ordersWrap').innerHTML = `
     <table class="table">
-      <thead><tr><th>کد</th><th>نام مشتری</th><th>غذا</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead>
+      <thead><tr><th>کد</th><th>نام مشتری</th><th>غذا</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ ثبت سفارش</th><th>تاریخ تحویل</th><th>عملیات</th></tr></thead>
       <tbody>${orders.map(o => `
         <tr>
           <td style="font-weight:900;direction:ltr">#${o.orderNumber || '-'}</td>
@@ -908,13 +908,14 @@ async function loadOrders(page = orderPagination.page || 1) {
           <td>${esc(o.menuItemId?.foodId?.name || o.items?.[0]?.foodId?.name || '-')}</td>
           <td>${money(o.totalPrice)}</td>
           <td><span class="badge badge-${clsMap[o.status] || 'gray'}">${labels[o.status] || o.status}</span></td>
-          <td>${jdate(o.orderDate)}</td>
+          <td style="white-space:nowrap">${jdate(o.createdAt || o.orderDate)}</td>
+          <td style="white-space:nowrap">${o.deliveryDate ? jdate(o.deliveryDate) : '-'}</td>
           <td>
             ${o.status !== 'cancelled'
               ? `<button class="btn btn-danger btn-sm" onclick="cancelAdminOrder('${o.orderNumber || o._id}')"><i class="fas fa-ban"></i> لغو</button>`
               : '<span class="badge badge-gray">لغو شده</span>'}
           </td>
-        </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text-muted)">سفارشی ثبت نشده</td></tr>'}
+        </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">سفارشی ثبت نشده</td></tr>'}
       </tbody>
     </table>
     ${renderOrderPagination()}`;
