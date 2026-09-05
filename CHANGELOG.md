@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.42] - 2026-09-05
+
+### Fixed
+- Refresh cached CSRF tokens after login and retry CSRF-expired SPA requests once automatically, so users no longer need to refresh the page after signing in.
+
+## [1.9.41] - 2026-09-05
+
+### Fixed
+- Reports, finance statements, and user statements now include only confirmed orders; cancelled and other non-confirmed statuses are excluded.
+
 ## [1.9.16] - 2026-07-26
 
 ### Fixed
