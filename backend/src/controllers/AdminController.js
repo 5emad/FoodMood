@@ -122,7 +122,7 @@ class AdminController {
         Food.countDocuments({ status: 'active' }),
         Order.countDocuments({ orderDate: { $gte: today, $lt: tomorrow } }),
         Order.aggregate([
-          { $match: { orderDate: { $gte: today, $lt: tomorrow }, status: { $in: ['confirmed', 'completed'] } } },
+          { $match: { orderDate: { $gte: today, $lt: tomorrow }, status: { $in: ['confirmed'] } } },
           { $group: { _id: null, total: { $sum: '$totalPrice' } } },
         ]),
         Order.find()

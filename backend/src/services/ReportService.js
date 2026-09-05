@@ -29,7 +29,7 @@ const persianMonthNames = [
   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
 ];
 
-const CONFIRMED_REPORT_STATUSES = ['confirmed', 'ready', 'completed'];
+const CONFIRMED_REPORT_STATUSES = ['confirmed'];
 
 function isConfirmedReportOrder(order) {
   return CONFIRMED_REPORT_STATUSES.includes(order.status);
