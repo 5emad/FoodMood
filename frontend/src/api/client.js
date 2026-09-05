@@ -27,27 +27,40 @@ function redirectLogin(reason) {
 export async function api(url, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-
-  if (needsCsrf) {
-    const token = await getCsrfToken();
-    if (token) headers['X-CSRF-Token'] = token;
-  }
-
-  const res = await fetch(url, {
-    ...options,
-    credentials: 'same-origin',
-    headers,
-  });
-
-  if (res.status === 403 && needsCsrf) resetCsrf();
-
-  const text = await res.text();
+  let attempt = 0;
+  let res;
+  let text;
   let body;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
+
+  while (attempt < 2) {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+
+    if (needsCsrf) {
+      const token = await getCsrfToken();
+      if (token) headers['X-CSRF-Token'] = token;
+    }
+
+    res = await fetch(url, {
+      ...options,
+      credentials: 'same-origin',
+      headers,
+    });
+
+    text = await res.text();
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = null;
+    }
+
+    if (res.status === 403 && needsCsrf && body?.code === 'CSRF_INVALID' && attempt === 0) {
+      resetCsrf();
+      attempt += 1;
+      continue;
+    }
+
+    if (res.status === 403 && needsCsrf) resetCsrf();
+    break;
   }
 
   const isAuthCredentialCall = /\/api\/auth\/(login|resolve-username|verify-super-token)(?:\?|$)/.test(url);
@@ -83,12 +96,27 @@ export async function api(url, options = {}) {
 export async function apiBlob(url, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
-  const headers = { ...(options.headers || {}) };
-  if (needsCsrf) {
-    const token = await getCsrfToken();
-    if (token) headers['X-CSRF-Token'] = token;
+  let attempt = 0;
+  let res;
+
+  while (attempt < 2) {
+    const headers = { ...(options.headers || {}) };
+    if (needsCsrf) {
+      const token = await getCsrfToken();
+      if (token) headers['X-CSRF-Token'] = token;
+    }
+    res = await fetch(url, { ...options, credentials: 'same-origin', headers });
+    if (res.status === 403 && needsCsrf && attempt === 0) {
+      const body = await res.clone().json().catch(() => null);
+      if (body?.code === 'CSRF_INVALID') {
+        resetCsrf();
+        attempt += 1;
+        continue;
+      }
+    }
+    if (res.status === 403 && needsCsrf) resetCsrf();
+    break;
   }
-  const res = await fetch(url, { ...options, credentials: 'same-origin', headers });
   if (res.status === 401) {
     redirectLogin('expired');
     throw new Error('401');
@@ -98,23 +126,39 @@ export async function apiBlob(url, options = {}) {
 
 export async function apiForm(url, formData, method = 'POST') {
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method).toUpperCase());
-  const headers = {};
-  if (needsCsrf) {
-    const token = await getCsrfToken();
-    if (token) headers['X-CSRF-Token'] = token;
+  let attempt = 0;
+  let res;
+  let text;
+  let body;
+
+  while (attempt < 2) {
+    const headers = {};
+    if (needsCsrf) {
+      const token = await getCsrfToken();
+      if (token) headers['X-CSRF-Token'] = token;
+    }
+    res = await fetch(url, { method, credentials: 'same-origin', headers, body: formData });
+    text = await res.text();
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+
+    if (res.status === 403 && needsCsrf && body?.code === 'CSRF_INVALID' && attempt === 0) {
+      resetCsrf();
+      attempt += 1;
+      continue;
+    }
+
+    if (res.status === 403 && needsCsrf) resetCsrf();
+    break;
   }
-  const res = await fetch(url, { method, credentials: 'same-origin', headers, body: formData });
   if (res.status === 401) {
     redirectLogin('expired');
     throw new Error('401');
   }
-  if (res.status === 403 && needsCsrf) resetCsrf();
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { success: false, message: text || `HTTP ${res.status}` };
-  }
+  return body || { success: false, message: text || `HTTP ${res.status}` };
 }
 
 export function downloadBlob(blob, filename) {
@@ -124,4 +168,3 @@ export function downloadBlob(blob, filename) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-

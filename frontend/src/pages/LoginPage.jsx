@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, resetCsrf } from '../api/client';
 import { useToast } from '../components/ToastProvider';
 
 function initialAlert(params) {
@@ -118,6 +118,7 @@ export default function LoginPage() {
           return;
         }
         setBootstrapToken('');
+        resetCsrf();
         if (res.user) redirectAfterLogin(res.user);
         else navigate('/admin/reports');
       } catch (err) {
@@ -188,6 +189,7 @@ export default function LoginPage() {
         return;
       }
 
+      resetCsrf();
       if (res.user) redirectAfterLogin(res.user);
       else navigate('/user/dashboard');
     } catch (err) {
