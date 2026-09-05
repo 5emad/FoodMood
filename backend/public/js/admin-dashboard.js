@@ -895,7 +895,7 @@ async function loadOrders(page = orderPagination.page || 1) {
   const data = await api(url);
   const orders = data.success ? data.data : [];
   orderPagination = data.pagination || { page, limit: orderPagination.limit || 20, total: orders.length, totalPages: 1 };
-  const labels = { pending: 'قابل لغو', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
+  const labels = { pending: 'در انتظار تایید', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
   const clsMap = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
   document.getElementById('ordersWrap').innerHTML = `
     <table class="table">
@@ -2144,4 +2144,3 @@ Object.assign(window, {
   goToUsersPage,
 });
 })();
-

@@ -9,7 +9,7 @@ import AdminSpinner from '../shared/AdminSpinner';
 import TableActions from '../shared/TableActions';
 import { jdate, money } from '../../../utils/format';
 
-const STATUS = { pending: 'قابل لغو', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
+const STATUS = { pending: 'در انتظار تایید', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
 const STATUS_CLASS = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
 
 export default function OrdersTab({ onReportsAccessChange }) {

@@ -11,16 +11,10 @@ function isCancelable(order) {
   return order.status === 'pending' && Date.now() <= getCancelDeadline(order).getTime();
 }
 
-async function finalizeExpiredOrders(filter = {}) {
-  const threshold = new Date(Date.now() - CANCEL_WINDOW_MINUTES * 60 * 1000);
-  return Order.updateMany(
-    {
-      ...filter,
-      status: 'pending',
-      orderDate: { $lte: threshold },
-    },
-    { $set: { status: 'confirmed' } }
-  );
+async function finalizeExpiredOrders(_filter = {}) {
+  // Pending orders must stay pending until an admin explicitly confirms them.
+  // The 30-minute window only controls whether users can still cancel.
+  return { acknowledged: true, matchedCount: 0, modifiedCount: 0 };
 }
 
 function decorateOrder(order) {

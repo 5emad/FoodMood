@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.43] - 2026-09-05
+
+### Fixed
+- Stop automatically converting pending orders to confirmed after the cancel window; reports now only include orders explicitly confirmed by admins going forward.
+- Show pending admin orders as waiting for confirmation instead of cancelable.
+
 ## [1.9.42] - 2026-09-05
 
 ### Fixed
