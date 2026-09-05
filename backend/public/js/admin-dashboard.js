@@ -875,6 +875,7 @@ async function confirmAllOrders(btn) {
   if (data.success) {
     notify(data.message || `${data.count} سفارش تایید شد.`);
     await refreshReportsAccess();
+    refreshReportViews();
     loadOrders();
     if (reportsAccess.allowed) {
       notify('اکنون می‌توانید به بخش گزارش‌ها دسترسی داشته باشید.', 'success', 'گزارش‌ها');
@@ -941,6 +942,15 @@ function clearOrderSearch() {
   loadOrders(1);
 }
 
+function refreshReportViews() {
+  if (!reportsAccess.allowed) return;
+  buildMonthOptions();
+  if (currentSubTab === 'weekly') {
+    if (currentWeeklyReportTab === 'supplier') loadSupplierReport();
+    else loadWeeklyReport();
+  }
+}
+
 async function cancelAdminOrder(orderNumber) {
   if (!(await confirmAction({
     title: `لغو سفارش #${orderNumber}؟`,
@@ -952,6 +962,8 @@ async function cancelAdminOrder(orderNumber) {
   const data = await api(`/api/orders/admin/${encodeURIComponent(orderNumber)}/cancel`, { method: 'POST' });
   if (data.success) {
     notify(data.message || 'سفارش لغو شد.');
+    await refreshReportsAccess();
+    refreshReportViews();
     loadOrders();
   } else {
     notify(data.message || 'خطا در لغو سفارش', 'error');

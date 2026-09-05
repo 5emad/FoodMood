@@ -12,11 +12,6 @@ function weekSelectLabel(w) {
   return `${prefix}${w.jalaliStart} تا ${w.jalaliEnd}`;
 }
 
-function weeklyFetchKey(tab) {
-  if (tab === 'supplier') return 'supplier';
-  return 'personnel'; // personnel + personnel2 یک API مشترک دارند
-}
-
 export default function ReportsTab() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -34,7 +29,24 @@ export default function ReportsTab() {
   const [printWeekly, setPrintWeekly] = useState('');
   const [printMonthly, setPrintMonthly] = useState('');
   const loadSeq = useRef(0);
-  const lastFetchKey = useRef('');
+  const [refreshVersion, setRefreshVersion] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      // Ignore any response started before returning to the report.
+      loadSeq.current += 1;
+      setMonthsLoaded(false);
+      setRefreshVersion((value) => value + 1);
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      loadSeq.current += 1;
+    };
+  }, []);
 
   // Fast mount: access + weeks only (months lazy — was scanning all orders)
   useEffect(() => {
@@ -68,8 +80,8 @@ export default function ReportsTab() {
       if (cancelled) return;
       const monthList = m.success ? m.data : [];
       setMonths(monthList);
-      if (monthList.length && !monthVal) {
-        setMonthVal(`${monthList[0].from}|${monthList[0].to}`);
+      if (!monthList.some((month) => `${month.from}|${month.to}` === monthVal)) {
+        setMonthVal(monthList.length ? `${monthList[0].from}|${monthList[0].to}` : '');
       }
       setMonthsLoaded(true);
     })();
@@ -78,16 +90,17 @@ export default function ReportsTab() {
 
   useEffect(() => {
     if (!access.allowed || loading) return;
-    if (subTab === 'monthly' && !monthVal) return;
-    const fetchKey = subTab === 'monthly'
-      ? `month:${monthVal}`
-      : `week:${weekId}:${weeklyFetchKey(weeklyTab)}`;
-    if (fetchKey === lastFetchKey.current && report) return;
-    loadReport(fetchKey);
+    if (subTab === 'monthly' && !monthVal) {
+      setReport(null);
+      setReportLoading(false);
+      return;
+    }
+    loadReport();
+    return () => { loadSeq.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, weeklyTab, weekId, monthVal, access.allowed, loading]);
+  }, [subTab, weeklyTab, weekId, monthVal, access.allowed, loading, refreshVersion]);
 
-  async function loadReport(fetchKey) {
+  async function loadReport() {
     const seq = ++loadSeq.current;
     setReportLoading(true);
     let url = '/api/admin/reports';
@@ -116,7 +129,6 @@ export default function ReportsTab() {
       }
       const payload = data.data || null;
       setReport(payload);
-      lastFetchKey.current = fetchKey || lastFetchKey.current;
       if (payload?.range) {
         const label = `گزارش ${subTab === 'monthly' ? 'ماهیانه' : 'هفتگی'} — ${payload.range.jalaliStart} تا ${payload.range.jalaliEnd}`;
         if (subTab === 'monthly') setPrintMonthly(label);

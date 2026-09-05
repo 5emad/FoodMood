@@ -257,10 +257,6 @@ async function findOrdersInRange(rangeStart, rangeEnd, options = {}) {
     .lean();
 }
 
-/** Short TTL cache for month list (invalidates on process restart / TTL). */
-let monthsCache = { at: 0, data: null };
-const MONTHS_CACHE_MS = 90 * 1000;
-
 /**
  * @param {Date} rangeStartInput
  * @param {Date} rangeEndInput
@@ -293,6 +289,7 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
     order.dailyMenuId?.date || order.menuItemId?.dailyMenuId?.date || order.orderDate,
   );
   const orders = candidateOrders.filter((order) => {
+    if (!isConfirmedReportOrder(order)) return false;
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
   });
@@ -629,10 +626,7 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
 }
 
 async function getAvailableReportMonths() {
-  if (monthsCache.data && (Date.now() - monthsCache.at) < MONTHS_CACHE_MS) {
-    return monthsCache.data;
-  }
-
+  // Read current statuses, including cancellations made by other server processes.
   // Aggregation in Mongo — never hydrate all confirmed orders into Node heap
   const rows = await Order.aggregate([
     { $match: { status: { $in: CONFIRMED_REPORT_STATUSES } } },
@@ -678,7 +672,6 @@ async function getAvailableReportMonths() {
     .sort((a, b) => (b.year - a.year) || (b.month - a.month))
     .map(({ key, label, from, to, count }) => ({ key, label, from, to, count }));
 
-  monthsCache = { at: Date.now(), data };
   return data;
 }
 

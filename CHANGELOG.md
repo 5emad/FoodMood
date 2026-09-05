@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.9.44] - 2026-09-05
+
+### Fixed
+- Read report month counts from current order statuses without the 90-second process cache.
+- Reload reports on tab selection and window return, discard outdated responses, and refresh report access after admin cancellation.
+- Defensively exclude non-confirmed orders before report totals and add regression coverage for admin cancellation in active and inactive weeks.
+
 ## [1.9.43] - 2026-09-05
 
 ### Fixed

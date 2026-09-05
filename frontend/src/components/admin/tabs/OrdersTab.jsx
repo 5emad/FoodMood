@@ -44,7 +44,11 @@ export default function OrdersTab({ onReportsAccessChange }) {
   async function cancelOrder(orderNumber) {
     if (!(await confirmAction({ title: `لغو سفارش #${orderNumber}؟`, text: 'ظرفیت رزرو آزاد می‌شود.', confirmText: 'لغو سفارش', icon: 'warning' }))) return;
     const data = await api(`/api/orders/admin/${encodeURIComponent(orderNumber)}/cancel`, { method: 'POST' });
-    if (data.success) { toast('سفارش لغو شد', 'success'); load(pagination.page); }
+    if (data.success) {
+      toast('سفارش لغو شد', 'success');
+      load(pagination.page);
+      onReportsAccessChange?.();
+    }
     else toast(data.message || 'خطا', 'error');
   }
 

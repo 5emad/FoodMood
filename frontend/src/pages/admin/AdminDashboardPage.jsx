@@ -29,5 +29,5 @@ export default function AdminDashboardPage() {
 
   if (!ready) return <AdminSpinner />;
 
-  return <AdminTabRouter tab={tab} boot={boot} />;
+  return <AdminTabRouter tab={tab} boot={boot} onReportsAccessChange={ctx.reloadBoot} />;
 }
