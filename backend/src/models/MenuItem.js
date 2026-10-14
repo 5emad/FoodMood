@@ -41,6 +41,8 @@ const menuItemSchema = new mongoose.Schema({
 });
 
 menuItemSchema.index({ dailyMenuId: 1, foodId: 1 }, { unique: true });
+menuItemSchema.index({ dailyMenuId: 1, createdAt: 1 }, { background: true });
+menuItemSchema.index({ foodId: 1, dailyMenuId: 1 }, { background: true });
 
 menuItemSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

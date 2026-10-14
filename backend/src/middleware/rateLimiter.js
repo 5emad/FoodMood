@@ -74,6 +74,39 @@ const superTokenLimiter = createLimiter({
   keyGenerator: (req) => `${resolveClientIp(req)}:${req.session?.pendingSuperLogin?.userId || 'none'}`,
 });
 
+/** ثبت‌نام عمومی: هر IP حداکثر ۵ تلاش در ساعت */
+const registerLimiter = createLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.REGISTER_RATE_LIMIT_MAX || 5),
+  message: { success: false, message: 'تعداد تلاش برای ثبت‌نام بیش از حد مجاز است. یک ساعت دیگر تلاش کنید.' },
+  keyGenerator: (req) => `register:${resolveClientIp(req)}`,
+});
+
+/** تولید تصویر کپچا */
+const captchaLimiter = createLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: Number(process.env.CAPTCHA_RATE_LIMIT_MAX || 60),
+  message: { success: false, message: 'درخواست کد امنیتی بیش از حد مجاز است. کمی صبر کنید.' },
+  keyGenerator: (req) => `captcha:${resolveClientIp(req)}`,
+});
+
+/** تغییر رمز: جلوی حدس رمز فعلی با یک نشست ربوده‌شده را می‌گیرد */
+const passwordChangeLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessful: true,
+  message: { success: false, message: 'تعداد تلاش برای تغییر رمز بیش از حد مجاز است. ۱۵ دقیقه دیگر تلاش کنید.' },
+  keyGenerator: (req) => `pwchange:${req.user?.id || resolveClientIp(req)}`,
+});
+
+/** عملیات حجیم/حساس ادمین (حذف گروهی و ...) */
+const bulkActionLimiter = createLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { success: false, message: 'تعداد عملیات گروهی بیش از حد مجاز است. کمی صبر کنید.' },
+  keyGenerator: (req) => `bulk:${req.user?.id || resolveClientIp(req)}`,
+});
+
 const backupRestoreLimiter = createLimiter({
   windowMs: 60 * 60 * 1000,
   max: Number(process.env.BACKUP_RESTORE_RATE_LIMIT_MAX || 20),
@@ -81,10 +114,39 @@ const backupRestoreLimiter = createLimiter({
   keyGenerator: (req) => `${resolveClientIp(req)}:${req.user?.id || req.session?.userId || 'anon'}`,
 });
 
+/** ساخت پرداخت (هر بار درگاه/بله را صدا می‌زند) — به ازای کاربر */
+const paymentCreateLimiter = createLimiter({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PAYMENT_CREATE_RATE_LIMIT_MAX || 10),
+  message: { success: false, message: 'تعداد درخواست پرداخت بیش از حد مجاز است. کمی صبر کنید.' },
+  keyGenerator: (req) => `pay:${req.user?.id || resolveClientIp(req)}`,
+});
+
+/** صفحه‌های پرداخت بدون نشست (/payment/*) و بازگشت درگاه — به ازای IP */
+const paymentPageLimiter = createLimiter({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PAYMENT_PAGE_RATE_LIMIT_MAX || 120),
+  message: { success: false, message: 'تعداد درخواست‌ها بیش از حد مجاز است.' },
+});
+
+/** وب‌هوک بله */
+const webhookLimiter = createLimiter({
+  windowMs: 60 * 1000,
+  max: Number(process.env.WEBHOOK_RATE_LIMIT_MAX || 300),
+  message: { ok: false },
+});
+
 module.exports = {
+  paymentCreateLimiter,
+  paymentPageLimiter,
+  webhookLimiter,
   loginLimiter,
   apiLimiter,
   superTokenLimiter,
+  registerLimiter,
+  captchaLimiter,
+  passwordChangeLimiter,
+  bulkActionLimiter,
   backupRestoreLimiter,
   directClientIp,
   resolveClientIp,

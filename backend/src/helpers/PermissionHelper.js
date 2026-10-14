@@ -1,8 +1,9 @@
 const { getReportsAccessForUser } = require('./ReportsAccessHelper');
 const { getSettingsLean } = require('../services/SettingsService');
 const { isEnabledFlag } = require('./SettingFlags');
+const { isPaymentEnabled } = require('./PaymentConfigHelper');
 
-const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'guests', 'announcements', 'backup'];
+const ADMIN_TABS = ['reports', 'weeks', 'orders', 'foods', 'users', 'departments', 'finance', 'payments', 'guests', 'announcements', 'backup'];
 const STATEMENT_DISABLED_MESSAGE = 'در حال حاضر در دسترس نیست';
 
 function isSuperadmin(user = {}) {
@@ -39,6 +40,7 @@ async function getAdminCapabilities(user) {
     features: {
       superSettings: superadmin,
       backup: admin,
+      backupRestore: superadmin,
       security: superadmin,
       financePdf: admin,
       guestManagement: admin,
@@ -50,7 +52,7 @@ async function getUserCapabilities() {
   const settings = await getSettingsLean();
   const organizationSharePercent = Math.min(100, Math.max(0, Number(settings.organizationSharePercent) || 0));
   return {
-    showPrices: isEnabledFlag(settings.showPricesToUsers, true),
+    showPrices: isEnabledFlag(settings.showPricesToUsers, true) || isPaymentEnabled(settings),
     showStatement: isEnabledFlag(settings.showFinancialStatementToUsers, true),
     organizationSharePercent,
     personalSharePercent: 100 - organizationSharePercent,

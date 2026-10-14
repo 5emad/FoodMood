@@ -795,7 +795,7 @@ function toggleWeekEditor(weekId) {
 
 async function loadWeekDays(weekId) {
   const container = document.getElementById(`wdays-${weekId}`);
-  const data = await api(`/api/menu/weeks/${encodeURIComponent(weekId)}`);
+  const data = await api(`/api/menu/weeks/${encodeURIComponent(weekId)}?scope=admin`);
   if (!data.success || !data.data?.days) {
     container.innerHTML = '<div class="empty-state"><p>اطلاعات روزها یافت نشد.</p></div>'; return;
   }
@@ -1707,7 +1707,7 @@ async function loadGuestReserveMenu() {
   guestReserveWeekId = weekId;
   wrap.innerHTML = '<div style="padding:16px;text-align:center"><div class="spinner"></div></div>';
   const [menuData, reserveData] = await Promise.all([
-    api(`/api/menu/weeks/${encodeURIComponent(weekId)}`),
+    api(`/api/menu/weeks/${encodeURIComponent(weekId)}?scope=admin`),
     api(`/api/admin/guests/${encodeURIComponent(selectedGuestId)}/reservations?weekId=${encodeURIComponent(weekId)}`),
   ]);
   if (!menuData.success) {

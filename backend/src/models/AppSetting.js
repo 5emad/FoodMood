@@ -44,6 +44,19 @@ const appSettingSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  /** ثبت‌نام عمومی کاربران محلی — فقط سوپر ادمین می‌تواند باز کند */
+  allowLocalRegistration: {
+    type: Boolean,
+    default: false,
+  },
+  /**
+   * تنظیمات پرداخت آنلاین/کارت به کارت — شامل اطلاعات محرمانه درگاه‌ها؛
+   * هرگز مستقیم به کلاینت ارسال نشود (PaymentConfigHelper)
+   */
+  payment: {
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({}),
+  },
   themePrimary: {
     type: String,
     default: '#1B3F8D',

@@ -108,9 +108,23 @@
     clearAlerts();
   }
 
+  function loadCaptcha() {
+    var img = document.getElementById('captchaImg');
+    var input = document.getElementById('captchaAnswer');
+    if (input) input.value = '';
+    if (!img) return;
+    fetch('/api/auth/captcha', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.success && d.data && d.data.image) img.src = d.data.image; })
+      .catch(function () {});
+  }
+
   function initLoginForm() {
     var form = document.getElementById('loginForm');
     if (!form) return;
+    loadCaptcha();
+    var captchaRefresh = document.getElementById('captchaRefresh');
+    if (captchaRefresh) captchaRefresh.addEventListener('click', loadCaptcha);
 
     var submitButton = form.querySelector('button[type="submit"]');
     var defaultButtonHtml = submitButton.innerHTML;
@@ -156,6 +170,7 @@
           body: JSON.stringify({
             username: document.getElementById('username').value.trim(),
             password: document.getElementById('password').value,
+            captchaAnswer: (document.getElementById('captchaAnswer') || {}).value || '',
           }),
         });
         var data = await response.json();
@@ -170,6 +185,7 @@
           return;
         }
 
+        loadCaptcha();
         showAlert(data.message || 'اطلاعات ورود صحیح نیست');
       } catch (_err) {
         showAlert('خطا در ارتباط با سرور');

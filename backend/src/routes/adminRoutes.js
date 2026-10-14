@@ -5,9 +5,10 @@ const AdminController = require('../controllers/AdminController');
 const AnnouncementController = require('../controllers/AnnouncementController');
 const GuestController = require('../controllers/GuestController');
 const MenuController = require('../controllers/MenuController');
+const PaymentController = require('../controllers/PaymentController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
-const { backupRestoreLimiter } = require('../middleware/rateLimiter');
+const { backupRestoreLimiter, bulkActionLimiter } = require('../middleware/rateLimiter');
 const { createWafParamsRestoreMiddleware } = require('../middleware/firewtwallPatches');
 
 const router = express.Router();
@@ -42,6 +43,16 @@ router.get('/finance-statements', AdminController.getFinanceStatements);
 router.get('/finance-statements/months', AdminController.getFinanceMonths);
 router.get('/finance-statements/pdf', AdminController.getFinanceStatementPdf);
 router.post('/finance-statements/discount', roleMiddleware(['admin', 'superadmin']), AdminController.setFinanceStatementDiscount);
+router.get('/payments', PaymentController.adminList);
+router.get('/payments/:id/receipt', PaymentController.adminReceipt);
+router.post('/payments/:id/approve', PaymentController.adminApprove);
+router.post('/payments/:id/reject', PaymentController.adminReject);
+router.post('/payments/bulk-delete', bulkActionLimiter, PaymentController.adminBulkDelete);
+router.delete('/payments/:id', PaymentController.adminDelete);
+router.get('/payment-settings', PaymentController.getSettings);
+router.put('/payment-settings', PaymentController.updateSettings);
+router.post('/payment-settings/bale-webhook', roleMiddleware(['superadmin']), PaymentController.registerBaleWebhook);
+router.post('/payment-settings/preview', PaymentController.previewAppearance);
 router.get('/workspace-settings', AdminController.getWorkspaceSettings);
 router.get('/reports/access', AdminController.getReportsAccess);
 router.get('/reports/months', AdminController.getReportMonths);
@@ -109,7 +120,7 @@ router.put('/menu-items/:id', MenuController.updateItem);
 router.delete('/menu-items/:id', MenuController.deleteItem);
 
 router.get('/backup/export', roleMiddleware(['admin', 'superadmin']), AdminController.exportBackup);
-router.post('/backup/restore', roleMiddleware(['admin', 'superadmin']), backupRestoreLimiter, (req, res, next) => {
+router.post('/backup/restore', roleMiddleware(['superadmin']), backupRestoreLimiter, (req, res, next) => {
   backupUpload.single('backupFile')(req, res, (err) => {
     if (err) {
       let message = 'خطا در آپلود فایل پشتیبان';

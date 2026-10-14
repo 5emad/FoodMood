@@ -26,3 +26,6 @@ backend/public/uploads/**
 !backend/public/uploads/.gitkeep
 !backend/public/uploads/foods/
 !backend/public/uploads/foods/.gitkeep
+
+# رسیدهای کارت به کارت (محرمانه)
+backend/storage/

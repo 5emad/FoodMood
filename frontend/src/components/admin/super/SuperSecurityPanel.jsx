@@ -14,6 +14,11 @@ const TYPE_LABEL = {
   backup_export: 'خروجی پشتیبان', backup_restore: 'بازیابی پشتیبان',
   logs_purged: 'پاک‌سازی لاگ‌ها', waf_blocked: 'مسدودسازی WAF',
   waf_toggled: 'تغییر وضعیت WAF',
+  session_idle_timeout: 'پایان نشست (عدم فعالیت)', session_invalidated: 'ابطال نشست',
+  session_hijack_suspect: 'مشکوک به ربایش نشست', logout_success: 'خروج',
+  password_change: 'تغییر رمز', password_change_failed: 'تغییر رمز ناموفق',
+  user_registered: 'ثبت‌نام کاربر', user_created: 'ایجاد کاربر', user_updated: 'ویرایش کاربر',
+  user_deleted: 'حذف کاربر', foods_deleted: 'حذف غذا', settings_updated: 'تغییر تنظیمات',
 };
 
 const SYSTEM_LEVEL = { error: 'خطا', warn: 'هشدار', info: 'اطلاع' };

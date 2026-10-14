@@ -6,6 +6,11 @@ const { defaultSettings, getSettingsLean } = require('../services/SettingsServic
 const { getUserCapabilities, stripPricesFromMenuPayload, isAdminPortalUser } = require('../helpers/PermissionHelper');
 const { resolveEffectiveCapacity } = require('../helpers/CapacityHelper');
 const { cancelOrdersForMenuItems } = require('../helpers/OrderStatusHelper');
+const { countLockedOrdersForMenuItems } = require('../helpers/PaymentLockHelper');
+
+function paidMenuItemMessage(count) {
+  return `${count.toLocaleString('fa-IR')} سفارش پرداخت‌شده روی این غذا ثبت شده است؛ تغییر یا حذف آن (که سفارش‌ها را لغو می‌کند) ممکن نیست. فقط با حذف کل هفته لغو می‌شوند.`;
+}
 const { writeSystemLog } = require('../services/SystemLogService');
 
 async function attachMenuItems(dailyMenus, settings) {
@@ -65,10 +70,21 @@ class MenuController {
 
   static async getWeeklyMenu(req, res, next) {
     try {
-      const requestedWeekId = req.params.weekId || req.query.weekId || '';
+      const rawWeekId = req.params.weekId || req.query.weekId || '';
+      const requestedWeekId = typeof rawWeekId === 'string' ? rawWeekId.trim() : '';
+      if (requestedWeekId && !/^[a-f0-9]{24}$/i.test(requestedWeekId)) {
+        return res.status(404).json({ message: 'برنامه یافت نشد' });
+      }
+      // نمای مدیریتی (ویرایشگر هفته/رزرو مهمان) فقط با درخواست صریح scope=admin و نقش مدیر.
+      // پرتال کاربر — حتی وقتی مدیر آن را باز می‌کند — همیشه تنظیم «نمایش قیمت» را رعایت می‌کند.
+      const isAdminWeekEditor = isAdminPortalUser(req.user) && String(req.query.scope || '') === 'admin';
       let week;
       if (requestedWeekId) {
         week = await Week.findById(requestedWeekId).lean();
+        // کاربران فقط هفته‌های منتشرشده (فعال) را می‌بینند
+        if (week && !isAdminWeekEditor && !(week.isActive || week.status === 'active')) {
+          week = null;
+        }
       } else {
         const activeWeeks = await Week.find({ $or: [{ isActive: true }, { status: 'active' }] })
           .sort({ startDate: 1 })
@@ -85,9 +101,6 @@ class MenuController {
         .sort({ date: 1 })
         .lean();
       const settings = await getSettingsLean();
-      // /api/menu/active → user portal (always respect showPrices setting)
-      // /api/menu/weeks/:weekId → admin week editor (keep prices for management)
-      const isAdminWeekEditor = Boolean(req.params.weekId) && isAdminPortalUser(req.user);
       const capabilities = isAdminWeekEditor
         ? { showPrices: true, showStatement: true }
         : await getUserCapabilities();
@@ -154,6 +167,8 @@ class MenuController {
 
       const nextFoodId = food_id || foodId;
       if (nextFoodId !== undefined && String(nextFoodId) !== String(existing.foodId)) {
+        const locked = await countLockedOrdersForMenuItems([existing._id]);
+        if (locked > 0) return res.status(409).json({ success: false, message: paidMenuItemMessage(locked) });
         // عوض کردن غذای این آیتم → لغو سفارش‌های قبلی همین آیتم
         const cancelResult = await cancelOrdersForMenuItems([existing._id]);
         cancelledCount = cancelResult.cancelledCount;
@@ -196,6 +211,9 @@ class MenuController {
       if (!item) {
         return res.status(404).json({ message: 'آیتم منو یافت نشد' });
       }
+
+      const locked = await countLockedOrdersForMenuItems([item._id]);
+      if (locked > 0) return res.status(409).json({ success: false, message: paidMenuItemMessage(locked) });
 
       // حذف غذا از منوی روز → لغو سفارش‌های همان غذا (از گزارش هم خارج می‌شوند)
       const { cancelledCount } = await cancelOrdersForMenuItems([item._id]);

@@ -1,4 +1,4 @@
-const { getSettingsLean, defaultSettings } = require('../services/SettingsService');
+const { getSettingsLean, defaultSettings, anonymousSettings } = require('../services/SettingsService');
 const { getVersionViewModel } = require('../helpers/AppVersionHelper');
 
 function versionFromSettings(settings) {
@@ -22,8 +22,7 @@ class AppConfigController {
       res.json({
         success: true,
         data: {
-          organizationName: settings?.organizationName || 'سامانه تغذیه',
-          uiFont: settings?.uiFont === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn',
+          ...anonymousSettings(settings || defaultSettings),
           ...versionFromSettings(settings),
         },
       });

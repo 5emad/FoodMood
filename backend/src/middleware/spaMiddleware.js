@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const SPA_INDEX = path.join(__dirname, '../../public/spa/index.html');
 
-const SPA_ROUTE_RE = /^\/(?:login|complete-profile|foods|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
+const SPA_ROUTE_RE = /^\/(?:login|register|complete-profile|foods|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
 
 function spaIndexExists() {
   try {
@@ -13,7 +13,7 @@ function spaIndexExists() {
   }
 }
 
-const { getSettingsLean, publicSettings, defaultSettings } = require('../services/SettingsService');
+const { getSettingsLean, anonymousSettings, defaultSettings } = require('../services/SettingsService');
 const { getUserCapabilities } = require('../helpers/PermissionHelper');
 const { getVersionViewModel, setDbVersionOverride } = require('../helpers/AppVersionHelper');
 const { getSessionPolicy } = require('../helpers/SessionSecurityHelper');
@@ -72,7 +72,9 @@ async function spaMiddleware(req, res, next) {
       previousAppVersion: settings.previousAppVersion,
       appVersionUpdatedAt: settings.appVersionUpdatedAt,
     });
-    const pubSettings = publicSettings(settings);
+    // HTML is served before authentication — expose only the anonymous-safe subset
+    // (no LDAP host/DN, URLs or operational flags).
+    const pubSettings = anonymousSettings(settings);
 
     const bootstrapData = {
       settings: pubSettings,

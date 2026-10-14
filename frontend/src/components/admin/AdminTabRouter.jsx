@@ -5,6 +5,7 @@ import FoodsTab from './tabs/FoodsTab';
 import UsersTab from './tabs/UsersTab';
 import DepartmentsTab from './tabs/DepartmentsTab';
 import FinanceTab from './tabs/FinanceTab';
+import PaymentsTab from './tabs/PaymentsTab';
 import GuestsTab from './tabs/GuestsTab';
 import AnnouncementsTab from './tabs/AnnouncementsTab';
 import BackupTab from './tabs/BackupTab';
@@ -17,6 +18,7 @@ const TABS = {
   users: UsersTab,
   departments: DepartmentsTab,
   finance: FinanceTab,
+  payments: PaymentsTab,
   guests: GuestsTab,
   announcements: AnnouncementsTab,
   backup: BackupTab,

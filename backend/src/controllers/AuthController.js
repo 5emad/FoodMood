@@ -1,6 +1,15 @@
 const crypto = require('crypto');
 const User = require('../models/User');
-const { hashPassword, comparePassword, compareSensitiveToken, hashSensitiveToken } = require('../helpers/SecurityHelper');
+const {
+  hashPassword,
+  comparePassword,
+  compareSensitiveToken,
+  hashSensitiveToken,
+  validatePasswordPolicy,
+  escapeRegex,
+} = require('../helpers/SecurityHelper');
+const { issueCaptcha, verifyCaptcha } = require('../helpers/CaptchaHelper');
+const { isEnabledFlag } = require('../helpers/SettingFlags');
 const { generateToken, generateLdapToken } = require('../helpers/TokenHelper');
 const LdapHelper = require('../helpers/LdapHelper');
 const { getSettingsLean } = require('../services/SettingsService');
@@ -30,7 +39,54 @@ const PASSWORD_MIN_LEN   = 8;
 const SUPER_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const LOCAL_AUTH_ROLES = ['user', 'admin', 'superadmin'];
 
+const PASSWORD_MAX_LEN = 128;
+const USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9._-]{2,31}$/;
+const PERSIAN_NAME_RE = /^[؀-ۿ‌\s]+$/;
+const RESERVED_USERNAMES = new Set([
+  'admin', 'administrator', 'superadmin', 'root', 'system', 'support', 'guest', 'test', 'user', 'null', 'undefined',
+]);
+
+/** Converts Persian/Arabic-Indic digits to ASCII. */
+function toLatinDigits(value) {
+  return String(value || '')
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
+/** Iranian mobile number → 09xxxxxxxxx, or null when invalid. Empty → ''. */
+function normalizeMobile(value) {
+  const raw = toLatinDigits(value).replace(/[\s-]/g, '');
+  if (!raw) return '';
+  let phone = raw;
+  if (phone.startsWith('+98')) phone = `0${phone.slice(3)}`;
+  else if (phone.startsWith('0098')) phone = `0${phone.slice(4)}`;
+  else if (/^9\d{9}$/.test(phone)) phone = `0${phone}`;
+  return /^09\d{9}$/.test(phone) ? phone : null;
+}
+
+function isPersianFullName(value) {
+  const name = String(value || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 5 || name.length > 60) return false;
+  if (!PERSIAN_NAME_RE.test(name)) return false;
+  return name.split(' ').filter(Boolean).length >= 2;
+}
+
+function fieldError(res, field, message, status = 400) {
+  return res.status(status).json({ success: false, field, message });
+}
+
+async function isRegistrationOpen() {
+  const settings = await getSettingsLean();
+  return isEnabledFlag(settings?.allowLocalRegistration, false);
+}
+
 function validatePasswordChangePayload({ newPassword, confirmPassword }) {
+  if (typeof newPassword !== 'string' || typeof confirmPassword !== 'string') {
+    return 'ورودی رمز عبور نامعتبر است';
+  }
+  if (newPassword.length > PASSWORD_MAX_LEN) {
+    return `رمز عبور نباید بیشتر از ${PASSWORD_MAX_LEN} کاراکتر باشد`;
+  }
   if (!newPassword || newPassword.length < PASSWORD_MIN_LEN) {
     return `رمز جدید باید حداقل ${PASSWORD_MIN_LEN} کاراکتر باشد`;
   }
@@ -93,11 +149,161 @@ async function handleSuccessfulLogin(user, sessionId, req) {
 }
 
 class AuthController {
-  static async register(_req, res) {
-    return res.status(403).json({
-      success: false,
-      message: 'ثبت نام عمومی غیرفعال است. ورود کاربران فقط از طریق Active Directory انجام می‌شود.',
-    });
+  /** تصویر کپچا (یک‌بارمصرف، وابسته به نشست) */
+  static async captcha(req, res, next) {
+    try {
+      const challenge = issueCaptcha(req);
+      res.setHeader('Cache-Control', 'no-store');
+      req.session.save((err) => {
+        if (err) return next(err);
+        return res.json({ success: true, data: challenge });
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** اطلاعات فرم ثبت‌نام — فقط وقتی سوپر ادمین ثبت‌نام محلی را باز کرده باشد */
+  static async registerMeta(_req, res, next) {
+    try {
+      res.setHeader('Cache-Control', 'no-store');
+      if (!(await isRegistrationOpen())) {
+        return res.json({ success: true, data: { enabled: false, departments: [] } });
+      }
+      const Department = require('../models/Department');
+      const departments = await Department.find({}).select('name').sort({ name: 1 }).lean();
+      return res.json({
+        success: true,
+        data: {
+          enabled: true,
+          departments: departments.map((d) => ({ id: String(d._id), name: d.name })),
+          passwordMinLength: PASSWORD_MIN_LEN,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * ثبت‌نام کاربر محلی (نقش user). فقط وقتی allowLocalRegistration روشن باشد.
+   * نام کاربری نباید با هیچ حساب محلی، پروفایل AD، سفارش‌های قدیمی AD یا حساب Active Directory
+   * یکسان باشد — وگرنه حساب محلی جدید سفارش‌ها/صورتحساب کاربر AD را تصاحب می‌کرد.
+   */
+  static async register(req, res, next) {
+    try {
+      if (!(await isRegistrationOpen())) {
+        return res.status(403).json({
+          success: false,
+          message: 'ثبت‌نام در حال حاضر غیرفعال است. برای دریافت حساب با مدیر سامانه تماس بگیرید.',
+        });
+      }
+
+      const body = req.body || {};
+      const str = (v) => (typeof v === 'string' ? v : '');
+      const fullName = str(body.fullName).trim().replace(/\s+/g, ' ');
+      const username = str(body.username).trim();
+      const password = str(body.password);
+      const confirmPassword = str(body.confirmPassword ?? body.confirm);
+      const departmentId = str(body.departmentId).trim();
+      const phone = normalizeMobile(str(body.phone));
+
+      const captcha = verifyCaptcha(req, body.captchaAnswer ?? body.captcha);
+      if (!captcha.ok) return fieldError(res, 'captcha', captcha.message);
+
+      if (!isPersianFullName(fullName)) {
+        return fieldError(res, 'fullName', 'نام و نام خانوادگی را به فارسی وارد کنید');
+      }
+      if (!USERNAME_RE.test(username) || RESERVED_USERNAMES.has(username.toLowerCase())) {
+        return fieldError(res, 'username', 'نام کاربری باید ۳ تا ۳۲ کاراکتر، با حرف انگلیسی شروع شود و فقط شامل حرف، عدد، نقطه، - یا _ باشد');
+      }
+      if (phone === null) {
+        return fieldError(res, 'phone', 'شماره همراه معتبر نیست (مثال: 09121234567)');
+      }
+      if (password.length > PASSWORD_MAX_LEN || !validatePasswordPolicy(password, { minLength: PASSWORD_MIN_LEN })) {
+        return fieldError(res, 'password', `رمز عبور باید حداقل ${PASSWORD_MIN_LEN} کاراکتر و شامل حرف انگلیسی و عدد باشد`);
+      }
+      if (password.toLowerCase().includes(username.toLowerCase())) {
+        return fieldError(res, 'password', 'رمز عبور نباید شامل نام کاربری باشد');
+      }
+      if (password !== confirmPassword) {
+        return fieldError(res, 'confirmPassword', 'تکرار رمز عبور با رمز عبور یکسان نیست');
+      }
+
+      let department = null;
+      const Department = require('../models/Department');
+      const hasDepartments = await Department.exists({});
+      if (hasDepartments) {
+        if (!/^[a-f0-9]{24}$/i.test(departmentId)) {
+          return fieldError(res, 'departmentId', 'واحد سازمانی را انتخاب کنید');
+        }
+        department = await Department.findById(departmentId).select('_id').lean();
+        if (!department) return fieldError(res, 'departmentId', 'واحد انتخاب‌شده معتبر نیست');
+      }
+
+      // ── یکتایی نام کاربری (بدون حساسیت به حروف) در همه منابع هویت ───────────────
+      const exactCi = new RegExp(`^${escapeRegex(username)}$`, 'i');
+      const LdapProfile = require('../models/LdapProfile');
+      const Order = require('../models/Order');
+      const [localTaken, profileTaken, ldapOrdersTaken] = await Promise.all([
+        User.exists({ username: exactCi }),
+        LdapProfile.exists({ ldapUsername: exactCi }),
+        Order.exists({ ldapUsername: exactCi }),
+      ]);
+      if (localTaken || profileTaken || ldapOrdersTaken) {
+        return fieldError(res, 'username', 'این نام کاربری قابل استفاده نیست؛ نام دیگری انتخاب کنید', 409);
+      }
+      if (phone) {
+        const phoneTaken = await User.exists({ phone });
+        if (phoneTaken) return fieldError(res, 'phone', 'این شماره همراه قبلاً ثبت شده است', 409);
+      }
+
+      const settings = await getSettingsLean();
+      if (LdapHelper.isEnabled(settings || {})) {
+        // fail-closed: اگر وجود در AD قابل بررسی نباشد، ثبت‌نام انجام نمی‌شود
+        const inDirectory = await LdapHelper.userExists(username, settings || {});
+        if (inDirectory !== false) {
+          return fieldError(
+            res,
+            'username',
+            inDirectory === null
+              ? 'بررسی نام کاربری در حال حاضر ممکن نیست؛ بعداً تلاش کنید'
+              : 'این نام کاربری قابل استفاده نیست؛ نام دیگری انتخاب کنید',
+            inDirectory === null ? 503 : 409,
+          );
+        }
+      }
+
+      let user;
+      try {
+        user = await User.create({
+          username,
+          fullName,
+          password: await hashPassword(password),
+          ...(phone ? { phone } : {}),
+          departmentId: department?._id || null,
+          role: 'user',
+          status: 'active',
+          ldapUser: false,
+          mustChangePassword: false,
+          mustSetFullName: false,
+        });
+      } catch (err) {
+        if (Number(err?.code) === 11000) {
+          return fieldError(res, 'username', 'این نام کاربری قابل استفاده نیست؛ نام دیگری انتخاب کنید', 409);
+        }
+        throw err;
+      }
+
+      await writeSecurityLog(req, 'user_registered', user, 'Self-service local registration');
+      return res.status(201).json({
+        success: true,
+        message: 'حساب شما ساخته شد. اکنون می‌توانید وارد شوید.',
+        username: user.username,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   /**
@@ -156,6 +362,15 @@ class AuthController {
       // Sanitise: reject objects masquerading as strings (NoSQL injection guard)
       if (typeof req.body.username !== 'string' && typeof req.body.email !== 'string') {
         return res.status(400).json({ message: 'ورودی نامعتبر' });
+      }
+      if (identifier.length > 128 || password.length > PASSWORD_MAX_LEN) {
+        return res.status(401).json({ message: 'اطلاعات وارد شده صحیح نیست' });
+      }
+
+      // Captcha before any DB/LDAP work — slows automated password guessing.
+      const captcha = verifyCaptcha(req, req.body.captchaAnswer ?? req.body.captcha);
+      if (!captcha.ok) {
+        return res.status(400).json({ success: false, field: 'captcha', code: 'CAPTCHA_INVALID', message: captcha.message });
       }
 
       const user = await User.findOne({
@@ -577,7 +792,17 @@ class AuthController {
       const fullNameRaw = req.body.fullName !== undefined
         ? String(req.body.fullName || '').trim()
         : undefined;
-      const phone = normalizePhone(req.body.phone);
+      let phone = normalizePhone(req.body.phone);
+      if (phone) {
+        const mobile = normalizeMobile(phone);
+        if (mobile === null) {
+          return res.status(400).json({ success: false, message: 'شماره همراه معتبر نیست (مثال: 09121234567)' });
+        }
+        phone = mobile || null;
+      }
+      if (fullNameRaw !== undefined && fullNameRaw.length > 80) {
+        return res.status(400).json({ success: false, message: 'نام وارد شده بیش از حد طولانی است' });
+      }
 
       if (fullNameRaw !== undefined) {
         if (!isValidPersianFullName(fullNameRaw)) {
@@ -689,7 +914,11 @@ class AuthController {
   static async changePassword(req, res, next) {
     try {
       const { oldPassword, currentPassword, newPassword, confirmPassword } = req.body;
-      const current = String(oldPassword || currentPassword || '');
+      const rawCurrent = oldPassword ?? currentPassword;
+      const current = typeof rawCurrent === 'string' ? rawCurrent : '';
+      if (current.length > PASSWORD_MAX_LEN) {
+        return res.status(400).json({ message: 'رمز عبور فعلی اشتباه است' });
+      }
 
       const validationError = validatePasswordChangePayload({ newPassword, confirmPassword });
       if (validationError) {
@@ -785,8 +1014,15 @@ class AuthController {
       const user = await User.findById(req.user.id).select('+password');
       if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
-      if (!(await comparePassword(current, user.password))) {
+      if (!current || !(await comparePassword(current, user.password))) {
+        await writeSecurityLog(req, 'password_change_failed', user, 'Wrong current password on change');
         return res.status(400).json({ message: 'رمز عبور فعلی اشتباه است' });
+      }
+      if (newPassword === current) {
+        return res.status(400).json({ message: 'رمز جدید باید با رمز فعلی متفاوت باشد' });
+      }
+      if (user.role === 'superadmin' && !validatePasswordPolicy(newPassword, { minLength: 12, requireSymbol: true })) {
+        return res.status(400).json({ message: 'رمز سوپر ادمین باید حداقل ۱۲ کاراکتر و شامل حرف، عدد و نماد باشد' });
       }
 
       user.password           = await hashPassword(newPassword);

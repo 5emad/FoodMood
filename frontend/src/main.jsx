@@ -9,6 +9,8 @@ import 'sweetalert2/dist/sweetalert2.min.css';
 import 'sonner/dist/styles.css';
 import './styles/spa.css';
 import './styles/admin-panel.css';
+import './styles/auth.css';
+import './styles/admin-theme.css';
 
 function getBootstrapData() {
   try {

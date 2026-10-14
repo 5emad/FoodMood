@@ -6,6 +6,7 @@ export const ADMIN_TAB_NAMES = [
   'users',
   'departments',
   'finance',
+  'payments',
   'guests',
   'announcements',
   'backup',

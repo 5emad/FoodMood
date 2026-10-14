@@ -42,7 +42,6 @@ const userSessionSchema = new mongoose.Schema({
   expiresAt: {
     type: Date,
     required: true,
-    index: true,
   },
   lastActivityAt: {
     type: Date,
@@ -70,5 +69,8 @@ const userSessionSchema = new mongoose.Schema({
 });
 
 userSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+userSessionSchema.index({ userId: 1, authSource: 1, status: 1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
+userSessionSchema.index({ username: 1, authSource: 1, status: 1 }, { background: true, partialFilterExpression: { username: { $type: 'string' } } });
+userSessionSchema.index({ sessionId: 1, status: 1 }, { background: true });
 
 module.exports = mongoose.model('UserSession', userSessionSchema);

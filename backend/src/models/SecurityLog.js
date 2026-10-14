@@ -16,7 +16,13 @@ const securityLogSchema = new mongoose.Schema({
       'session_hijack_suspect',
       'logout_success',
       'password_change',
+      'password_change_failed',
+      'user_registered',
+      'user_created',
+      'user_updated',
       'user_deleted',
+      'foods_deleted',
+      'settings_updated',
       'backup_export',
       'backup_restore',
       'logs_purged',
@@ -37,5 +43,8 @@ const securityLogSchema = new mongoose.Schema({
 });
 
 securityLogSchema.index({ createdAt: -1 });
+securityLogSchema.index({ type: 1, createdAt: -1 }, { background: true });
+securityLogSchema.index({ type: 1, username: 1, createdAt: -1 }, { background: true });
+securityLogSchema.index({ userId: 1, createdAt: -1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
 
 module.exports = mongoose.model('SecurityLog', securityLogSchema);

@@ -21,6 +21,24 @@ function formatDiscountLabel(user = {}) {
   return `<br><small class="discount-note">تخفیف${percentPart} (−${formatMoney(amount)})</small>`;
 }
 
+const PAYMENT_STATUS = {
+  paid: { label: 'پرداخت شده', cls: 'pay-paid' },
+  partial: { label: 'پرداخت ناقص', cls: 'pay-partial' },
+  review: { label: 'در انتظار تایید', cls: 'pay-review' },
+  unpaid: { label: 'پرداخت نشده', cls: 'pay-unpaid' },
+  none: { label: '—', cls: '' },
+};
+
+function renderPaymentCell(user = {}) {
+  const status = PAYMENT_STATUS[user.paymentStatus] || PAYMENT_STATUS.none;
+  const details = [];
+  if (user.paymentStatus === 'partial' || user.paymentStatus === 'review') {
+    if (Number(user.paidAmount) > 0) details.push(`پرداخت‌شده: ${formatMoney(user.paidAmount)}`);
+    if (Number(user.unpaidAmount) > 0) details.push(`مانده: ${formatMoney(user.unpaidAmount)}`);
+  }
+  return `<span class="pay-status ${status.cls}">${status.label}</span>${details.length ? `<br><small class="pay-detail">${details.join(' — ')}</small>` : ''}`;
+}
+
 function renderFinanceStatementHtml(report = {}) {
   const generatedAt = escapeHtml(formatJalaliDate(new Date()));
   const orgName = escapeHtml(report.organizationName || 'سامانه تغذیه سازمانی');
@@ -29,6 +47,8 @@ function renderFinanceStatementHtml(report = {}) {
   const summary = report.summary || {};
   const users = report.users || [];
   const summaryDiscount = Number(summary.discountAmount || 0);
+  const showPayment = !!report.paymentEnabled;
+  const columnCount = showPayment ? 10 : 9;
 
   const rows = users.map((user, index) => {
     const isGuest = user.kind === 'guest';
@@ -49,6 +69,7 @@ function renderFinanceStatementHtml(report = {}) {
       <td>${formatMoney(user.grossTotal)}</td>
       <td>${formatMoney(user.organizationAmount)}</td>
       <td>${formatMoney(user.personalAmount)}${formatDiscountLabel(user)}</td>
+      ${showPayment ? `<td>${renderPaymentCell(user)}</td>` : ''}
     </tr>`;
   }).join('');
 
@@ -92,6 +113,15 @@ function renderFinanceStatementHtml(report = {}) {
     tr:nth-child(even) td { background: #f7f4fb; }
     .total-row td { background: #2b1b3d !important; color: #fff; font-weight: 800; }
     .discount-note { display: inline-block; margin-top: 2pt; color: #115E59; font-size: 7.5pt; font-weight: 700; }
+    .pay-status { display: inline-block; padding: 1pt 6pt; border-radius: 8pt; font-size: 7.5pt; font-weight: 800; border: 1pt solid currentColor; }
+    .pay-paid { color: #15803D; background: #F0FDF4; }
+    .pay-partial { color: #1D4ED8; background: #EFF6FF; }
+    .pay-review { color: #B45309; background: #FFFBEB; }
+    .pay-unpaid { color: #B91C1C; background: #FEF2F2; }
+    .pay-detail { display: inline-block; margin-top: 2pt; color: #444; font-size: 7pt; }
+    .summary-sub { font-size: 7pt; color: #666; margin-top: 2pt; }
+    .summary-card.paid .summary-value { color: #15803D; }
+    .summary-card.unpaid .summary-value { color: #B91C1C; }
     .doc-footer {
       margin-top: 10pt; padding-top: 5pt; border-top: 1pt solid #000;
       display: flex; justify-content: space-between; font-size: 7pt; gap: 8pt;
@@ -136,6 +166,10 @@ function renderFinanceStatementHtml(report = {}) {
     <div class="summary-card"><div class="summary-label">سهم سازمان (${Number(split.organizationSharePercent || 0).toLocaleString('fa-IR')}٪)</div><div class="summary-value">${formatMoney(summary.organizationAmount)}</div></div>
     <div class="summary-card"><div class="summary-label">سهم شخص (${Number(split.personalSharePercent || 0).toLocaleString('fa-IR')}٪)</div><div class="summary-value">${formatMoney(summary.personalAmount)}</div></div>
     ${summaryDiscount > 0 ? `<div class="summary-card"><div class="summary-label">جمع تخفیف</div><div class="summary-value">${formatMoney(summaryDiscount)}</div></div>` : ''}
+    ${showPayment ? `
+    <div class="summary-card paid"><div class="summary-label">پرداخت‌شده</div><div class="summary-value">${formatMoney(summary.paidAmount)}</div><div class="summary-sub">${Number(summary.paidCount || 0).toLocaleString('fa-IR')} صورتحساب</div></div>
+    <div class="summary-card unpaid"><div class="summary-label">پرداخت‌نشده</div><div class="summary-value">${formatMoney(summary.unpaidAmount)}</div><div class="summary-sub">${Number(summary.unpaidCount || 0).toLocaleString('fa-IR')} صورتحساب</div></div>
+    ${Number(summary.reviewAmount) > 0 ? `<div class="summary-card"><div class="summary-label">در انتظار تایید رسید</div><div class="summary-value">${formatMoney(summary.reviewAmount)}</div></div>` : ''}` : ''}
   </div>
 
   <table>
@@ -150,16 +184,18 @@ function renderFinanceStatementHtml(report = {}) {
         <th>مبلغ کل</th>
         <th>پرداختی سازمان</th>
         <th>پرداختی شخص</th>
+        ${showPayment ? '<th>وضعیت پرداخت</th>' : ''}
       </tr>
     </thead>
     <tbody>
-      ${rows || '<tr><td colspan="9">صورتحسابی ثبت نشده است</td></tr>'}
+      ${rows || `<tr><td colspan="${columnCount}">صورتحسابی ثبت نشده است</td></tr>`}
       <tr class="total-row">
         <td colspan="5">جمع کل</td>
         <td>${Number(summary.mealCount || 0).toLocaleString('fa-IR')}</td>
         <td>${formatMoney(summary.grossTotal)}</td>
         <td>${formatMoney(summary.organizationAmount)}</td>
         <td>${formatMoney(summary.personalAmount)}</td>
+        ${showPayment ? `<td>پرداخت‌شده: ${formatMoney(summary.paidAmount)}</td>` : ''}
       </tr>
     </tbody>
   </table>

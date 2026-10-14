@@ -7,6 +7,7 @@ import AdminSpinner from '../shared/AdminSpinner';
 import EmptyState from '../shared/EmptyState';
 import TableActions from '../shared/TableActions';
 import { faDigits, money } from '../../../utils/format';
+import { BILL_STATUS_CLASS, BILL_STATUS_LABEL } from '../../../lib/payments';
 
 function normalizeFaNumber(value) {
   const map = {
@@ -36,6 +37,7 @@ export default function FinanceTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [savingKey, setSavingKey] = useState('');
+  const [payFilter, setPayFilter] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -190,10 +192,14 @@ export default function FinanceTab() {
   const summary = data?.summary || {};
   const split = data?.split || {};
   const users = data?.users || [];
+  const paymentEnabled = !!data?.paymentEnabled;
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) => {
+    const byPayment = paymentEnabled && payFilter
+      ? users.filter((u) => (payFilter === 'paid' ? u.paymentStatus === 'paid' : u.paymentStatus !== 'paid' && u.paymentStatus !== 'none'))
+      : users;
+    if (!q) return byPayment;
+    return byPayment.filter((u) => {
       const hay = [
         u.fullName,
         u.username,
@@ -204,7 +210,7 @@ export default function FinanceTab() {
       ].join(' ').toLowerCase();
       return hay.includes(q);
     });
-  }, [users, search]);
+  }, [users, search, payFilter, paymentEnabled]);
 
   if (loading) return <AdminSpinner />;
 
@@ -238,7 +244,9 @@ export default function FinanceTab() {
               </div>
             </div>
             <button className="btn btn-primary btn-w100" type="button" id="financeSaveBtn" onClick={saveSettings}><i className="fas fa-save" /> ذخیره تنظیمات</button>
-            <p className="finance-sidebar-note"><i className="fas fa-circle-info" aria-hidden="true" /><span>فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند. تخفیف از سهم شخص کم می‌شود.</span></p>
+            <p className="finance-sidebar-note"><i className="fas fa-circle-info" aria-hidden="true" /><span>{data?.autoConfirm
+              ? 'پرداخت سبد خرید فعال است: سفارش‌های پرداخت‌نشده هم در صورتحساب می‌آیند و پس از پرداخت خودکار تایید می‌شوند. تخفیف از سهم شخص کم می‌شود.'
+              : 'فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند. تخفیف از سهم شخص کم می‌شود.'}</span></p>
           </div>
         </aside>
         <div className="finance-main card">
@@ -265,6 +273,13 @@ export default function FinanceTab() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              {paymentEnabled && (
+                <select className="form-control" value={payFilter} onChange={(e) => setPayFilter(e.target.value)} aria-label="وضعیت پرداخت">
+                  <option value="">همه (پرداخت‌شده و نشده)</option>
+                  <option value="paid">پرداخت‌شده</option>
+                  <option value="unpaid">پرداخت‌نشده / ناقص</option>
+                </select>
+              )}
               <button type="button" className="btn btn-primary btn-sm" id="financePdfAllBtn" onClick={() => downloadPdf()}><i className="fas fa-file-pdf" /> PDF همه</button>
             </div>
           </div>
@@ -277,7 +292,16 @@ export default function FinanceTab() {
                 <div className="mini-card"><div className="stat-label">جمع کل</div><div className="stat-value">{money(summary.grossTotal || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم سازمان ({faDigits(orgSplit)}٪)</div><div className="stat-value">{money(summary.organizationAmount || 0)}</div></div>
                 <div className="mini-card"><div className="stat-label">سهم شخص ({faDigits(personalSplit)}٪)</div><div className="stat-value">{money(summary.personalAmount || 0)}</div></div>
-                <div className="mini-card"><div className="stat-label">جمع تخفیف</div><div className="stat-value">{money(summary.discountAmount || 0)}</div></div>              </>
+                <div className="mini-card"><div className="stat-label">جمع تخفیف</div><div className="stat-value">{money(summary.discountAmount || 0)}</div></div>
+                {paymentEnabled && (
+                  <>
+                    <div className="mini-card"><div className="stat-label">پرداخت‌شده ({faDigits(summary.paidCount || 0)} نفر)</div><div className="stat-value">{money(summary.paidAmount || 0)}</div></div>
+                    <div className="mini-card"><div className="stat-label">پرداخت‌نشده ({faDigits(summary.unpaidCount || 0)} نفر)</div><div className="stat-value">{money(summary.unpaidAmount || 0)}</div></div>
+                    {Number(summary.reviewAmount) > 0 && (
+                      <div className="mini-card"><div className="stat-label">در انتظار تایید رسید</div><div className="stat-value">{money(summary.reviewAmount)}</div></div>
+                    )}
+                  </>
+                )}              </>
             )}
           </div>
           <div className="table-wrap finance-table-wrap" id="financeStatementsWrap">
@@ -295,6 +319,7 @@ export default function FinanceTab() {
                     <th>مبلغ کل</th>
                     <th>پرداختی سازمان</th>
                     <th>پرداختی شخص</th>
+                    {paymentEnabled && <th>وضعیت پرداخت</th>}
                     <th>عملیات</th>
                   </tr>
                 </thead>
@@ -334,6 +359,17 @@ export default function FinanceTab() {
                             </div>
                           )}
                         </td>
+                        {paymentEnabled && (
+                          <td>
+                            <span className={`badge badge-${BILL_STATUS_CLASS[u.paymentStatus] || 'gray'}`}>{BILL_STATUS_LABEL[u.paymentStatus] || '—'}</span>
+                            {Number(u.paidAmount) > 0 && u.paymentStatus !== 'paid' && (
+                              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 2 }}>پرداخت‌شده: {money(u.paidAmount)}</div>
+                            )}
+                            {Number(u.unpaidAmount) > 0 && u.paymentStatus !== 'unpaid' && (
+                              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>مانده: {money(u.unpaidAmount)}</div>
+                            )}
+                          </td>
+                        )}
                         <TableActions>
                           <button
                             type="button"

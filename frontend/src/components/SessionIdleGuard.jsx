@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 
-const PUBLIC_PATHS = ['/login', '/service-unavailable'];
+const PUBLIC_PATHS = ['/login', '/register', '/service-unavailable'];
 
 function isPublicPath(pathname) {
   if (!pathname) return true;

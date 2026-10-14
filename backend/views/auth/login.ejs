@@ -79,6 +79,21 @@
                  placeholder="••••••••" required dir="ltr" autocomplete="new-password" lang="en">
         </div>
 
+        <div class="form-group" id="captchaGroup">
+          <label class="form-label" for="captchaAnswer">
+            <i class="fas fa-shield" style="color:var(--primary);margin-left:6px"></i>
+            کد امنیتی
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" class="form-control" id="captchaAnswer" name="captchaAnswer"
+                   placeholder="کد تصویر" required dir="ltr" autocomplete="off" maxlength="8" spellcheck="false">
+            <img id="captchaImg" alt="کد امنیتی" width="150" height="44" style="border-radius:8px;flex-shrink:0;background:#dfeae8">
+            <button type="button" class="btn btn-outline btn-sm" id="captchaRefresh" title="کد جدید" aria-label="کد جدید">
+              <i class="fas fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+
         <div class="form-group" id="superTokenGroup" style="display:none">
           <label class="form-label">
             <i class="fas fa-shield-halved" style="color:var(--primary);margin-left:6px"></i>

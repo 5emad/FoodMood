@@ -52,6 +52,8 @@ const announcementSchema = new mongoose.Schema({
 });
 
 announcementSchema.index({ isActive: 1, audience: 1, departmentIds: 1, expiresAt: 1 });
+announcementSchema.index({ isActive: 1, createdAt: -1 }, { background: true });
+announcementSchema.index({ audience: 1, departmentIds: 1, createdAt: -1 }, { background: true });
 
 announcementSchema.pre('save', function saveHook(next) {
   this.updatedAt = Date.now();

@@ -52,6 +52,9 @@ const guestSchema = new mongoose.Schema({
   },
 });
 
+guestSchema.index({ status: 1, createdAt: -1 }, { background: true });
+guestSchema.index({ guestType: 1, status: 1, createdAt: -1 }, { background: true });
+
 guestSchema.pre('save', function saveHook(next) {
   this.updatedAt = Date.now();
   next();

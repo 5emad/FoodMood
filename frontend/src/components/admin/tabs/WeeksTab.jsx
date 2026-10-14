@@ -152,7 +152,7 @@ export default function WeeksTab() {
 
   async function loadMenu(weekId) {
     setMenuLoading(true);
-    const data = await api(`/api/menu/weeks/${weekId}`);
+    const data = await api(`/api/menu/weeks/${encodeURIComponent(weekId)}?scope=admin`);
     const days = data.success ? data.data?.days || [] : [];
     setMenuDays(days);
     setDefaultCapacity(Number(data.data?.settings?.defaultMenuItemCapacity ?? 20));

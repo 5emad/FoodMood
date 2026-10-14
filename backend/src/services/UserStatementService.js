@@ -24,13 +24,19 @@ const {
 } = require('../services/StatementDiscountService');
 const { isLdapAuth } = require('../helpers/AuthUserHelper');
 const { normalizePeriodKey } = require('../helpers/StatementNumberHelper');
+const { billableStatuses } = require('../helpers/PaymentConfigHelper');
+const StatementDiscount = require('../models/StatementDiscount');
 
 function financeUserKeyFromUser(user = {}) {
   if (isLdapAuth(user)) return `ldap:${user.username}`;
   return String(user.id || user._id || '');
 }
 
-async function attachStatementDiscount(statement, user, periodType, periodKey) {
+/**
+ * ctx (اختیاری، برای فهرست صورتحساب‌ها): { orders, discounts } از پیش بارگذاری‌شده
+ * تا برای هر هفته/ماه دوباره به دیتابیس نرویم.
+ */
+async function attachStatementDiscount(statement, user, periodType, periodKey, statuses = CONFIRMED_REPORT_STATUSES, ctx = null) {
   const userKey = financeUserKeyFromUser(user);
   const key = normalizePeriodKey(periodType, periodKey, {
     jalaliFrom: statement.range?.jalaliStart,
@@ -43,16 +49,15 @@ async function attachStatementDiscount(statement, user, periodType, periodKey) {
       rangeStart: statement.range.start,
       rangeEnd: statement.range.end,
       summarizeSlice: async (sliceStart, sliceEnd) => {
-        const { summary } = await summarizeUserOrdersInRange(
-          user,
-          sliceStart,
-          sliceEnd,
-          orgShare,
-        );
+        const { summary } = ctx?.orders
+          ? summarizeOrders(ctx.orders, sliceStart, sliceEnd, orgShare)
+          : await summarizeUserOrdersInRange(user, sliceStart, sliceEnd, orgShare, statuses);
         return [{ userKey, personalAmount: summary.personalAmount || 0 }];
       },
     });
-    const stored = await getDiscount(userKey, 'month', key);
+    const stored = ctx?.discounts
+      ? ctx.discounts.get(`month|${key}`)
+      : await getDiscount(userKey, 'month', key);
     const baseRow = {
       userKey,
       grossTotal: statement.summary?.grossTotal,
@@ -79,7 +84,9 @@ async function attachStatementDiscount(statement, user, periodType, periodKey) {
     };
   }
 
-  const stored = await getDiscount(userKey, periodType, key);
+  const stored = ctx?.discounts
+    ? ctx.discounts.get(`${periodType === 'month' ? 'month' : 'week'}|${key}`)
+    : await getDiscount(userKey, periodType, key);
   const percent = Number(stored?.discountPercent || 0);
   const applied = applyDiscountToAmounts({
     grossTotal: statement.summary?.grossTotal,
@@ -167,7 +174,7 @@ function jalaliMonthRangeValue(year, month) {
   };
 }
 
-async function findUserOrdersInRange(user, rangeStartInput, rangeEndInput) {
+async function findUserOrdersInRange(user, rangeStartInput, rangeEndInput, statuses = CONFIRMED_REPORT_STATUSES) {
   const rangeStart = startOfDay(rangeStartInput);
   const rangeEnd = endOfRange(rangeEndInput);
   const ownerFilter = await buildOrderOwnerFilter(user);
@@ -187,7 +194,7 @@ async function findUserOrdersInRange(user, rangeStartInput, rangeEndInput) {
   return Order.find({
     $and: [
       ownerFilter,
-      { status: { $in: CONFIRMED_REPORT_STATUSES } },
+      { status: { $in: statuses } },
       { $or: orConditions },
     ],
   })
@@ -200,8 +207,8 @@ async function findUserOrdersInRange(user, rangeStartInput, rangeEndInput) {
     .lean();
 }
 
-async function summarizeUserOrdersInRange(user, rangeStartInput, rangeEndInput, organizationSharePercent) {
-  const candidateOrders = await findUserOrdersInRange(user, rangeStartInput, rangeEndInput);
+/** جمع سفارش‌ها در یک بازه (بر اساس تاریخ روز منو) — بدون دیتابیس */
+function summarizeOrders(candidateOrders, rangeStartInput, rangeEndInput, organizationSharePercent) {
   const rangeStart = startOfDay(rangeStartInput);
   const rangeEnd = startOfDay(rangeEndInput);
 
@@ -227,18 +234,85 @@ async function summarizeUserOrdersInRange(user, rangeStartInput, rangeEndInput, 
   return { orders, summary };
 }
 
+async function summarizeUserOrdersInRange(user, rangeStartInput, rangeEndInput, organizationSharePercent, statuses = CONFIRMED_REPORT_STATUSES) {
+  const candidateOrders = await findUserOrdersInRange(user, rangeStartInput, rangeEndInput, statuses);
+  return summarizeOrders(candidateOrders, rangeStartInput, rangeEndInput, organizationSharePercent);
+}
+
+/** همه سفارش‌های قابل صورتحساب کاربر در یک کوئری (برای فهرست هفته‌ها/ماه‌ها) */
+async function loadUserBillableOrders(user, statuses = CONFIRMED_REPORT_STATUSES) {
+  const ownerFilter = await buildOrderOwnerFilter(user);
+  return Order.find({ $and: [ownerFilter, { status: { $in: statuses } }] })
+    .select('orderNumber orderDate status totalPrice quantity items menuItemId')
+    .sort({ orderDate: -1 })
+    .populate('items.foodId', 'name')
+    .populate({
+      path: 'menuItemId',
+      select: 'foodId dailyMenuId',
+      populate: [{ path: 'foodId', select: 'name' }, { path: 'dailyMenuId', select: 'date weekId' }],
+    })
+    .lean();
+}
+
+async function loadUserDiscountMap(user) {
+  const rows = await StatementDiscount.find({ userKey: financeUserKeyFromUser(user) })
+    .select('periodType periodKey discountPercent note')
+    .lean();
+  return new Map(rows.map((row) => [`${row.periodType}|${row.periodKey}`, row]));
+}
+
+function monthsFromOrders(orders) {
+  const monthMap = new Map();
+  for (const order of orders) {
+    const reportDate = order.menuItemId?.dailyMenuId?.date || order.orderDate;
+    const { year, month } = getJalaliYearMonth(reportDate);
+    if (!year || !month) continue;
+    const item = jalaliMonthRangeValue(year, month);
+    const current = monthMap.get(item.key) || { ...item, year, month, count: 0 };
+    current.count += 1;
+    monthMap.set(item.key, current);
+  }
+  return [...monthMap.values()]
+    .sort((a, b) => (b.year - a.year) || (b.month - a.month))
+    .map(({ key, label, from, to, count }) => ({ key, label, from, to, count }));
+}
+
+async function weeksFromOrders(orders) {
+  const weekIds = new Set();
+  for (const order of orders) {
+    const weekId = order.menuItemId?.dailyMenuId?.weekId;
+    if (weekId) weekIds.add(String(weekId));
+  }
+  if (!weekIds.size) return [];
+  const weeks = await Week.find({ _id: { $in: [...weekIds] } })
+    .select('startDate endDate isActive')
+    .sort({ startDate: -1 })
+    .lean();
+  return weeks.map((week) => ({
+    weekId: week._id,
+    label: `${formatJalaliDate(week.startDate)} تا ${formatJalaliDate(week.endDate)}`,
+    jalaliStart: formatJalaliDate(week.startDate),
+    jalaliEnd: formatJalaliDate(week.endDate),
+    startDate: week.startDate,
+    endDate: week.endDate,
+    isActive: !!week.isActive,
+  }));
+}
+
 async function buildUserStatement(user, query = {}, settings = {}) {
   await finalizeExpiredOrders();
 
   const organizationSharePercent = clampPercent(settings.organizationSharePercent);
   const personalSharePercent = 100 - organizationSharePercent;
   const { type, range, title } = await resolveReportRange(query);
+  const statuses = billableStatuses(settings);
 
   const { orders, summary } = await summarizeUserOrdersInRange(
     user,
     range.start,
     range.end,
     organizationSharePercent,
+    statuses,
   );
 
   const items = type === 'month'
@@ -287,7 +361,7 @@ async function buildUserStatement(user, query = {}, settings = {}) {
     items,
   };
 
-  return attachStatementDiscount(base, user, periodType, periodKey);
+  return attachStatementDiscount(base, user, periodType, periodKey, statuses);
 }
 
 async function listUserStatements(user, type = 'week', settings = {}) {
@@ -297,20 +371,22 @@ async function listUserStatements(user, type = 'week', settings = {}) {
   const personalSharePercent = 100 - organizationSharePercent;
   const periodType = type === 'month' ? 'month' : 'week';
   const statements = [];
+  const statuses = billableStatuses(settings);
+  // یک بار بارگذاری؛ جمع هر هفته/ماه در حافظه (به‌جای چند کوئری برای هر دوره)
+  const [orders, discounts] = await Promise.all([
+    loadUserBillableOrders(user, statuses),
+    loadUserDiscountMap(user),
+  ]);
+  const ctx = { orders, discounts };
 
   if (periodType === 'month') {
-    const months = await getUserStatementMonths(user);
+    const months = monthsFromOrders(orders);
     for (const month of months) {
       const rangeStart = parseJalaliDate(month.from);
       const rangeEnd = parseJalaliDate(month.to);
       if (!rangeStart || !rangeEnd) continue;
 
-      const { summary } = await summarizeUserOrdersInRange(
-        user,
-        rangeStart,
-        rangeEnd,
-        organizationSharePercent,
-      );
+      const { summary } = summarizeOrders(orders, rangeStart, rangeEnd, organizationSharePercent);
       if (!summary.mealCount) continue;
 
       const base = {
@@ -327,19 +403,14 @@ async function listUserStatements(user, type = 'week', settings = {}) {
         split: { organizationSharePercent, personalSharePercent },
         summary,
       };
-      statements.push(await attachStatementDiscount(base, user, 'month', month.key));
+      statements.push(await attachStatementDiscount(base, user, 'month', month.key, statuses, ctx));
     }
     return statements;
   }
 
-  const weeks = await getUserStatementWeeks(user);
+  const weeks = await weeksFromOrders(orders);
   for (const week of weeks) {
-    const { summary } = await summarizeUserOrdersInRange(
-      user,
-      week.startDate,
-      week.endDate,
-      organizationSharePercent,
-    );
+    const { summary } = summarizeOrders(orders, week.startDate, week.endDate, organizationSharePercent);
     if (!summary.mealCount) continue;
 
     const base = {
@@ -357,17 +428,17 @@ async function listUserStatements(user, type = 'week', settings = {}) {
       summary,
       isActive: !!week.isActive,
     };
-    statements.push(await attachStatementDiscount(base, user, 'week', String(week.weekId)));
+    statements.push(await attachStatementDiscount(base, user, 'week', String(week.weekId), statuses, ctx));
   }
 
   return statements;
 }
 
-async function getUserStatementWeeks(user) {
+async function getUserStatementWeeks(user, statuses = CONFIRMED_REPORT_STATUSES) {
   const ownerFilter = await buildOrderOwnerFilter(user);
   const orders = await Order.find({
     ...ownerFilter,
-    status: { $in: CONFIRMED_REPORT_STATUSES },
+    status: { $in: statuses },
   })
     .select('menuItemId')
     .populate({
@@ -399,11 +470,11 @@ async function getUserStatementWeeks(user) {
   }));
 }
 
-async function getUserStatementMonths(user) {
+async function getUserStatementMonths(user, statuses = CONFIRMED_REPORT_STATUSES) {
   const ownerFilter = await buildOrderOwnerFilter(user);
   const orders = await Order.find({
     ...ownerFilter,
-    status: { $in: CONFIRMED_REPORT_STATUSES },
+    status: { $in: statuses },
   })
     .select('orderDate menuItemId status')
     .populate({
@@ -415,7 +486,7 @@ async function getUserStatementMonths(user) {
 
   const monthMap = new Map();
   for (const order of orders) {
-    if (!isConfirmedReportOrder(order)) continue;
+    if (!statuses.includes(order.status)) continue;
     const reportDate = order.menuItemId?.dailyMenuId?.date || order.orderDate;
     const { year, month } = getJalaliYearMonth(reportDate);
     if (!year || !month) continue;
@@ -433,6 +504,10 @@ async function getUserStatementMonths(user) {
 module.exports = {
   clampPercent,
   splitAmount,
+  financeUserKeyFromUser,
+  summarizeUserOrdersInRange,
+  orderFoodName,
+  reportDateOfOrder,
   buildUserStatement,
   listUserStatements,
   getUserStatementWeeks,

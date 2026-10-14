@@ -26,6 +26,7 @@ const { defaultSettings, publicSettings, adminWorkspaceSettings, getOrCreateSett
 const { writeSecurityLog } = require('../services/SecurityLogService');
 const { ensureDailyMenus, ensureCurrentWeek, ensureFutureWeeks, dedupeWeeks } = require('../services/WeekService');
 const { resolveReportRange, buildReport, getAvailableReportMonths } = require('../services/ReportService');
+const { billableStatuses, isPaymentEnabled } = require('../helpers/PaymentConfigHelper');
 const { nextReportNumber, nextSupplierReportNumber } = require('../helpers/ReportNumberHelper');
 const { getReportsAccessForUser, assertReportsAccess } = require('../helpers/ReportsAccessHelper');
 const { createBackupBuffer, readBackupBuffer, restoreBackup } = require('../services/BackupService');
@@ -38,6 +39,21 @@ const { refreshOriginPublicUrlCache } = require('../helpers/OriginPolicyHelper')
 const { normalizePublicUrl, refreshPublicUrlCache, requestOrigin } = require('../helpers/AppUrlHelper');
 const { getSslStatus, installCustomCertificate } = require('../helpers/SslCertHelper');
 const { isWafRuntimeEnabled, setWafRuntimeEnabled } = require('../services/WafStateService');
+const { revokeUserSessions } = require('../services/SessionTokenService');
+
+const LOCAL_USERNAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._@-]{1,63}$/;
+
+/** فقط سوپر ادمین حساب سایر مدیران را مدیریت می‌کند؛ ادمین فقط کاربران عادی و حساب خودش را. */
+function canManageTarget(actor, targetRole, isSelf) {
+  if (actor?.role === 'superadmin') return true;
+  if (isSelf) return true;
+  return !isAdminRole(targetRole);
+}
+
+async function usernameCollidesWithDirectory(username) {
+  const exactCi = new RegExp(`^${escapeRegex(String(username))}$`, 'i');
+  return Boolean(await LdapProfile.exists({ ldapUsername: exactCi }));
+}
 
 function firstString(value) {
   if (Array.isArray(value)) return value.find((item) => typeof item === 'string') || '';
@@ -166,6 +182,13 @@ class AdminController {
       const update = {};
       if (req.body.showPricesToUsers !== undefined) {
         update.showPricesToUsers = parseBoolean(req.body.showPricesToUsers);
+        // با پرداخت فعال، نمایش قیمت اجباری است
+        if (!update.showPricesToUsers && isPaymentEnabled(await getSettingsLean())) {
+          return res.status(409).json({
+            success: false,
+            message: 'تا وقتی پرداخت فعال است، نمایش قیمت برای کاربران قابل خاموش کردن نیست',
+          });
+        }
       }
       if (req.body.organizationName !== undefined) {
         update.organizationName = String(req.body.organizationName || '').trim() || defaultSettings.organizationName;
@@ -182,6 +205,9 @@ class AdminController {
       }
       if (req.body.enableCapacityLimit !== undefined) {
         update.enableCapacityLimit = parseBoolean(req.body.enableCapacityLimit);
+      }
+      if (req.body.allowLocalRegistration !== undefined) {
+        update.allowLocalRegistration = parseBoolean(req.body.allowLocalRegistration);
       }
       /* رنگ سامانه ثابت است — تغییرات تم از کلاینت نادیده گرفته می‌شود */
       if (req.body.uiFont !== undefined) {
@@ -207,6 +233,10 @@ class AdminController {
       }
 
       const settings = await updateAppSettings(update);
+      await writeSecurityLog(req, 'settings_updated', null, 'System settings updated', {
+        actorId: req.user?.id,
+        keys: Object.keys(update).filter((k) => !/password|pem|secret/i.test(k)),
+      });
 
       // ظرفیت سفارشی هر آیتم حفظ می‌شود؛ فقط maxCapacity=0 از پیش‌فرض ارث می‌برد.
       // دیگر همه آیتم‌ها ریست نمی‌شوند تا ظرفیت روزانه از بین نرود.
@@ -606,6 +636,15 @@ class AdminController {
       if (!normalizedUsername || !normalizedPassword) {
         return res.status(400).json({ message: 'نام کاربری و رمز عبور الزامی هستند' });
       }
+      if (!LOCAL_USERNAME_RE.test(normalizedUsername)) {
+        return res.status(400).json({ message: 'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه، @، - و _ باشد (۲ تا ۶۴ کاراکتر)' });
+      }
+      if (normalizedPassword.length > 128) {
+        return res.status(400).json({ message: 'رمز عبور بیش از حد طولانی است' });
+      }
+      if (await usernameCollidesWithDirectory(normalizedUsername)) {
+        return res.status(409).json({ message: 'این نام کاربری متعلق به یک کاربر Active Directory است؛ نام دیگری انتخاب کنید' });
+      }
 
       const allowedCreateRoles = req.user.role === 'superadmin'
         ? ['user', 'admin', 'superadmin']
@@ -618,7 +657,7 @@ class AdminController {
         return res.status(400).json({ message: passwordPolicyError(requestedRole) });
       }
 
-      const exists = await User.findOne({ username: normalizedUsername });
+      const exists = await User.findOne({ username: new RegExp(`^${escapeRegex(normalizedUsername)}$`, 'i') });
       if (exists) {
         return res.status(400).json({ message: 'نام کاربری تکراری است' });
       }
@@ -634,9 +673,10 @@ class AdminController {
         role: requestedRole,
         ...(superToken ? { superTokenHash: hashSensitiveToken(superToken), superTokenCreatedAt: new Date() } : {}),
         departmentId: normalizedDepartmentId,
-        mustChangePassword: Boolean(mustChangePassword),
+        mustChangePassword: mustChangePassword === true || mustChangePassword === 'true',
         status: 'active',
       });
+      await writeSecurityLog(req, 'user_created', user, 'User created by admin', { actorId: req.user.id, role: requestedRole });
 
       res.status(201).json({
         success: true,
@@ -687,6 +727,10 @@ class AdminController {
         const nextStatus = update.status || profile.status || 'active';
         const isSelf = String(req.user.id) === `ldap:${ldapUsername}`;
 
+        if (!canManageTarget(req.user, currentRole, isSelf)) {
+          return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیران دیگر را تغییر دهد' });
+        }
+
         if (isSelf) {
           if (nextStatus === 'inactive') {
             return res.status(400).json({ message: 'امکان غیرفعال‌سازی حساب خودتان وجود ندارد' });
@@ -707,6 +751,14 @@ class AdminController {
         }
 
         await updateProfileAdmin(ldapUsername, update);
+        if (nextStatus === 'inactive' || (update.role && update.role !== currentRole)) {
+          await revokeUserSessions({
+            username: ldapUsername, authSource: 'ldap', reason: 'admin_update', revokeAll: true,
+          }).catch(() => {});
+        }
+        await writeSecurityLog(req, 'user_updated', null, 'AD profile updated by admin', {
+          actorId: req.user.id, username: ldapUsername, fields: Object.keys(update),
+        });
         return res.json({ success: true, message: 'کاربر Active Directory بروزرسانی شد' });
       }
 
@@ -732,6 +784,10 @@ class AdminController {
         return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب سوپر ادمین را مدیریت کند' });
       }
 
+      if (!canManageTarget(req.user, user.role, String(req.user.id) === String(id))) {
+        return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیران دیگر را تغییر دهد' });
+      }
+
       if (normalizedRole === 'admin' && req.user.role !== 'superadmin' && user.role !== 'admin') {
         return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند نقش مدیر اعطا کند' });
       }
@@ -741,10 +797,22 @@ class AdminController {
       }
 
       if (normalizedUsername && normalizedUsername !== user.username) {
-        const exists = await User.findOne({ username: normalizedUsername, _id: { $ne: id } });
+        if (!LOCAL_USERNAME_RE.test(normalizedUsername)) {
+          return res.status(400).json({ message: 'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه، @، - و _ باشد (۲ تا ۶۴ کاراکتر)' });
+        }
+        const exists = await User.findOne({
+          username: new RegExp(`^${escapeRegex(normalizedUsername)}$`, 'i'),
+          _id: { $ne: id },
+        });
         if (exists) {
           return res.status(400).json({ message: 'نام کاربری تکراری است' });
         }
+        if (await usernameCollidesWithDirectory(normalizedUsername)) {
+          return res.status(409).json({ message: 'این نام کاربری متعلق به یک کاربر Active Directory است' });
+        }
+      }
+      if (normalizedStatus && !['active', 'inactive'].includes(normalizedStatus)) {
+        return res.status(400).json({ message: 'وضعیت کاربر معتبر نیست' });
       }
 
       const isSelf = String(req.user.id) === String(id);
@@ -770,6 +838,10 @@ class AdminController {
         }
       }
 
+      const previousRole = user.role;
+      const previousStatus = user.status;
+      const previousUsername = user.username;
+
       Object.assign(user, {
         username: normalizedUsername || user.username,
         fullName: normalizedFullName || user.fullName,
@@ -778,18 +850,40 @@ class AdminController {
         role: normalizedRole || user.role,
         status: normalizedStatus || user.status,
         departmentId: hasDepartmentId ? normalizedDepartmentId : user.departmentId,
-        mustChangePassword: mustChangePassword ?? user.mustChangePassword,
+        mustChangePassword: mustChangePassword === undefined
+          ? user.mustChangePassword
+          : (mustChangePassword === true || mustChangePassword === 'true'),
       });
 
       if (normalizedPassword) {
         const effectiveRole = normalizedRole || user.role;
-        if (!meetsPasswordPolicy(normalizedPassword, effectiveRole)) {
+        if (normalizedPassword.length > 128 || !meetsPasswordPolicy(normalizedPassword, effectiveRole)) {
           return res.status(400).json({ message: passwordPolicyError(effectiveRole) });
         }
         user.password = await hashPassword(normalizedPassword);
       }
 
+      // تغییر رمز/نقش/وضعیت/نام کاربری توسط مدیر → همه نشست‌های فعال آن کاربر باطل شود
+      const mustRevoke = Boolean(normalizedPassword)
+        || user.role !== previousRole
+        || user.status !== previousStatus
+        || user.username !== previousUsername;
+      if (mustRevoke && String(req.user.id) !== String(id)) {
+        user.activeSessionId = null;
+      }
+
       await user.save();
+      if (mustRevoke && String(req.user.id) !== String(id)) {
+        await revokeUserSessions({
+          userId: user._id, authSource: 'local', reason: 'admin_update', revokeAll: true,
+        }).catch(() => {});
+      }
+      await writeSecurityLog(req, 'user_updated', user, 'User updated by admin', {
+        actorId: req.user.id,
+        passwordReset: Boolean(normalizedPassword),
+        roleChanged: user.role !== previousRole,
+        statusChanged: user.status !== previousStatus,
+      });
       res.json({ success: true, message: 'کاربر بروزرسانی شد' });
     } catch (error) {
       next(error);
@@ -802,6 +896,9 @@ class AdminController {
       const ldapUsername = parseLdapUserId(id);
       if (ldapUsername) {
         const profile = await LdapProfile.findOne({ ldapUsername }).lean();
+        if (profile?.role === 'admin' && req.user.role !== 'superadmin') {
+          return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیران را حذف کند' });
+        }
         if (profile?.role === 'admin' && profile.status === 'active') {
           const remainingAdmins = await countActiveAdmins(null, ldapUsername);
           if (remainingAdmins === 0) {
@@ -809,6 +906,10 @@ class AdminController {
           }
         }
         await deleteProfile(ldapUsername);
+        await revokeUserSessions({
+          username: ldapUsername, authSource: 'ldap', reason: 'user_deleted', revokeAll: true,
+        }).catch(() => {});
+        await writeSecurityLog(req, 'user_deleted', null, 'AD profile deleted by admin', { actorId: req.user.id, username: ldapUsername });
         return res.json({ success: true, message: 'پروفایل کاربر Active Directory حذف شد' });
       }
 
@@ -821,8 +922,8 @@ class AdminController {
         return res.status(404).json({ message: 'کاربر یافت نشد' });
       }
 
-      if (user.role === 'superadmin' && req.user.role !== 'superadmin') {
-        return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب سوپر ادمین را حذف کند' });
+      if (isAdminRole(user.role) && req.user.role !== 'superadmin') {
+        return res.status(403).json({ message: 'فقط سوپر ادمین می‌تواند حساب مدیران را حذف کند' });
       }
 
       if (isAdminRole(user.role)) {
@@ -833,6 +934,9 @@ class AdminController {
       }
 
       await User.findByIdAndDelete(id);
+      await revokeUserSessions({
+        userId: user._id, authSource: 'local', reason: 'user_deleted', revokeAll: true,
+      }).catch(() => {});
       await writeSecurityLog(req, 'user_deleted', user, 'User deleted by admin', { actorId: req.user.id });
       res.json({ success: true, message: 'کاربر حذف شد' });
     } catch (error) {
@@ -1186,7 +1290,7 @@ class AdminController {
 
   static async getFinanceMonths(req, res, next) {
     try {
-      const months = await getAvailableReportMonths();
+      const months = await getAvailableReportMonths(billableStatuses(await getSettingsLean()));
       res.json({ success: true, data: months });
     } catch (error) {
       next(error);
@@ -1488,6 +1592,10 @@ class AdminController {
 
   static async restoreBackup(req, res, next) {
     try {
+      // بازیابی، کل دیتابیس (از جمله حساب‌ها و لاگ امنیتی) را جایگزین می‌کند → فقط سوپر ادمین
+      if (req.user?.role !== 'superadmin') {
+        return res.status(403).json({ success: false, message: 'فقط سوپر ادمین می‌تواند پشتیبان را بازیابی کند' });
+      }
       if (!req.file?.buffer?.length) {
         return res.status(400).json({ success: false, message: 'فایل پشتیبان ارسال نشده است.' });
       }

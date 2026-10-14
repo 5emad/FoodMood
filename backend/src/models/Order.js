@@ -144,6 +144,21 @@ orderSchema.index({ dailyMenuId: 1, status: 1 });
 orderSchema.index({ status: 1 });
 // ESR: equality(status) + range(orderDate) for legacy rows / month picker
 orderSchema.index({ status: 1, dailyMenuId: 1, orderDate: 1 }, { background: true });
+// Fast paginated personal order history and statement screens.
+orderSchema.index({ userId: 1, orderDate: -1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
+orderSchema.index({ ldapUsername: 1, orderDate: -1 }, { background: true, partialFilterExpression: { ldapUsername: { $type: 'string' } } });
+orderSchema.index({ guestId: 1, orderDate: -1 }, { background: true, partialFilterExpression: { guestId: { $type: 'objectId' } } });
+orderSchema.index({ userId: 1, status: 1, orderDate: -1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
+orderSchema.index({ ldapUsername: 1, status: 1, orderDate: -1 }, { background: true, partialFilterExpression: { ldapUsername: { $type: 'string' } } });
+orderSchema.index({ guestId: 1, status: 1, orderDate: -1 }, { background: true, partialFilterExpression: { guestId: { $type: 'objectId' } } });
+orderSchema.index({ userId: 1, totalPrice: 1, orderDate: -1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
+orderSchema.index({ ldapUsername: 1, totalPrice: 1, orderDate: -1 }, { background: true, partialFilterExpression: { ldapUsername: { $type: 'string' } } });
+orderSchema.index({ guestId: 1, totalPrice: 1, orderDate: -1 }, { background: true, partialFilterExpression: { guestId: { $type: 'objectId' } } });
+// Admin filters and weekly reservation limits.
+orderSchema.index({ weekId: 1, status: 1, orderDate: -1 }, { background: true });
+orderSchema.index({ userId: 1, weekId: 1, status: 1 }, { background: true, partialFilterExpression: { userId: { $type: 'objectId' } } });
+orderSchema.index({ ldapUsername: 1, weekId: 1, status: 1 }, { background: true, partialFilterExpression: { ldapUsername: { $type: 'string' } } });
+orderSchema.index({ menuItemId: 1, status: 1 }, { background: true });
 
 orderSchema.pre('save', function(next) {
   this.updatedAt = Date.now();

@@ -139,7 +139,7 @@ export default function GuestsTab() {
     }
     setMenuLoading(true);
     const [menu, res] = await Promise.all([
-      api(`/api/menu/weeks/${wid}`),
+      api(`/api/menu/weeks/${encodeURIComponent(wid)}?scope=admin`),
       api(`/api/admin/guests/${guestId}/reservations?weekId=${wid}`),
     ]);
     setMenuDays(menu.success ? menu.data?.days || [] : []);

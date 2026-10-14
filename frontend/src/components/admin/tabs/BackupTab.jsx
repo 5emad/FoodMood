@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { apiBlob, apiForm, downloadBlob } from '../../../api/client';
 import { useToast } from '../../ToastProvider';
 import { confirmAction } from '../../../hooks/useConfirm';
@@ -37,6 +38,8 @@ function localBackupFilename() {
 
 export default function BackupTab() {
   const { toast } = useToast();
+  const outlet = useOutletContext() || {};
+  const canRestore = Boolean(outlet.adminCaps?.isSuperadmin || outlet.adminCaps?.features?.backupRestore);
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState('');
   const [dragOver, setDragOver] = useState(false);
@@ -163,8 +166,13 @@ export default function BackupTab() {
                 </div>
               )}
             </div>
+            {!canRestore && (
+              <div className="alert alert-warning" style={{ marginTop: 12 }}>
+                <i className="fas fa-lock" /> بازیابی پشتیبان کل داده‌ها و حساب‌ها را جایگزین می‌کند و فقط برای سوپر ادمین مجاز است.
+              </div>
+            )}
             <div className="backup-card-actions">
-              <button type="button" className="btn btn-danger btn-w100" disabled={!file || busy === 'restore'} onClick={restore}>
+              <button type="button" className="btn btn-danger btn-w100" disabled={!canRestore || !file || busy === 'restore'} onClick={restore}>
                 {busy === 'restore' ? <i className="fas fa-circle-notch fa-spin" /> : <i className="fas fa-rotate-left" />} بازیابی داده‌ها
               </button>
             </div>

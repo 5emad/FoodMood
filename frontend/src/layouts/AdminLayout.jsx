@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { allowedAdminTabs, normalizeAdminCapabilities } from '../lib/portalCapabilities';
 import { adminTabPath, tabFromPathname } from '../lib/adminPaths';
+import BrandLogo from '../components/BrandLogo';
+import ErrorScreen from '../components/ErrorScreen';
 
 const TAB_META = {
   reports: { label: 'گزارش‌ها', icon: 'fa-chart-line', sub: 'گزارش هفتگی، پرسنلی و تامین‌کننده' },
@@ -13,6 +15,7 @@ const TAB_META = {
   users: { label: 'کاربران', icon: 'fa-users', sub: 'پرسنل و نقش‌ها' },
   departments: { label: 'واحدها', icon: 'fa-building', sub: 'ساختار سازمانی' },
   finance: { label: 'مالی و حسابداری', icon: 'fa-coins', sub: 'سهم سازمان و صورتحساب' },
+  payments: { label: 'پرداخت‌ها', icon: 'fa-wallet', sub: 'تایید رسیدها، تراکنش‌ها و تنظیم روش‌های پرداخت' },
   announcements: { label: 'اطلاعیه', icon: 'fa-bullhorn', sub: 'پیام به کاربران' },
   backup: { label: 'پشتیبان', icon: 'fa-database', sub: 'خروجی و بازیابی داده‌ها' },
 };
@@ -22,7 +25,7 @@ const MENU_GROUPS = [
   { id: 'food-plan', label: 'برنامه غذایی', icon: 'fa-utensils', tabs: ['weeks', 'foods'] },
   { id: 'orders-guests', label: 'سفارش و مهمان', icon: 'fa-clipboard-list', tabs: ['orders', 'guests'] },
   { id: 'organization', label: 'سازمان', icon: 'fa-sitemap', tabs: ['users', 'departments'] },
-  { id: 'finance-info', label: 'مالی و اطلاعیه', icon: 'fa-coins', tabs: ['finance', 'announcements'] },
+  { id: 'finance-info', label: 'مالی و اطلاعیه', icon: 'fa-coins', tabs: ['finance', 'payments', 'announcements'] },
   { id: 'system', label: 'سامانه', icon: 'fa-hard-drive', tabs: ['backup'] },
 ];
 
@@ -49,6 +52,8 @@ export default function AdminLayout() {
   const [boot, setBoot] = useState(null);
   const [bootError, setBootError] = useState('');
   const [openGroups, setOpenGroups] = useState(() => new Set(['main']));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [me, setMe] = useState(null);
 
   const isSuperPath = location.pathname.startsWith('/admin/super/');
   const activeTab = isSuperPath ? null : tabFromPathname(location.pathname);
@@ -58,6 +63,23 @@ export default function AdminLayout() {
   useEffect(() => {
     document.body.classList.add('admin-body', 'admin-sidebar-only');
     return () => document.body.classList.remove('admin-body', 'admin-sidebar-only');
+  }, []);
+
+  // Off-canvas sidebar on small screens: close on navigation / Escape
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    document.body.classList.toggle('admin-sidebar-open', mobileOpen);
+    if (!mobileOpen) return () => document.body.classList.remove('admin-sidebar-open');
+    const onKey = (e) => { if (e.key === 'Escape') setMobileOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.classList.remove('admin-sidebar-open');
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
+    api('/api/auth/me').then((r) => { if (r?.success && r.user) setMe(r.user); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -88,7 +110,7 @@ export default function AdminLayout() {
         return;
       }
       if (res.code === 'FORBIDDEN_ROLE' || res._httpStatus === 403) {
-        setBootError(res.message || 'این حساب به پنل مدیریت دسترسی ندارد. با حساب سوپرادمین وارد شوید.');
+        setBootError('FORBIDDEN');
         return;
       }
       setBootError(res.message || 'بارگذاری پنل ناموفق بود.');
@@ -127,6 +149,19 @@ export default function AdminLayout() {
 
   const tabs = allowedAdminTabs(adminCaps);
   const isSuper = !!adminCaps.isSuperadmin;
+
+  if (bootError === 'FORBIDDEN') {
+    return (
+      <ErrorScreen
+        code={403}
+        text="این حساب به پنل مدیریت دسترسی ندارد. برای ورود به این بخش با حساب مدیر وارد شوید."
+        actions={[
+          { label: 'بازگشت به پرتال', href: '/user/dashboard', primary: true },
+          { label: 'ورود با حساب دیگر', href: '/logout' },
+        ]}
+      />
+    );
+  }
 
   if (bootError) {
     return (
@@ -225,7 +260,7 @@ export default function AdminLayout() {
     <>
       <aside className="sidebar sidebar-nav-panel">
         <div className="sidebar-brand">
-          <div className="sidebar-brand-icon"><i className="fas fa-utensils" /></div>
+          <div className="sidebar-brand-icon"><BrandLogo size={42} /></div>
           <div>
             <span className="sidebar-brand-text">{boot?.appSettings?.organizationName || 'سامانه تغذیه'}</span>
             <span className="sidebar-brand-sub">پنل مدیریت</span>
@@ -273,10 +308,13 @@ export default function AdminLayout() {
 
         <div className="sidebar-footer sidebar-footer--actions">
           <div className="sidebar-footer-user">
-            <div className="user-avatar">م</div>
+            <div className="user-avatar" aria-hidden="true">{String(me?.fullName || me?.username || 'م').trim().charAt(0)}</div>
             <div className="sidebar-footer-info">
-              <span className="sidebar-user-name">{boot?.currentUserRole === 'superadmin' ? 'سوپر ادمین' : 'مدیر سیستم'}</span>
-              <span className="sidebar-user-role">{isSuper ? 'دسترسی کامل' : 'مدیر'}</span>
+              <span className="sidebar-user-name">{me?.fullName || me?.username || (isSuper ? 'سوپر ادمین' : 'مدیر سیستم')}</span>
+              <span className={`sidebar-role-badge${isSuper ? '' : ' sidebar-role-badge--admin'}`}>
+                <i className={`fas ${isSuper ? 'fa-crown' : 'fa-user-shield'}`} aria-hidden="true" />
+                {isSuper ? 'سوپر ادمین' : 'مدیر'}
+              </span>
             </div>
           </div>
           <div className="sidebar-action-links">
@@ -298,7 +336,24 @@ export default function AdminLayout() {
         </div>
       </aside>
 
+      <div className="adm-overlay" onClick={() => setMobileOpen(false)} aria-hidden="true" />
+
       <div className="main-content">
+        <header className="adm-topbar">
+          <div className="adm-topbar-brand">
+            <BrandLogo size={34} />
+            <span>{boot?.appSettings?.organizationName || 'سامانه تغذیه'}</span>
+          </div>
+          <button
+            type="button"
+            className="adm-burger"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? 'بستن منو' : 'باز کردن منو'}
+            aria-expanded={mobileOpen}
+          >
+            <i className={`fas ${mobileOpen ? 'fa-xmark' : 'fa-bars'}`} aria-hidden="true" />
+          </button>
+        </header>
         <main className="content-wrapper">
           {pageTitle && !isGuests && (
             <div className="page-header page-header--compact">

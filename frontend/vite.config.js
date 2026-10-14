@@ -17,6 +17,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:3000', changeOrigin: true },
       '/css': { target: 'http://localhost:3000', changeOrigin: true },
+      '/img': { target: 'http://localhost:3000', changeOrigin: true },
       '/vendor': { target: 'http://localhost:3000', changeOrigin: true },
     },
   },

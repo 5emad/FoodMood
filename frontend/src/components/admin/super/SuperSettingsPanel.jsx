@@ -20,6 +20,7 @@ const GENERAL_SAVE_KEYS = [
   'defaultMenuItemCapacity',
   'enableCapacityLimit',
   'showPricesToUsers',
+  'allowLocalRegistration',
   'uiFont',
 ];
 
@@ -126,22 +127,32 @@ export default function SuperSettingsPanel() {
     }
   }
 
+  const pendingRef = useRef({});
+
+  /**
+   * Auto-save. Only the fields that actually changed are sent, so a delayed (debounced) save can
+   * never overwrite a toggle that was saved immediately in between (e.g. «نمایش قیمت»).
+   */
   function updateFields(partial, { immediate = false } = {}) {
-    const includeLdap = Object.keys(partial).some((k) => k.startsWith('ldap'));
-    setForm((prev) => {
-      const next = { ...prev, ...partial };
-      formRef.current = next;
-      const extras = includeLdap ? { includeLdap: true } : {};
-      if (immediate) persistNow(next, extras);
-      else {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        setSaveStatus('saving');
-        debounceRef.current = setTimeout(() => {
-          persistNow(next, extras);
-        }, DEBOUNCE_MS);
-      }
-      return next;
-    });
+    const next = { ...formRef.current, ...partial };
+    formRef.current = next;
+    setForm(next);
+    pendingRef.current = { ...pendingRef.current, ...partial };
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const flush = () => {
+      const changed = pendingRef.current;
+      pendingRef.current = {};
+      const includeLdap = Object.keys(changed).some((k) => k.startsWith('ldap'));
+      persistNow(changed, includeLdap ? { includeLdap: true } : {});
+    };
+    if (immediate) flush();
+    else {
+      setSaveStatus('saving');
+      debounceRef.current = setTimeout(flush, DEBOUNCE_MS);
+    }
   }
 
   async function testLdap() {
@@ -265,11 +276,32 @@ export default function SuperSettingsPanel() {
               </select>
             </div>
             <div className="form-group">
+              <label className="form-label">ثبت‌نام کاربران محلی</label>
+              <select
+                className="form-control"
+                value={String(form.allowLocalRegistration === true)}
+                onChange={(e) => updateFields({ allowLocalRegistration: e.target.value === 'true' }, { immediate: true })}
+              >
+                <option value="false">بسته — دکمه ثبت‌نام نمایش داده نمی‌شود</option>
+                <option value="true">باز — کاربران می‌توانند در صفحه ورود ثبت‌نام کنند</option>
+              </select>
+            </div>
+            <div className="form-group">
               <label className="form-label">نمایش قیمت برای کاربران</label>
-              <select className="form-control" value={String(form.showPricesToUsers !== false)} onChange={(e) => updateFields({ showPricesToUsers: e.target.value === 'true' }, { immediate: true })}>
+              <select
+                className="form-control"
+                value={String(form.showPricesLockedByPayment || form.showPricesToUsers !== false)}
+                disabled={!!form.showPricesLockedByPayment}
+                onChange={(e) => updateFields({ showPricesToUsers: e.target.value === 'true' }, { immediate: true })}
+              >
                 <option value="true">فعال</option>
                 <option value="false">غیرفعال</option>
               </select>
+              {form.showPricesLockedByPayment && (
+                <small className="form-hint" style={{ display: 'block', marginTop: 6, color: 'var(--text-muted)' }}>
+                  <i className="fas fa-lock" /> پرداخت فعال است؛ نمایش قیمت تا وقتی پرداخت روشن است اجباری است.
+                </small>
+              )}
             </div>
             <div className="form-group theme-picker" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">فونت سامانه</label>

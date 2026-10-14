@@ -385,6 +385,37 @@ async function authenticate(username, password, settings = {}) {
   return null;
 }
 
+/**
+ * Checks whether an account name exists in the directory (service bind + search).
+ * Returns true (exists), false (definitely not found) or null (unknown: disabled, no bind
+ * credentials or connection error). Callers that must fail closed treat null as "exists".
+ */
+async function userExists(username, settings = {}) {
+  const cfg = ldapConfig(settings);
+  const validation = validateConfig(cfg);
+  if (!Client || !cfg.enabled || !validation.valid) return null;
+  if (!cfg.bindDn || !cfg.bindPassword) return null;
+  const identity = normalizeLoginIdentifier(username);
+  if (!identity.sam) return null;
+
+  const client = createClient(cfg, settings);
+  try {
+    await upgradeToTls(client, cfg);
+    await client.bind(cfg.bindDn, cfg.bindPassword);
+    const { searchEntries } = await client.search(cfg.baseDn, {
+      scope: 'sub',
+      filter: buildUserSearchFilter(cfg, identity),
+      attributes: ['dn'],
+      sizeLimit: 1,
+    });
+    return searchEntries.length > 0;
+  } catch {
+    return null;
+  } finally {
+    await client.unbind().catch(() => {});
+  }
+}
+
 async function testConnection(settings = {}) {
   if (!Client) {
     return { success: false, message: 'پکیج ldapts نصب نشده است', status: 'no_client' };
@@ -446,6 +477,7 @@ async function testConnection(settings = {}) {
 module.exports = {
   isEnabled,
   authenticate,
+  userExists,
   testConnection,
   validateConfig,
   ldapConfig,

@@ -16,6 +16,8 @@ const AppSetting = require('../models/AppSetting');
 const Counter = require('../models/Counter');
 const SecurityLog = require('../models/SecurityLog');
 const Announcement = require('../models/Announcement');
+const Payment = require('../models/Payment');
+const StatementDiscount = require('../models/StatementDiscount');
 const UserSession = require('../models/UserSession');
 
 /*
@@ -23,6 +25,10 @@ const UserSession = require('../models/UserSession');
  *   [6B magic "FZBAK1"][16B salt][12B IV][16B GCM tag][AES-256-GCM ciphertext]
  * Ciphertext = gzip(JSON). GCM AAD binds magic+salt; payload includes HMAC integrity.
  */
+const fs = require('fs');
+const path = require('path');
+const RECEIPT_DIR = path.join(__dirname, '..', '..', 'storage', 'payment-receipts');
+const RECEIPT_NAME_RE = /^receipt-[\w.-]+\.(jpg|png|webp|gif)$/i;
 const MAGIC = Buffer.from('FZBAK1', 'ascii');
 const FORMAT = 'sazman-food-backup';
 const VERSION = 2;
@@ -30,6 +36,8 @@ const SUPPORTED_VERSIONS = new Set([1, 2]);
 const SALT_LEN = 16;
 const IV_LEN = 12;
 const TAG_LEN = 16;
+const MAX_BACKUP_FILE_BYTES = Number(process.env.BACKUP_RESTORE_MAX_FILE_MB || 200) * 1024 * 1024;
+const MAX_BACKUP_JSON_BYTES = Number(process.env.BACKUP_RESTORE_MAX_JSON_MB || 512) * 1024 * 1024;
 const DEV_FALLBACK = 'development-only-backup-secret-change-me';
 
 /** همهٔ کالکشن‌های مهم سامانه */
@@ -49,6 +57,8 @@ const collectionMap = {
   counters: Counter,
   securityLogs: SecurityLog,
   announcements: Announcement,
+  statementDiscounts: StatementDiscount,
+  payments: Payment,
 };
 
 /** فیلدهایی که در schema با select:false مخفی‌اند و باید در بکاپ بیایند */
@@ -163,8 +173,48 @@ function prepareUsersForRestore(users = []) {
   });
 }
 
+/** تصاویر رسید کارت به کارتِ پرداخت‌های موجود (base64) */
+function dumpReceiptFiles(payments = []) {
+  const files = [];
+  for (const payment of payments) {
+    const name = path.basename(String(payment?.receiptFile || ''));
+    if (!name || !RECEIPT_NAME_RE.test(name)) continue;
+    try {
+      files.push({ name, data: fs.readFileSync(path.join(RECEIPT_DIR, name)).toString('base64') });
+    } catch {
+      /* فایل از دیسک حذف شده — رکورد پرداخت بدون تصویر در بکاپ می‌آید */
+    }
+  }
+  return files;
+}
+
+/** بازگردانی تصاویر رسید؛ فایل‌هایی که به هیچ پرداختی تعلق ندارند پاک می‌شوند */
+function restoreReceiptFiles(files, payments = []) {
+  if (!Array.isArray(files)) return null;
+  fs.mkdirSync(RECEIPT_DIR, { recursive: true });
+  const keep = new Set();
+  let written = 0;
+  for (const file of files) {
+    const name = path.basename(String(file?.name || ''));
+    if (!RECEIPT_NAME_RE.test(name) || typeof file.data !== 'string') continue;
+    fs.writeFileSync(path.join(RECEIPT_DIR, name), Buffer.from(file.data, 'base64'));
+    keep.add(name);
+    written += 1;
+  }
+  for (const payment of payments) {
+    const name = path.basename(String(payment?.receiptFile || ''));
+    if (name) keep.add(name);
+  }
+  for (const name of fs.readdirSync(RECEIPT_DIR)) {
+    if (!keep.has(name) && RECEIPT_NAME_RE.test(name)) fs.unlinkSync(path.join(RECEIPT_DIR, name));
+  }
+  return written;
+}
+
 async function createBackupBuffer(createdBy = '') {
   const { data, counts } = await dumpAll();
+  data.paymentReceiptFiles = dumpReceiptFiles(data.payments);
+  counts.paymentReceiptFiles = data.paymentReceiptFiles.length;
   data.users = sanitizeUsersForBackup(data.users);
   counts.users = data.users.length;
 
@@ -209,6 +259,9 @@ function readBackupBuffer(buffer) {
   if (!Buffer.isBuffer(buffer) || buffer.length <= headerLen) {
     throw invalidFileError('فایل پشتیبان خالی یا ناقص است.');
   }
+  if (buffer.length > MAX_BACKUP_FILE_BYTES) {
+    throw invalidFileError('Backup file is larger than the configured restore limit.');
+  }
   if (!buffer.subarray(0, MAGIC.length).equals(MAGIC)) {
     throw invalidFileError('فرمت فایل پشتیبان شناخته نشد (پسوند یا محتوا اشتباه است).');
   }
@@ -226,7 +279,8 @@ function readBackupBuffer(buffer) {
     decipher.setAAD(aad);
     decipher.setAuthTag(tag);
     const compressed = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-    payload = JSON.parse(zlib.gunzipSync(compressed).toString('utf8'));
+    const json = zlib.gunzipSync(compressed, { maxOutputLength: MAX_BACKUP_JSON_BYTES }).toString('utf8');
+    payload = JSON.parse(json);
   } catch {
     throw invalidFileError(
       'رمزگشایی فایل ناموفق بود. معمولاً به‌خاطر BACKUP_SECRET متفاوت یا فایل خراب است.',
@@ -279,9 +333,13 @@ function assertUsersRestorable(users) {
   }
 }
 
+/** کالکشن‌هایی که بعداً اضافه شده‌اند؛ پشتیبان قدیمی بدون آن‌ها نباید داده فعلی را پاک کند */
+const OPTIONAL_COLLECTIONS = new Set(['statementDiscounts', 'payments']);
+
 async function applyPayloadData(data, session = null) {
   const summary = {};
   for (const [name, Model] of Object.entries(collectionMap)) {
+    if (OPTIONAL_COLLECTIONS.has(name) && !Array.isArray(data[name])) continue;
     let docs = Array.isArray(data[name]) ? data[name] : [];
     if (name === 'users') docs = prepareUsersForRestore(docs);
     summary[name] = await replaceCollection(Model, docs, session);
@@ -324,6 +382,13 @@ async function restoreBackup(payload) {
 
   try {
     const summary = await applyPayloadData(payload.data, null);
+    try {
+      const restoredFiles = restoreReceiptFiles(payload.data.paymentReceiptFiles, payload.data.payments);
+      if (restoredFiles !== null) summary.paymentReceiptFiles = restoredFiles;
+    } catch (fileErr) {
+      console.warn('[backup] receipt files restore failed:', fileErr.message);
+      summary.paymentReceiptFilesError = fileErr.message;
+    }
     return { summary, createdAt: payload.createdAt || null, mode: 'snapshot-rollback' };
   } catch (err) {
     const failures = await rollbackFromSnapshot(snapshot);
@@ -341,6 +406,8 @@ module.exports = {
   createBackupBuffer,
   readBackupBuffer,
   restoreBackup,
+  dumpReceiptFiles,
+  restoreReceiptFiles,
   collectionMap,
   VERSION,
 };

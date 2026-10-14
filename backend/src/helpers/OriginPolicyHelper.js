@@ -50,9 +50,19 @@ function applyRuntimeEnv({ publicUrl, allowedOrigins } = {}) {
   if (publicUrl) process.env.TRUST_TLS = 'true';
 }
 
+const PRE_AUTH_PATHS = new Set([
+  '/api/auth/login',
+  '/api/auth/resolve-username',
+  '/api/auth/verify-super-token',
+  '/api/auth/logout',
+  '/api/auth/csrf',
+  '/api/auth/captcha',
+]);
+
+/** Pre-authentication endpoints only — profile/password changes must still pass the origin check. */
 function isAuthApiPath(req) {
-  const path = String(req?.originalUrl || req?.url || req?.path || '').split('?')[0];
-  return path.startsWith('/api/auth/');
+  const path = String(req?.originalUrl || req?.url || req?.path || '').split('?')[0].replace(/\/+$/, '');
+  return PRE_AUTH_PATHS.has(path);
 }
 
 refreshOriginPublicUrlCache();

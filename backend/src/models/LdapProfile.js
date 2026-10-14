@@ -55,6 +55,10 @@ const ldapProfileSchema = new mongoose.Schema({
   },
 });
 
+ldapProfileSchema.index({ role: 1, status: 1, fullName: 1 }, { background: true });
+ldapProfileSchema.index({ departmentId: 1, status: 1 }, { background: true });
+ldapProfileSchema.index({ convertedToLocal: 1, status: 1 }, { background: true });
+
 ldapProfileSchema.pre('save', function saveTimestamp(next) {
   this.updatedAt = Date.now();
   next();

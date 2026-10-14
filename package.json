@@ -12,6 +12,8 @@
     "build:client": "node backend/scripts/build-client-js.js",
     "build:spa": "cd frontend && npm install && npm run build",
     "build": "npm run build:client && npm run build:spa",
+    "db:indexes": "node backend/scripts/ensure-indexes.js",
+    "security:check": "node scripts/check-next-security.js && npm audit && cd frontend && npm audit",
     "postinstall": "node backend/scripts/sync-vendor.js",
     "test:outage": "node backend/scripts/test-db-outage.js"
   },

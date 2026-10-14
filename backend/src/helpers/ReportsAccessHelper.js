@@ -1,4 +1,6 @@
 const Order = require('../models/Order');
+const { getSettingsLean } = require('../services/SettingsService');
+const { isAutoConfirmMode } = require('./PaymentConfigHelper');
 
 async function countPendingOrders() {
   return Order.countDocuments({ status: 'pending' });
@@ -11,6 +13,10 @@ function buildAccessMessage(pendingCount) {
 
 async function getReportsAccessForUser(_user) {
   const pendingCount = await countPendingOrders();
+  if (isAutoConfirmMode(await getSettingsLean())) {
+    // گزارش‌ها فقط سفارش‌های پرداخت‌شده (تاییدشده خودکار) را نشان می‌دهند
+    return { allowed: true, pendingCount, message: null, paymentMode: true };
+  }
   return {
     allowed: pendingCount === 0,
     pendingCount,

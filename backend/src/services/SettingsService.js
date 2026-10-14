@@ -11,6 +11,7 @@ const defaultSettings = {
   maxActiveReservations: 0,
   defaultMenuItemCapacity: 20,
   enableCapacityLimit: true,
+  allowLocalRegistration: false,
   themePrimary: '#1B3F8D',
   themePrimaryLight: '#4D73B5',
   themePrimaryDark: '#122A62',
@@ -37,15 +38,34 @@ function publicSettings(settings) {
   delete raw.ldapBindPasswordEnc;
   delete raw.ldapCaCertPem;
   delete raw.portalSlider;
+  const paymentEnabled = isEnabledFlag(raw.payment?.enabled, false);
+  delete raw.payment;
   return {
     ...raw,
-    showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true),
+    showPricesToUsers: isEnabledFlag(raw.showPricesToUsers, true) || paymentEnabled,
+    showPricesLockedByPayment: paymentEnabled,
     showFinancialStatementToUsers: isEnabledFlag(raw.showFinancialStatementToUsers, true),
     enableCapacityLimit: isEnabledFlag(raw.enableCapacityLimit, true),
+    allowLocalRegistration: isEnabledFlag(raw.allowLocalRegistration, false),
     hasLdapBindPassword: Boolean(storedEnc || process.env.LDAP_BIND_PASSWORD),
     ldapBindPasswordStored: Boolean(storedEnc),
     ldapBindPasswordFromEnv: Boolean(process.env.LDAP_BIND_PASSWORD),
     hasLdapCaCert: Boolean(caPem || raw.ldapCaCertPath),
+  };
+}
+
+/**
+ * Minimal subset safe for unauthenticated pages (login/register/SPA bootstrap).
+ * Never include LDAP, URLs, theme internals or anything operational.
+ */
+function anonymousSettings(settings) {
+  const raw = settings && settings.toObject
+    ? settings.toObject({ getters: false, virtuals: false })
+    : { ...(settings || {}) };
+  return {
+    organizationName: raw.organizationName || 'سامانه تغذیه',
+    uiFont: raw.uiFont === 'yekanbakh' ? 'yekanbakh' : 'vazirmatn',
+    allowLocalRegistration: isEnabledFlag(raw.allowLocalRegistration, false),
   };
 }
 
@@ -113,6 +133,7 @@ async function getSettingsLean() {
 module.exports = {
   defaultSettings,
   publicSettings,
+  anonymousSettings,
   adminWorkspaceSettings,
   getOrCreateSettings,
   updateAppSettings,

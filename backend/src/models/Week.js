@@ -38,6 +38,9 @@ const weekSchema = new mongoose.Schema({
 
 // جلوگیری از هفته‌های هم‌پوشان (شروع هفته یکتا)
 weekSchema.index({ startDate: 1 }, { unique: true });
+weekSchema.index({ isActive: 1, startDate: 1 }, { background: true });
+weekSchema.index({ status: 1, startDate: 1 }, { background: true });
+weekSchema.index({ createdAt: 1 }, { background: true });
 
 weekSchema.pre('validate', function(next) {
   if (!this.name) {

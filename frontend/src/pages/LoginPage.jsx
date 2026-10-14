@@ -1,49 +1,52 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, resetCsrf } from '../api/client';
 import { useToast } from '../components/ToastProvider';
+import AuthShell from '../components/auth/AuthShell';
+import { Captcha, Field, PasswordInput } from '../components/auth/AuthFields';
 
 function initialAlert(params) {
-  if (params.get('inactive')) {
-    return { type: 'error', text: 'حساب کاربری شما غیرفعال است.' };
-  }
-  if (params.get('expired')) {
-    return { type: 'error', text: 'نشست شما منقضی شده است.' };
-  }
-  if (params.get('idle')) {
-    return { type: 'warning', text: 'به‌دلیل عدم فعالیت، نشست پایان یافت.' };
-  }
+  if (params.get('inactive')) return { type: 'error', text: 'حساب کاربری شما غیرفعال است.' };
+  if (params.get('expired')) return { type: 'warning', text: 'نشست شما منقضی شده است؛ دوباره وارد شوید.' };
+  if (params.get('idle')) return { type: 'warning', text: 'به‌دلیل عدم فعالیت، نشست پایان یافت.' };
+  if (params.get('registered')) return { type: 'success', text: 'حساب شما ساخته شد؛ اکنون وارد شوید.' };
   return null;
+}
+
+function readBootstrap() {
+  try {
+    const el = document.getElementById('app-bootstrap-data');
+    return el ? JSON.parse(el.textContent || '{}') : {};
+  } catch {
+    return {};
+  }
 }
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { toast } = useToast();
-  const [config, setConfig] = useState({ organizationName: 'سامانه تغذیه', appVersionFa: '' });
-  const [step, setStep] = useState('username'); // username | password | 2fa
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [resolved, setResolved] = useState(null);
-  const [form, setForm] = useState({ username: '', password: '', superToken: '' });
-  /** First-time 2FA token — shown masked once; copy only, never plaintext toast */
+  const boot = readBootstrap();
+  const [config, setConfig] = useState(() => ({
+    organizationName: boot.settings?.organizationName || 'سامانه تغذیه',
+    allowLocalRegistration: Boolean(boot.settings?.allowLocalRegistration),
+    ...(boot.version || {}),
+  }));
+  const [step, setStep] = useState('login'); // login | 2fa
+  const [busy, setBusy] = useState(false);
+  const [username, setUsername] = useState(params.get('registered') || '');
+  const [password, setPassword] = useState('');
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaVersion, setCaptchaVersion] = useState(0);
+  const [superToken, setSuperToken] = useState('');
   const [bootstrapToken, setBootstrapToken] = useState('');
+  const [alert, setAlert] = useState(() => initialAlert(params));
+  const [fieldError, setFieldError] = useState(null); // { field, message }
 
   useEffect(() => {
-    const bootEl = document.getElementById('app-bootstrap-data');
-    if (bootEl) {
-      try {
-        const boot = JSON.parse(bootEl.textContent || '{}');
-        if (boot?.version?.appVersionFa || boot?.settings?.organizationName) {
-          setConfig((c) => ({
-            ...c,
-            organizationName: boot.settings?.organizationName || c.organizationName,
-            ...boot.version,
-          }));
-        }
-      } catch { /* ignore */ }
-    }
-    api('/api/app/public').then((r) => { if (r.success) setConfig((c) => ({ ...c, ...r.data })); });
+    api('/api/app/public').then((r) => {
+      if (r.success) setConfig((c) => ({ ...c, ...r.data }));
+    }).catch(() => {});
   }, []);
 
   // Already authenticated → leave /login
@@ -55,286 +58,194 @@ export default function LoginPage() {
         if (cancelled || !me?.success) return;
         const user = me.user || me.data?.user || me.data;
         if (user) redirectAfterLogin(user);
-      } catch {
-        /* stay on login */
-      }
+      } catch { /* stay on login */ }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const boot = initialAlert(params);
-    if (boot) toast(boot.text, boot.type);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function redirectAfterLogin(user) {
-    if (user?.mustSetFullName) {
-      navigate('/complete-profile');
-      return;
-    }
-    if (user?.role === 'admin' || user?.role === 'superadmin') {
-      navigate('/admin/reports');
-      return;
-    }
-    navigate('/user/dashboard');
+    if (user?.mustSetFullName) return navigate('/complete-profile');
+    if (user?.role === 'admin' || user?.role === 'superadmin') return navigate('/admin/reports');
+    return navigate('/user/dashboard');
   }
 
-  function resetToUsername() {
-    setStep('username');
-    setResolved(null);
-    setForm((f) => ({ ...f, password: '', superToken: '' }));
-    setShowPassword(false);
+  function backToLogin() {
+    setStep('login');
+    setPassword('');
+    setSuperToken('');
     setBootstrapToken('');
+    setFieldError(null);
+    setAlert(null);
+    setCaptchaVersion((v) => v + 1);
   }
 
   async function copyBootstrapToken() {
-    if (!bootstrapToken) return;
     try {
       await navigator.clipboard.writeText(bootstrapToken);
       toast('توکن کپی شد — در جای امن ذخیره کنید.', 'success');
     } catch {
-      toast('کپی نشد؛ با Ctrl+A و Ctrl+C از فیلد مخفی کپی کنید.', 'warning');
+      toast('کپی نشد؛ دوباره تلاش کنید.', 'warning');
     }
   }
 
-  async function onSubmit(e) {
+  const loginReady = username.trim() && password && captchaAnswer.trim();
+
+  async function submitLogin(e) {
     e.preventDefault();
-
-    if (step === '2fa') {
-      if (!form.superToken.trim()) {
-        toast('توکن امنیتی را وارد کنید.', 'error');
-        return;
-      }
-      setLoading(true);
-      try {
-        const res = await api('/api/auth/verify-super-token', {
-          method: 'POST',
-          body: JSON.stringify({ token: form.superToken.trim() }),
-        });
-        if (!res.success) {
-          toast(res.message || 'توکن امنیتی نامعتبر است.', 'error');
-          return;
-        }
-        setBootstrapToken('');
-        resetCsrf();
-        if (res.user) redirectAfterLogin(res.user);
-        else navigate('/admin/reports');
-      } catch (err) {
-        toast(err.message || 'توکن امنیتی نامعتبر است.', 'error');
-      } finally {
-        setLoading(false);
-      }
+    if (busy) return;
+    setFieldError(null);
+    if (!loginReady) {
+      setAlert({ type: 'error', text: 'نام کاربری، رمز عبور و کد امنیتی را وارد کنید.' });
       return;
     }
-
-    if (step === 'username') {
-      const username = form.username.trim();
-      if (!username) {
-        toast('نام کاربری را وارد کنید.', 'error');
-        return;
-      }
-      setLoading(true);
-      try {
-        const res = await api('/api/auth/resolve-username', {
-          method: 'POST',
-          body: JSON.stringify({ username }),
-        });
-        const nextUser = res?.username || username;
-        setResolved({ username: nextUser });
-        setForm((f) => ({ ...f, username: nextUser, password: '' }));
-        setShowPassword(false);
-        setStep('password');
-      } catch {
-        // حتی در خطا هم به رمز می‌رویم تا وجود کاربر لو نرود
-        setResolved({ username });
-        setForm((f) => ({ ...f, username, password: '' }));
-        setShowPassword(false);
-        setStep('password');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (!form.password) {
-      toast('رمز عبور را وارد کنید.', 'error');
-      return;
-    }
-
-    setLoading(true);
+    setBusy(true);
+    setAlert(null);
     try {
       const res = await api('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username: form.username, password: form.password }),
+        body: JSON.stringify({ username: username.trim(), password, captchaAnswer }),
       });
-
       if (res.tokenRequired) {
-        setShowPassword(false);
-        setForm((f) => ({ ...f, superToken: '' }));
         setStep('2fa');
+        setPassword('');
         if (res.secondFactorToken) {
           setBootstrapToken(String(res.secondFactorToken));
-          toast('توکن امنیتی جدید صادر شد — مخفی است؛ فقط کپی و ذخیره کنید.', 'warning');
+          setAlert({ type: 'warning', text: 'توکن امنیتی جدید صادر شد. آن را کپی و در جای امن ذخیره کنید.' });
         } else {
-          setBootstrapToken('');
-          toast(res.message || 'توکن امنیتی را وارد کنید.', 'info');
+          setAlert({ type: 'info', text: res.message || 'توکن امنیتی سوپر ادمین را وارد کنید.' });
         }
         return;
       }
-
       if (!res.success) {
-        toast(res.message || 'اطلاعات وارد شده صحیح نیست.', 'error');
+        if (res.field === 'captcha') setFieldError({ field: 'captcha', message: res.message });
+        else setAlert({ type: 'error', text: res.message || 'اطلاعات وارد شده صحیح نیست.' });
+        setCaptchaVersion((v) => v + 1);
         return;
       }
-
       resetCsrf();
       if (res.user) redirectAfterLogin(res.user);
       else navigate('/user/dashboard');
     } catch (err) {
-      toast(err.message || 'ورود ناموفق بود. اتصال یا پایگاه داده را بررسی کنید.', 'error');
+      setAlert({ type: 'error', text: err.message || 'ورود ناموفق بود. اتصال را بررسی کنید.' });
+      setCaptchaVersion((v) => v + 1);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
-  const brand = config.organizationName || 'سامانه تغذیه';
+  async function submitToken(e) {
+    e.preventDefault();
+    if (busy) return;
+    if (!superToken.trim()) {
+      setFieldError({ field: 'token', message: 'توکن امنیتی را وارد کنید.' });
+      return;
+    }
+    setBusy(true);
+    setFieldError(null);
+    try {
+      const res = await api('/api/auth/verify-super-token', {
+        method: 'POST',
+        body: JSON.stringify({ token: superToken.trim() }),
+      });
+      if (!res.success) {
+        setFieldError({ field: 'token', message: res.message || 'توکن امنیتی نامعتبر است.' });
+        if (res._httpStatus === 401 && /منقضی/.test(res.message || '')) backToLogin();
+        return;
+      }
+      setBootstrapToken('');
+      resetCsrf();
+      if (res.user) redirectAfterLogin(res.user);
+      else navigate('/admin/reports');
+    } catch (err) {
+      setFieldError({ field: 'token', message: err.message || 'توکن امنیتی نامعتبر است.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const version = config.appVersionFa || config.appVersion;
 
   return (
-    <div className="auth-body auth-body--minimal">
-      <div className="auth-login-shell">
-        <div className="auth-login-brand">
-          <div className="auth-login-mark" aria-hidden="true">
-            <i className="fas fa-utensils" />
-          </div>
-          <h1 className="auth-login-title">{brand}</h1>
-        </div>
+    <AuthShell title={step === '2fa' ? 'تایید هویت سوپر ادمین' : 'ورود به سامانه'} brand={config.organizationName} version={version}>
+      {alert && <div className={`fm-alert fm-alert-${alert.type}`} role="status">{alert.text}</div>}
 
-        <form className="auth-login-card" onSubmit={onSubmit} autoComplete="off" noValidate>
-          {step === 'username' && (
-            <>
-              <div className="form-group">
-                <label className="form-label" htmlFor="login-username">نام کاربری</label>
-                <input
-                  id="login-username"
-                  className="form-control"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  placeholder="نام کاربری"
-                  autoCapitalize="none"
-                  spellCheck="false"
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn btn-primary btn-w100 auth-login-submit" disabled={loading}>
-                {loading ? 'بررسی...' : 'ادامه'}
-              </button>
-            </>
+      {step === 'login' ? (
+        <form className="fm-stack" onSubmit={submitLogin} noValidate>
+          <Field label="نام کاربری" htmlFor="fm-username">
+            <input
+              id="fm-username"
+              className="fm-input"
+              placeholder="نام کاربری خود را وارد کنید"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck="false"
+              dir="ltr"
+              maxLength={128}
+              required
+              autoFocus
+            />
+          </Field>
+          <Field label="رمز عبور" htmlFor="fm-password">
+            <PasswordInput
+              id="fm-password"
+              placeholder="رمز عبور خود را وارد کنید"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              maxLength={128}
+              required
+            />
+          </Field>
+          <Captcha
+            value={captchaAnswer}
+            onChange={setCaptchaAnswer}
+            version={captchaVersion}
+            error={fieldError?.field === 'captcha' ? fieldError.message : undefined}
+          />
+          {config.allowLocalRegistration && (
+            <div className="fm-auth-links">
+              <span>حساب کاربری ندارید؟ <Link to="/register">ثبت‌نام</Link></span>
+            </div>
           )}
-
-          {step === 'password' && (
-            <>
-              <div className="auth-user-chip">
-                <i className="fas fa-user" />
-                <span>{resolved?.username || form.username}</span>
-                <button type="button" className="auth-user-chip-change" onClick={resetToUsername}>تغییر</button>
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="login-password">رمز عبور</label>
-                <div className="auth-password-wrap">
-                  <input
-                    id="login-password"
-                    className="form-control input-secret"
-                    type={showPassword ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    placeholder="رمز عبور"
-                    dir="ltr"
-                    autoComplete="current-password"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className="auth-password-toggle"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? 'مخفی کردن رمز' : 'نمایش رمز'}
-                  >
-                    <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} />
-                  </button>
-                </div>
-              </div>
-              <button type="submit" className="btn btn-primary btn-w100 auth-login-submit" disabled={loading}>
-                {loading ? 'در حال ورود...' : 'ورود'}
-              </button>
-            </>
-          )}
-
-          {step === '2fa' && (
-            <>
-              {bootstrapToken ? (
-                <div className="form-group">
-                  <label className="form-label" htmlFor="login-bootstrap-token">توکن جدید (فقط یک‌بار — مخفی)</label>
-                  <div className="auth-password-wrap">
-                    <input
-                      id="login-bootstrap-token"
-                      className="form-control input-secret"
-                      type="password"
-                      readOnly
-                      value={bootstrapToken}
-                      dir="ltr"
-                      autoComplete="off"
-                      aria-label="توکن جدید مخفی"
-                    />
-                    <button
-                      type="button"
-                      className="auth-password-toggle"
-                      onClick={copyBootstrapToken}
-                      aria-label="کپی توکن"
-                      title="کپی"
-                    >
-                      <i className="fas fa-copy" />
-                    </button>
-                  </div>
-                  <p className="form-hint" style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    روی صفحه دیده نمی‌شود؛ کپی کنید و در جای امن نگه دارید.
-                  </p>
-                </div>
-              ) : null}
-              <div className="form-group">
-                <label className="form-label" htmlFor="login-token">توکن امنیتی</label>
-                <input
-                  id="login-token"
-                  className="form-control input-secret"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck="false"
-                  value={form.superToken}
-                  onChange={(e) => setForm({ ...form, superToken: e.target.value })}
-                  dir="ltr"
-                  placeholder="توکن"
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn btn-primary btn-w100 auth-login-submit" disabled={loading}>
-                {loading ? 'بررسی...' : 'تایید'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-outline btn-w100"
-                style={{ marginTop: 10 }}
-                onClick={resetToUsername}
-              >
-                بازگشت
-              </button>
-            </>
-          )}
+          <button type="submit" className="fm-btn fm-btn-block fm-btn-lg" disabled={busy || !loginReady}>
+            {busy ? <><i className="fas fa-circle-notch fa-spin" aria-hidden="true" /> در حال ورود…</> : <><i className="fas fa-right-to-bracket" aria-hidden="true" /> ورود</>}
+          </button>
         </form>
-
-        <div className="auth-login-version">
-          نسخه {config.appVersionFa || config.appVersion || '—'}
-        </div>
-      </div>
-    </div>
+      ) : (
+        <form className="fm-stack" onSubmit={submitToken} noValidate>
+          {bootstrapToken && (
+            <Field label="توکن جدید (فقط یک‌بار نمایش داده می‌شود)" htmlFor="fm-bootstrap-token" hint="روی صفحه نمایش داده نمی‌شود؛ کپی کنید و در جای امن نگه دارید.">
+              <div className="fm-input-group">
+                <input id="fm-bootstrap-token" className="fm-input" type="password" readOnly value={bootstrapToken} dir="ltr" autoComplete="off" />
+                <button type="button" className="fm-adornment" onClick={copyBootstrapToken} aria-label="کپی توکن" title="کپی توکن">
+                  <i className="fas fa-copy" aria-hidden="true" />
+                </button>
+              </div>
+            </Field>
+          )}
+          <Field label="توکن امنیتی" htmlFor="fm-token" error={fieldError?.field === 'token' ? fieldError.message : undefined}>
+            <PasswordInput
+              id="fm-token"
+              placeholder="توکن امنیتی سوپر ادمین"
+              value={superToken}
+              onChange={(e) => setSuperToken(e.target.value)}
+              autoComplete="one-time-code"
+              maxLength={160}
+              invalid={fieldError?.field === 'token'}
+              autoFocus
+            />
+          </Field>
+          <div className="fm-auth-actions">
+            <button type="button" className="fm-btn fm-btn-outline" onClick={backToLogin} disabled={busy}>بازگشت</button>
+            <button type="submit" className="fm-btn" disabled={busy || !superToken.trim()}>
+              {busy ? 'در حال بررسی…' : 'تایید'}
+            </button>
+          </div>
+        </form>
+      )}
+    </AuthShell>
   );
 }

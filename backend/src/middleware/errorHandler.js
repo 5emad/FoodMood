@@ -122,9 +122,11 @@ const errorHandler = (err, req, res, next) => {
 
   if (wantsHtml(req)) {
     if (isServerError) return renderUnavailable(req, res, 503);
-    return res.status(status).render('index', {
+    return res.status(status).render('errors/status', {
+      statusCode: status,
       user: req.user || null,
-      error: safeMessage,
+      // 403/404 use the page's own wording; other client errors show the safe message
+      message: status === 403 || status === 404 ? undefined : safeMessage,
     });
   }
 

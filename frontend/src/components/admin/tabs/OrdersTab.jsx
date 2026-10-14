@@ -18,6 +18,11 @@ export default function OrdersTab({ onReportsAccessChange }) {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, limit: 20, totalPages: 1, total: 0 });
+  const [paymentMode, setPaymentMode] = useState(false);
+
+  useEffect(() => {
+    api('/api/admin/payment-settings').then((res) => setPaymentMode(!!res?.success && !!res.data?.enabled && !!res.data?.scopes?.cart)).catch(() => {});
+  }, []);
 
   const load = useCallback(async (page = 1) => {
     setLoading(true);
@@ -56,7 +61,9 @@ export default function OrdersTab({ onReportsAccessChange }) {
     <section id="tab-orders" className="tab-pane active">
       <SectionHeader
         title="سفارش‌ها"
-        sub="پس از بررسی، همه سفارش‌های در انتظار را تایید کنید تا گزارش‌ها باز شود."
+        sub={paymentMode
+          ? 'پرداخت سبد خرید فعال است: هر سفارش پس از پرداخت (یا تایید رسید کارت به کارت) خودکار تایید می‌شود. «در انتظار» یعنی پرداخت‌نشده.'
+          : 'پس از بررسی، همه سفارش‌های در انتظار را تایید کنید تا گزارش‌ها باز شود.'}
         actions={(
           <div className="order-toolbar">
             <SearchGroup
@@ -68,9 +75,11 @@ export default function OrdersTab({ onReportsAccessChange }) {
               onSearch={() => load(1)}
               onClear={() => { setSearch(''); load(1); }}
             />
-            <button type="button" className="btn btn-success btn-confirm-week" onClick={confirmAll}>
-              <i className="fas fa-check-double" /> تایید همه سفارش‌های در انتظار
-            </button>
+            {!paymentMode && (
+              <button type="button" className="btn btn-success btn-confirm-week" onClick={confirmAll}>
+                <i className="fas fa-check-double" /> تایید همه سفارش‌های در انتظار
+              </button>
+            )}
           </div>
         )}
       />
@@ -86,13 +95,22 @@ export default function OrdersTab({ onReportsAccessChange }) {
                     <td style={{ fontWeight: 700 }}>{o.userId?.fullName || o.userId?.username || o.orderUserName || o.ldapUsername || '-'}</td>
                     <td>{o.menuItemId?.foodId?.name || o.items?.[0]?.foodId?.name || '-'}</td>
                     <td>{money(o.totalPrice)}</td>
-                    <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS[o.status] || o.status}</span></td>
+                    <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{paymentMode && o.status === 'pending' ? 'در انتظار پرداخت' : (STATUS[o.status] || o.status)}</span></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{jdate(o.createdAt || o.orderDate)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{jdate(o.deliveryDate) || '-'}</td>
                     <TableActions>
-                      {o.status !== 'cancelled' ? (
+                      {o.status === 'cancelled' ? (
+                        <span className="badge badge-gray">لغو شده</span>
+                      ) : o.paymentLock ? (
+                        <span
+                          className={`badge badge-${o.paymentLock === 'paid' ? 'success' : 'warning'}`}
+                          title="سفارش پرداخت‌شده فقط با حذف کل هفته لغو می‌شود"
+                        >
+                          <i className="fas fa-lock" /> {o.paymentLock === 'paid' ? 'پرداخت شده' : 'رسید در انتظار بررسی'}
+                        </span>
+                      ) : (
                         <button type="button" className="btn btn-danger btn-sm" onClick={() => cancelOrder(o.orderNumber || o._id)}><i className="fas fa-ban" /> لغو</button>
-                      ) : <span className="badge badge-gray">لغو شده</span>}
+                      )}
                     </TableActions>
                   </tr>
                 )) : <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>سفارشی ثبت نشده</td></tr>}

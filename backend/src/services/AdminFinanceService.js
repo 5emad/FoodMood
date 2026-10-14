@@ -11,6 +11,8 @@ const {
   discountKey,
   summarizeDiscountedRows,
 } = require('../services/StatementDiscountService');
+const { readPaymentConfig, billableStatuses, isAutoConfirmMode } = require('../helpers/PaymentConfigHelper');
+const { annotateFinanceRows, summarizePaymentColumns } = require('../services/PaymentService');
 
 function userActorFromReportRow(row = {}) {
   const userKey = String(row.userId || '');
@@ -117,7 +119,8 @@ function summarizeFinanceRows(rows = []) {
 
 async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, query = {}, meta = {}) {
   // Finance mode: no day-grids / full org directory scan
-  const report = await buildReport(rangeStart, rangeEnd, { mode: 'finance' });
+  const statuses = billableStatuses(settings);
+  const report = await buildReport(rangeStart, rangeEnd, { mode: 'finance', statuses });
   const periodType = meta.type === 'month' ? 'month' : 'week';
   const periodKey = periodKeyFromQuery(query, meta.range || {}, periodType);
   const mappedUsers = mapUsersToFinanceRows(report.byUser, settings, periodType, periodKey);
@@ -131,7 +134,7 @@ async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, quer
       rangeEnd,
       // Aggregation per week slice — never re-run full buildReport
       summarizeSlice: async (sliceStart, sliceEnd) => {
-        const rows = await sumOwnerTotalsInRange(sliceStart, sliceEnd, organizationSharePercent);
+        const rows = await sumOwnerTotalsInRange(sliceStart, sliceEnd, organizationSharePercent, statuses);
         return rows.map((row) => ({
           userKey: row.userKey,
           personalAmount: row.personalAmount,
@@ -155,8 +158,17 @@ async function buildAdminFinanceReport(rangeStart, rangeEnd, settings = {}, quer
   }
 
   const summary = summarizeDiscountedRows(users);
+  // وضعیت پرداخت فقط وقتی معنا دارد که پرداخت همین نوع صورتحساب (هفتگی/ماهیانه) فعال باشد
+  const paymentConfig = readPaymentConfig(settings);
+  const paymentEnabled = paymentConfig.enabled && !!paymentConfig.scopes[periodType];
+  if (paymentEnabled) {
+    users = await annotateFinanceRows(users, rangeStart, rangeEnd);
+    Object.assign(summary, summarizePaymentColumns(users));
+  }
 
   return {
+    paymentEnabled,
+    autoConfirm: isAutoConfirmMode(settings),
     type: periodType,
     periodKey,
     title: meta.title || 'صورتحساب مالی',
@@ -204,6 +216,11 @@ async function buildAdminFinancePdfPayload(rangeStart, rangeEnd, settings = {}, 
       personalAmountBefore: user.personalAmountBefore || user.personalAmount,
       discountAmount: user.discountAmount || 0,
       discountPercent: user.discountPercent || 0,
+      paidAmount: user.paidAmount || 0,
+      reviewAmount: user.reviewAmount || 0,
+      unpaidAmount: user.unpaidAmount || 0,
+      paidCount: user.paymentStatus === 'paid' ? 1 : 0,
+      unpaidCount: user.paymentStatus && !['paid', 'none'].includes(user.paymentStatus) ? 1 : 0,
     };
     title = user.kind === 'guest'
       ? `صورتحساب مهمان ${user.fullName} — ${base.title}`

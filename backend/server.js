@@ -105,7 +105,7 @@ app.use('/assets', express.static(path.join(publicDir, 'spa', 'assets'), {
   maxAge: staticCache,
   setHeaders: staticHeaders,
 }));
-app.get('/favicon.ico', (_req, res) => res.status(204).end());
+app.get('/favicon.ico', (_req, res) => res.redirect(302, '/img/logo.svg'));
 
 // Liveness probe — always 200 once the process accepts HTTP (DB readiness is separate).
 app.get('/healthz', (_req, res) => {
@@ -179,6 +179,8 @@ app.use(cors({
 // ── Body parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// وب‌هوک بله سرور-به-سرور است (بدون Origin/CSRF)؛ با رمز تصادفی داخل مسیر محافظت می‌شود
+app.post('/api/payments/bale/webhook/:secret', require('./src/middleware/rateLimiter').webhookLimiter, ensureDbMiddleware, require('./src/controllers/PaymentController').baleWebhook);
 app.use(originGuard);
 
 app.get('/css/theme-vars.css', ThemeController.variables);
@@ -331,6 +333,15 @@ const spaMiddleware = require('./src/middleware/spaMiddleware');
 app.get('/', (_req, res) => res.redirect(302, '/login'));
 // Server-side logout clears cookies even if SPA/API/WAF misbehave
 app.get('/logout', require('./src/controllers/ViewController').logout);
+// بازگشت از درگاه بانکی
+const PaymentPages = require('./src/controllers/PaymentController');
+app.use('/payment', require('./src/middleware/rateLimiter').paymentPageLimiter);
+app.get('/payment/callback/:provider', ensureDbMiddleware, PaymentPages.gatewayCallback);
+// پیش‌فاکتور/شبیه‌ساز بله و صفحه نتیجه — دسترسی با توکن تصادفی هر پرداخت، بدون نشست
+app.get('/payment/checkout', noCache, ensureDbMiddleware, PaymentPages.checkoutPage);
+app.post('/payment/checkout/simulate', ensureDbMiddleware, PaymentPages.simulate);
+app.get('/payment/result', noCache, ensureDbMiddleware, PaymentPages.resultPage);
+app.get('/payment/status', noCache, ensureDbMiddleware, PaymentPages.statusJson);
 
 app.use(spaMiddleware);
 app.use(express.static(path.join(publicDir, 'spa'), {
@@ -356,7 +367,7 @@ app.use((req, res) => {
     return res.status(404).json({ message: 'مسیر یافت نشد' });
   }
   if (req.accepts(['html', 'json']) === 'html') {
-    return res.status(404).render('index', { user: req.user || null, error: 'مسیر یافت نشد' });
+    return res.status(404).render('errors/status', { statusCode: 404, user: req.user || null });
   }
   res.status(404).json({ message: 'مسیر یافت نشد' });
 });

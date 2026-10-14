@@ -40,7 +40,8 @@ const generateLdapToken = ({ username, email, fullName, department, sessionId, r
 const verifyToken = (token) => {
   try {
     if (!token || typeof token !== 'string') return null;
-    return jwt.verify(token, process.env.JWT_SECRET);
+    if (!process.env.JWT_SECRET) return null;
+    return jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch {
     return null;
   }

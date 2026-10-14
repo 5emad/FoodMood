@@ -38,6 +38,10 @@ const foodSchema = new mongoose.Schema({
   },
 });
 
+foodSchema.index({ status: 1, category: 1, name: 1 }, { background: true });
+foodSchema.index({ status: 1, isAvailable: 1, name: 1 }, { background: true });
+foodSchema.index({ category: 1, name: 1 }, { background: true });
+
 foodSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

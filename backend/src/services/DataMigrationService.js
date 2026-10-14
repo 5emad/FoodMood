@@ -89,9 +89,13 @@ async function backfillOrderFoodCategoryAndIndexes() {
     'ldapUsername_1_dailyMenuId_1',
     'guestId_1_dailyMenuId_1',
   ];
+  const existingIndexNames = new Set((await Order.collection.indexes()).map((index) => index.name));
+  let droppedLegacyIndexes = 0;
   for (const name of legacyIndexNames) {
+    if (!existingIndexNames.has(name)) continue;
     try {
       await Order.collection.dropIndex(name);
+      droppedLegacyIndexes += 1;
       console.log(`[migration] dropped legacy index ${name}`);
     } catch (err) {
       if (err?.codeName !== 'IndexNotFound' && err?.code !== 27) {
@@ -99,14 +103,36 @@ async function backfillOrderFoodCategoryAndIndexes() {
       }
     }
   }
-  try {
-    await Order.syncIndexes();
-  } catch (err) {
-    console.warn('[migration] Order.syncIndexes:', err.message);
+  if (updated > 0 || droppedLegacyIndexes > 0) {
+    try {
+      await Order.createIndexes();
+    } catch (err) {
+      console.warn('[migration] Order.createIndexes:', err.message);
+    }
+  }
+}
+
+/**
+ * سفارش‌هایی که پیش از «تایید خودکار پس از پرداخت» پرداخت شده‌اند و هنوز در انتظارند
+ */
+async function confirmPaidPendingOrders() {
+  const Payment = require('../models/Payment');
+  const Order = require('../models/Order');
+  const orderIds = await Payment.distinct('items.orderId', { status: 'paid' });
+  if (!orderIds.length) return;
+  const result = await Order.updateMany(
+    { _id: { $in: orderIds }, status: 'pending' },
+    { $set: { status: 'confirmed', updatedAt: new Date() } },
+  );
+  if (result.modifiedCount > 0) {
+    console.log(`[migration] paid orders: ${result.modifiedCount} سفارش پرداخت‌شده تایید شد`);
   }
 }
 
 async function runDataMigrations() {
+  await confirmPaidPendingOrders().catch((err) => {
+    console.warn('[migration] confirm paid orders:', err.message);
+  });
   await removeFoodServingTypeFields().catch((err) => {
     console.warn('[migration] remove servingType:', err.message);
   });
@@ -123,6 +149,7 @@ async function runDataMigrations() {
 
 module.exports = {
   runDataMigrations,
+  confirmPaidPendingOrders,
   removeFoodServingTypeFields,
   syncBrandThemeSettings,
   ensureFoodCategories,

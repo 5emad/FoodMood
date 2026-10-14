@@ -11,17 +11,14 @@ const roleMiddleware = (requiredRoles) => {
     if (role === 'administrator') role = 'admin';
 
     if (!allowed.includes(role)) {
-      const need = allowed.join(' یا ');
-      const msg = `دسترسی غیرمجاز (نقش فعلی: ${role || 'نامشخص'}؛ نیاز به: ${need})`;
+      const msg = 'شما به این بخش دسترسی ندارید';
       if (req.accepts(['html', 'json']) === 'html' && !req.originalUrl.startsWith('/api/')) {
-        return res.status(403).render('index', { user: req.user, error: msg });
+        return res.status(403).render('errors/status', { statusCode: 403, user: req.user });
       }
       return res.status(403).json({
         success: false,
         message: msg,
         code: 'FORBIDDEN_ROLE',
-        role,
-        required: allowed,
       });
     }
 

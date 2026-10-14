@@ -6,11 +6,30 @@ import AppVersionBadge from '../components/AppVersionBadge';
 import CategoryWeekMenuSlider from '../components/CategoryWeekMenuSlider';
 import PortalProfilePanel from '../components/PortalProfilePanel';
 import Pagination from '../components/admin/shared/Pagination';
+import { useJalaliDatepicker } from '../hooks/useJalaliDatepicker';
 import { normalizeUserCapabilities } from '../lib/portalCapabilities';
 import { faDigits, jdate, money } from '../utils/format';
+import PaymentModal from '../components/payment/PaymentModal';
+import PaymentInvoice from '../components/payment/PaymentInvoice';
+import {
+  BILL_STATUS_CLASS,
+  BILL_STATUS_LABEL,
+  PAYMENT_PROVIDER_LABEL,
+  PAYMENT_SCOPE_LABEL,
+  PAYMENT_STATUS_CLASS,
+  PAYMENT_STATUS_LABEL,
+} from '../lib/payments';
 
 const STATUS_LABEL = { pending: 'در انتظار تایید', confirmed: 'تایید شده', ready: 'آماده', completed: 'تحویل شده', cancelled: 'لغو شده' };
 const STATUS_CLASS = { pending: 'warning', confirmed: 'primary', ready: 'success', completed: 'success', cancelled: 'danger' };
+const ORDER_FILTER_DEFAULTS = {
+  code: '',
+  food: '',
+  amount: '',
+  orderDate: '',
+  deliveryDate: '',
+  status: '',
+};
 
 function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
@@ -34,6 +53,8 @@ function getBootstrapData() {
   }
 }
 const bootstrapData = getBootstrapData();
+const PAY_CONFIG_OFF = { enabled: false, scopes: { cart: false, week: false, month: false }, methods: [], card: null };
+const EMPTY_CART = { items: [], total: 0, reviewCount: 0 };
 
 export default function UserDashboardPage() {
   const { toast } = useToast();
@@ -47,6 +68,8 @@ export default function UserDashboardPage() {
   const [orders, setOrders] = useState([]);
   const [ordersPage, setOrdersPage] = useState(1);
   const [ordersPagination, setOrdersPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [orderFilters, setOrderFilters] = useState(ORDER_FILTER_DEFAULTS);
+  const [activeOrderFilter, setActiveOrderFilter] = useState('');
   const [menuOrders, setMenuOrders] = useState([]);
   const [statements, setStatements] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
@@ -59,6 +82,16 @@ export default function UserDashboardPage() {
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [payConfig, setPayConfig] = useState(PAY_CONFIG_OFF);
+  const [cart, setCart] = useState(EMPTY_CART);
+  const [cartUnselected, setCartUnselected] = useState(new Set());
+  const [paySub, setPaySub] = useState('cart');
+  const [payments, setPayments] = useState([]);
+  const [paymentsPagination, setPaymentsPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [payTarget, setPayTarget] = useState(null);
+  const [invoice, setInvoice] = useState(null);
+
+  useJalaliDatepicker(tab === 'orders');
 
   useEffect(() => {
     document.body.className = 'user-portal-body';
@@ -69,9 +102,9 @@ export default function UserDashboardPage() {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle('ann-drawer-open', drawerOpen || !!receipt || profileOpen);
+    document.body.classList.toggle('ann-drawer-open', drawerOpen || !!receipt || profileOpen || !!payTarget || !!invoice);
     return () => document.body.classList.remove('ann-drawer-open');
-  }, [drawerOpen, receipt, profileOpen]);
+  }, [drawerOpen, receipt, profileOpen, payTarget, invoice]);
 
   useEffect(() => {
     if (!userMenuOpen) return undefined;
@@ -103,13 +136,18 @@ export default function UserDashboardPage() {
   async function bootstrap() {
     setLoading(true);
     try {
-      const [boot, me, ann, pub, cats] = await Promise.all([
+      const [boot, me, ann, pub, cats, pay] = await Promise.all([
         api('/api/app/user/bootstrap'),
         api('/api/auth/me'),
         api('/api/announcements/active'),
         api('/api/app/public'),
         api('/api/foods/categories'),
+        api('/api/user/payments/config').catch(() => null),
       ]);
+      const nextPay = pay?.success && pay.data?.enabled ? pay.data : PAY_CONFIG_OFF;
+      setPayConfig(nextPay);
+      if (nextPay.scopes.cart) loadCart();
+      handlePaymentReturn(nextPay);
       if (boot.success) {
         setCaps(normalizeUserCapabilities({ ...boot.data.portalSettings, ...boot.data.capabilities }));
       }
@@ -125,7 +163,58 @@ export default function UserDashboardPage() {
 
   useEffect(() => {
     if (tab === 'orders') loadOrdersPage(1);
+    if (tab === 'payments') {
+      if (payConfig.scopes.cart) loadCart();
+      loadPayments(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  // بعد از پرداخت در بله کاربر به همین صفحه برمی‌گردد — وضعیت را تازه کن
+  useEffect(() => {
+    if (!payConfig.enabled) return undefined;
+    function onFocus() {
+      if (document.visibilityState !== 'visible') return;
+      if (payConfig.scopes.cart) loadCart();
+      if (tab === 'payments') loadPayments(paymentsPagination.page);
+      if (tab === 'statement') loadStatements();
+    }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payConfig, tab, paymentsPagination.page, stmtSub]);
+
+  // تنظیمات «نمایش قیمت/صورتحساب» ممکن است در حین باز بودن پرتال تغییر کند
+  useEffect(() => {
+    let lastCheck = Date.now();
+    async function refreshCaps() {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 15000) return;
+      lastCheck = Date.now();
+      try {
+        const boot = await api('/api/app/user/bootstrap');
+        if (boot.success) {
+          const next = normalizeUserCapabilities({ ...boot.data.portalSettings, ...boot.data.capabilities });
+          setCaps((prev) => {
+            if (prev.showPrices !== next.showPrices) loadMenu();
+            return next;
+          });
+        }
+      } catch { /* ignore */ }
+    }
+    document.addEventListener('visibilitychange', refreshCaps);
+    window.addEventListener('focus', refreshCaps);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshCaps);
+      window.removeEventListener('focus', refreshCaps);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'orders') return undefined;
+    const timer = window.setTimeout(() => loadOrdersPage(1), 250);
+    return () => window.clearTimeout(timer);
+  }, [orderFilters, tab]);
 
   useEffect(() => {
     if (tab === 'statement' && caps.showStatement) {
@@ -136,7 +225,7 @@ export default function UserDashboardPage() {
   async function loadMenu(weekId = selectedWeekId) {
     const [weeksRes, lockOrdersRes] = await Promise.all([
       api('/api/menu/active-weeks'),
-      api('/api/orders'),
+      api('/api/orders?activeWeeks=1'),
     ]);
     const weeks = weeksRes.success ? (weeksRes.data || []) : [];
     setActiveWeeks(weeks);
@@ -175,7 +264,12 @@ export default function UserDashboardPage() {
   }
 
   async function loadOrdersPage(page = 1) {
-    const res = await api(`/api/orders?page=${page}&limit=10`);
+    const params = new URLSearchParams({ page: String(page), limit: '10' });
+    Object.entries(orderFilters).forEach(([key, value]) => {
+      const text = String(value || '').trim();
+      if (text) params.set(key, text);
+    });
+    const res = await api(`/api/orders?${params.toString()}`);
     if (res.success) {
       setOrders(Array.isArray(res.data) ? res.data : []);
       setOrdersPagination(res.pagination || { page, totalPages: 1, total: (res.data || []).length });
@@ -184,6 +278,95 @@ export default function UserDashboardPage() {
       setOrders([]);
       setOrdersPagination({ page: 1, totalPages: 1, total: 0 });
     }
+  }
+
+  function updateOrderFilter(key, value) {
+    setOrderFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetOrderFilters() {
+    setOrderFilters(ORDER_FILTER_DEFAULTS);
+    setActiveOrderFilter('');
+  }
+
+  function clearOrderFilter(key) {
+    setOrderFilters((current) => ({ ...current, [key]: '' }));
+  }
+
+  function renderOrderFilterControl(key) {
+    const handleFilterInput = (event) => updateOrderFilter(key, event.target.value);
+    const commonInputProps = {
+      className: 'form-control',
+      value: orderFilters[key],
+      onChange: handleFilterInput,
+      onInput: handleFilterInput,
+    };
+
+    if (key === 'status') {
+      return (
+        <select {...commonInputProps}>
+          <option value="">همه وضعیت‌ها</option>
+          {Object.entries(STATUS_LABEL).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      );
+    }
+
+    const dateField = key === 'orderDate' || key === 'deliveryDate';
+    return (
+      <input
+        {...commonInputProps}
+        placeholder={dateField ? 'انتخاب تاریخ' : key === 'food' ? 'جستجوی غذا' : key === 'amount' ? 'مثلا ۱۰۰۰۰۰' : 'مثلا ۱۲۱'}
+        inputMode={key === 'code' || key === 'amount' ? 'numeric' : undefined}
+        dir={dateField ? 'ltr' : undefined}
+        data-jdp={dateField ? true : undefined}
+        data-jdp-only-date={dateField ? true : undefined}
+        readOnly={dateField}
+      />
+    );
+  }
+
+  function renderOrderFilterHeader(key, label, icon) {
+    const isOpen = activeOrderFilter === key;
+    const isActive = Boolean(String(orderFilters[key] || '').trim());
+    return (
+      <th className="order-filter-th">
+        <div className="order-filter-title">
+          <span>{label}</span>
+          <button
+            type="button"
+            className={`order-filter-trigger${isActive ? ' is-active' : ''}${isOpen ? ' is-open' : ''}`}
+            aria-label={`فیلتر ${label}`}
+            aria-expanded={isOpen}
+            onClick={(event) => {
+              event.stopPropagation();
+              setActiveOrderFilter((current) => (current === key ? '' : key));
+            }}
+          >
+            <i className={icon || 'fas fa-filter'} />
+          </button>
+        </div>
+        {isOpen && (
+          <div className="order-filter-popover" onClick={(event) => event.stopPropagation()}>
+            <div className="order-filter-popover-head">
+              <strong>فیلتر {label}</strong>
+              <button type="button" className="order-filter-popover-close" onClick={() => setActiveOrderFilter('')} aria-label="بستن">
+                <i className="fas fa-times" />
+              </button>
+            </div>
+            <div className="order-filter-popover-control">
+              {renderOrderFilterControl(key)}
+            </div>
+            <div className="order-filter-popover-actions">
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => clearOrderFilter(key)} disabled={!isActive}>
+                پاک کردن
+              </button>
+            </div>
+          </div>
+        )}
+      </th>
+    );
   }
 
   async function selectWeek(weekId) {
@@ -217,13 +400,99 @@ export default function UserDashboardPage() {
     else setStatements([]);
   }
 
+  async function loadCart() {
+    const res = await api('/api/user/payments/cart').catch(() => null);
+    setCart(res?.success ? (res.data || EMPTY_CART) : EMPTY_CART);
+  }
+
+  async function loadPayments(page = 1) {
+    const res = await api(`/api/user/payments?page=${page}&limit=10`).catch(() => null);
+    if (res?.success) {
+      setPayments(res.data || []);
+      setPaymentsPagination(res.pagination || { page, totalPages: 1, total: 0 });
+    } else {
+      setPayments([]);
+    }
+  }
+
+  async function openInvoice(paymentId) {
+    const res = await api(`/api/user/payments/${encodeURIComponent(paymentId)}`).catch(() => null);
+    if (res?.success) setInvoice(res.data);
+    else toast(res?.message || 'دریافت صورتحساب پرداخت ناموفق بود', 'error');
+  }
+
+  /** بازگشت از درگاه: /user/dashboard?payment=<id>&result=ok|fail */
+  function handlePaymentReturn(config) {
+    const params = new URLSearchParams(window.location.search);
+    const paymentId = params.get('payment');
+    const result = params.get('result');
+    if (!result) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    if (!config.enabled) return;
+    setPaySub('history');
+    setTab('payments');
+    if (result === 'ok') toast('پرداخت با موفقیت انجام شد و صورتحساب پرداخت‌شده صادر شد', 'success');
+    else toast('پرداخت انجام نشد. در صورت کسر وجه، مبلغ توسط بانک برگشت داده می‌شود.', 'error');
+    if (paymentId && /^[a-f0-9]{24}$/i.test(paymentId)) openInvoice(paymentId);
+  }
+
+  function openStatementPayment(s) {
+    const periodType = s.periodType === 'month' ? 'month' : 'week';
+    setPayTarget({
+      scope: periodType,
+      periodKey: s.periodKey,
+      title: `${PAYMENT_SCOPE_LABEL[periodType]} ${s.range?.jalaliStart || ''} تا ${s.range?.jalaliEnd || ''}`,
+      amount: s.payment?.remaining || 0,
+    });
+  }
+
+  const cartSelectedItems = cart.items.filter((item) => !cartUnselected.has(String(item.orderId)));
+  const cartSelectedTotal = cartSelectedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  function toggleCartItem(orderId) {
+    setCartUnselected((current) => {
+      const next = new Set(current);
+      const key = String(orderId);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function openCartPayment() {
+    if (!cartSelectedItems.length) return toast('حداقل یک سفارش را انتخاب کنید', 'error');
+    setPayTarget({
+      scope: 'cart',
+      orderIds: cartSelectedItems.map((item) => String(item.orderId)),
+      title: `سبد خرید — ${faDigits(cartSelectedItems.length)} سفارش`,
+      amount: cartSelectedTotal,
+    });
+  }
+
+  async function onPaymentDone(payment) {
+    setPayTarget(null);
+    setCartUnselected(new Set());
+    if (payConfig.scopes.cart) await loadCart();
+    if (tab === 'statement') await loadStatements();
+    setPaySub('history');
+    if (tab === 'payments') await loadPayments(1);
+    else goTab('payments');
+    if (payment?._id) setInvoice(payment);
+  }
+
   async function placeOrder(menuItemId) {
     if (pendingItems.has(menuItemId)) return;
     setPendingItems((s) => new Set(s).add(menuItemId));
     try {
       const data = await api('/api/orders', { method: 'POST', body: JSON.stringify({ menuItemId }) });
       if (!data.success) return toast(data.message || 'ثبت سفارش ناموفق بود', 'error');
-      toast(data.message || 'رزرو شما با موفقیت ثبت شد', 'success');
+      toast(
+        payConfig.scopes.cart
+          ? 'رزرو ثبت شد و به سبد خرید اضافه شد'
+          : (data.message || 'رزرو شما با موفقیت ثبت شد'),
+        'success',
+      );
+      if (payConfig.scopes.cart) loadCart();
       await loadMenu(selectedWeekId);
       if (tab === 'orders') await loadOrdersPage(ordersPage);
     } catch {
@@ -237,6 +506,7 @@ export default function UserDashboardPage() {
     const data = await api(`/api/orders/${orderId}/cancel`, { method: 'POST' });
     if (!data.success) return toast(data.message || 'لغو ناموفق بود', 'error');
     toast('سفارش لغو شد', 'success');
+    if (payConfig.scopes.cart) loadCart();
     await loadMenu(selectedWeekId);
     if (tab === 'orders') await loadOrdersPage(ordersPage);
   }
@@ -286,9 +556,12 @@ export default function UserDashboardPage() {
     if (menuItemId) orderByItem[menuItemId] = o;
   });
 
+  // ستون/دکمه پرداخت صورتحساب فقط وقتی پرداخت همان نوع (هفتگی/ماهیانه) فعال است
+  const stmtPayOn = payConfig.enabled && !!payConfig.scopes[stmtSub === 'monthly' ? 'month' : 'week'];
   const showAdminLink = isAdminRole(user?.role);
   const receiptData = receipt?.detail;
   const orgName = version?.organizationName || 'سامانه تغذیه';
+  const hasOrderFilters = Object.values(orderFilters).some((value) => String(value || '').trim());
   const week = menu?.week || menu?.weekId || {};
   const weekLabel = week.name
     || (week.startDate && week.endDate
@@ -301,7 +574,7 @@ export default function UserDashboardPage() {
         <aside className="user-side-nav" aria-label="منوی پرتال کارکنان">
           <div className="user-side-nav-brand">
             <div className="user-side-nav-logo" aria-hidden="true">
-              <i className="fas fa-utensils" />
+              <img src="/img/logo.svg" alt="" />
             </div>
             <div>
               <span className="user-side-nav-head">{orgName}</span>
@@ -356,6 +629,18 @@ export default function UserDashboardPage() {
                   <span className="tab-button-label">صورتحساب</span>
                   <span className="tab-button-hint">هفتگی و ماهیانه</span>
                 </span>
+              </button>
+            )}
+            {payConfig.enabled && (
+              <button type="button" role="tab" aria-selected={tab === 'payments'} className={`tab-button${tab === 'payments' ? ' active' : ''}`} onClick={() => goTab('payments')}>
+                <span className="tab-button-ico"><i className="fas fa-wallet" /></span>
+                <span className="tab-button-copy">
+                  <span className="tab-button-label">پرداخت</span>
+                  <span className="tab-button-hint">{payConfig.scopes.cart ? 'سبد خرید و سوابق' : 'سوابق پرداخت'}</span>
+                </span>
+                {payConfig.scopes.cart && cart.items.length > 0 && (
+                  <span className="tab-button-badge" aria-label={`${cart.items.length} مورد در سبد خرید`}>{faDigits(cart.items.length)}</span>
+                )}
               </button>
             )}
           </nav>
@@ -436,6 +721,22 @@ export default function UserDashboardPage() {
                 onPlaceOrder={placeOrder}
                 onCancelOrder={cancelOrder}
               />
+              {payConfig.scopes.cart && cart.items.length > 0 && (
+                <div className="cart-bar" role="status">
+                  <span className="cart-bar-ico"><i className="fas fa-basket-shopping" /></span>
+                  <span className="cart-bar-copy">
+                    <strong>{faDigits(cart.items.length)} سفارش در سبد خرید</strong>
+                    <span>مجموع سهم شما: {money(cart.total)}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => { setPaySub('cart'); goTab('payments'); }}
+                  >
+                    <i className="fas fa-wallet" /> مشاهده و پرداخت
+                  </button>
+                </div>
+              )}
             </section>
           )}
 
@@ -443,32 +744,152 @@ export default function UserDashboardPage() {
             <section className="tab-panel active">
               <header className="portal-stage-header portal-stage-header--compact">
                 <h1 className="portal-stage-title">سفارش‌های من</h1>
+                {hasOrderFilters && (
+                  <button type="button" className="btn btn-outline btn-sm order-filter-clear-all" onClick={resetOrderFilters}>
+                    <i className="fas fa-filter-circle-xmark" /> پاک‌سازی فیلترها
+                  </button>
+                )}
               </header>
               <div className="table-wrap">
-                {!orders.length ? <div className="orders-empty"><i className="fas fa-receipt" /><p>هنوز سفارشی ثبت نکرده‌اید.</p></div> : (
+                <div className="order-filter-panel" aria-label="فیلتر سفارش‌ها">
+                  <div className="order-filter-head">
+                    <span className="order-filter-head-icon"><i className="fas fa-filter" /></span>
+                    <div>
+                      <strong>فیلتر سفارش‌ها</strong>
+                      <span>{hasOrderFilters ? `${faDigits(ordersPagination.total)} رکورد مطابق فیلتر` : 'جستجو در کد، غذا، مبلغ، تاریخ و وضعیت'}</span>
+                    </div>
+                  </div>
+                  <div className="order-filter-grid">
+                    <label className="order-filter-field">
+                      <span>کد</span>
+                      <div className="order-filter-control">
+                        <i className="fas fa-hashtag" />
+                        <input
+                          className="form-control"
+                          value={orderFilters.code}
+                          onChange={(e) => updateOrderFilter('code', e.target.value)}
+                          placeholder="۱۲۱"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </label>
+                    <label className="order-filter-field">
+                      <span>غذا</span>
+                      <div className="order-filter-control">
+                        <i className="fas fa-bowl-food" />
+                        <input
+                          className="form-control"
+                          value={orderFilters.food}
+                          onChange={(e) => updateOrderFilter('food', e.target.value)}
+                          placeholder="نام غذا"
+                        />
+                      </div>
+                    </label>
+                    {caps.showPrices && (
+                      <label className="order-filter-field">
+                        <span>مبلغ</span>
+                        <div className="order-filter-control">
+                          <i className="fas fa-money-bill-wave" />
+                          <input
+                            className="form-control"
+                            value={orderFilters.amount}
+                            onChange={(e) => updateOrderFilter('amount', e.target.value)}
+                            placeholder="۱۰۰۰۰۰"
+                            inputMode="numeric"
+                          />
+                        </div>
+                      </label>
+                    )}
+                    <label className="order-filter-field">
+                      <span>تاریخ ثبت</span>
+                      <div className="order-filter-control order-filter-control--date">
+                        <i className="fas fa-calendar-plus" />
+                        <input
+                          className="form-control"
+                          value={orderFilters.orderDate}
+                          onChange={(e) => updateOrderFilter('orderDate', e.target.value)}
+                          placeholder="انتخاب تاریخ"
+                          dir="ltr"
+                          data-jdp
+                          data-jdp-only-date
+                          readOnly
+                        />
+                      </div>
+                    </label>
+                    <label className="order-filter-field">
+                      <span>تاریخ تحویل</span>
+                      <div className="order-filter-control order-filter-control--date">
+                        <i className="fas fa-calendar-check" />
+                        <input
+                          className="form-control"
+                          value={orderFilters.deliveryDate}
+                          onChange={(e) => updateOrderFilter('deliveryDate', e.target.value)}
+                          placeholder="انتخاب تاریخ"
+                          dir="ltr"
+                          data-jdp
+                          data-jdp-only-date
+                          readOnly
+                        />
+                      </div>
+                    </label>
+                    <label className="order-filter-field">
+                      <span>وضعیت</span>
+                      <div className="order-filter-control">
+                        <i className="fas fa-circle-check" />
+                        <select
+                          className="form-control"
+                          value={orderFilters.status}
+                          onChange={(e) => updateOrderFilter('status', e.target.value)}
+                        >
+                          <option value="">همه وضعیت‌ها</option>
+                          {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </label>
+                  </div>
+                  <div className="order-filter-actions">
+                    <button type="button" className="btn btn-outline btn-sm order-filter-reset" onClick={resetOrderFilters} disabled={!hasOrderFilters}>
+                      <i className="fas fa-filter-circle-xmark" /> پاک‌سازی فیلتر
+                    </button>
+                  </div>
+                </div>
+                {!orders.length && !hasOrderFilters ? (
+                  <div className="orders-empty">
+                    <i className="fas fa-receipt" />
+                    <p>هنوز سفارشی ثبت نکرده‌اید.</p>
+                  </div>
+                ) : (
                   <>
                     <table className="table">
                       <thead>
                         <tr>
-                          <th>کد</th>
-                          <th>غذا</th>
-                          {caps.showPrices && <th>مبلغ</th>}
-                          <th>تاریخ ثبت</th>
-                          <th>تاریخ تحویل</th>
-                          <th>وضعیت</th>
+                          {renderOrderFilterHeader('code', 'کد', 'fas fa-hashtag')}
+                          {renderOrderFilterHeader('food', 'غذا', 'fas fa-bowl-food')}
+                          {caps.showPrices && renderOrderFilterHeader('amount', 'مبلغ', 'fas fa-money-bill-wave')}
+                          {renderOrderFilterHeader('orderDate', 'تاریخ ثبت', 'fas fa-calendar-plus')}
+                          {renderOrderFilterHeader('deliveryDate', 'تاریخ تحویل', 'fas fa-calendar-check')}
+                          {renderOrderFilterHeader('status', 'وضعیت', 'fas fa-circle-check')}
                         </tr>
                       </thead>
                       <tbody>
-                        {orders.map((o) => (
+                        {orders.length ? orders.map((o) => (
                           <tr key={o._id}>
                             <td>#{o.orderNumber || '-'}</td>
                             <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}</td>
                             {caps.showPrices && <td>{money(o.totalPrice)}</td>}
                             <td>{jdate(o.orderDate)}</td>
                             <td>{o.deliveryDate ? jdate(o.deliveryDate) : '—'}</td>
-                            <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
+                            <td><span className={`badge badge-${STATUS_CLASS[o.status] || 'gray'}`}>{payConfig.scopes.cart && o.status === 'pending' ? 'در انتظار پرداخت' : (STATUS_LABEL[o.status] || o.status)}</span></td>
                           </tr>
-                        ))}
+                        )) : (
+                          <tr>
+                            <td colSpan={caps.showPrices ? 6 : 5} className="order-filter-empty-row">
+                              رکوردی با این فیلترها پیدا نشد.
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                     <Pagination
@@ -496,7 +917,11 @@ export default function UserDashboardPage() {
                 سهم سازمان: <strong>{faDigits(caps.organizationSharePercent)}٪</strong>
                 {' — '}
                 سهم شخص: <strong>{faDigits(caps.personalSharePercent)}٪</strong>
-                <span className="statement-range">فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند</span>
+                <span className="statement-range">
+                  {payConfig.scopes.cart
+                    ? 'سفارش‌ها پس از پرداخت خودکار تایید می‌شوند'
+                    : 'فقط سفارش‌های تاییدشده در صورتحساب لحاظ می‌شوند'}
+                </span>
               </div>
               <div className="table-wrap">
                 {!statements.length ? <div className="orders-empty"><p>صورتحسابی ثبت نشده است.</p></div> : (
@@ -506,6 +931,7 @@ export default function UserDashboardPage() {
                         <th>شناسه</th>
                         <th>بازه</th>
                         <th>قیمت صورتحساب</th>
+                        {stmtPayOn && <th>وضعیت پرداخت</th>}
                         <th>عملیات</th>
                       </tr>
                     </thead>
@@ -527,10 +953,29 @@ export default function UserDashboardPage() {
                               </div>
                             ) : null}
                           </td>
+                          {stmtPayOn && (
+                            <td>
+                              <span className={`badge badge-${BILL_STATUS_CLASS[s.payment?.status] || 'gray'}`}>
+                                {BILL_STATUS_LABEL[s.payment?.status] || '—'}
+                              </span>
+                              {s.payment?.status === 'partial' && (
+                                <div className="statement-pay-remaining">مانده: {money(s.payment.remaining)}</div>
+                              )}
+                            </td>
+                          )}
                           <td>
-                            <button type="button" className="btn btn-outline btn-sm" onClick={() => openReceipt(s)}>
-                              <i className="fas fa-receipt" /> نمایش بیشتر
-                            </button>
+                            <div className="statement-actions">
+                              <button type="button" className="btn btn-outline btn-sm" onClick={() => openReceipt(s)}>
+                                <i className="fas fa-receipt" /> نمایش بیشتر
+                              </button>
+                              {stmtPayOn
+                                && Number(s.payment?.remaining) > 0
+                                && s.payment?.status !== 'review' && (
+                                <button type="button" className="btn btn-primary btn-sm" onClick={() => openStatementPayment(s)}>
+                                  <i className="fas fa-wallet" /> پرداخت
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -538,6 +983,148 @@ export default function UserDashboardPage() {
                   </table>
                 )}
               </div>
+            </section>
+          )}
+
+          {!loading && tab === 'payments' && payConfig.enabled && (
+            <section className="tab-panel active">
+              <header className="portal-stage-header portal-stage-header--compact">
+                <h1 className="portal-stage-title">پرداخت</h1>
+              </header>
+              <div className="sub-tabs" style={{ marginBottom: 16 }}>
+                {payConfig.scopes.cart && (
+                  <button type="button" className={`sub-tab-btn${paySub === 'cart' ? ' active' : ''}`} onClick={() => setPaySub('cart')}>
+                    <i className="fas fa-basket-shopping" /> سبد خرید{cart.items.length ? ` (${faDigits(cart.items.length)})` : ''}
+                  </button>
+                )}
+                <button type="button" className={`sub-tab-btn${paySub === 'history' || !payConfig.scopes.cart ? ' active' : ''}`} onClick={() => setPaySub('history')}>
+                  <i className="fas fa-file-invoice-dollar" /> صورتحساب‌های پرداخت
+                </button>
+              </div>
+
+              {payConfig.scopes.cart && paySub === 'cart' && (
+                <div className="table-wrap">
+                  {cart.reviewCount > 0 && (
+                    <div className="statement-split-banner">
+                      <i className="fas fa-hourglass-half" /> {faDigits(cart.reviewCount)} سفارش با رسید ثبت‌شده در انتظار تایید مدیر است.
+                    </div>
+                  )}
+                  {!cart.items.length ? (
+                    <div className="orders-empty">
+                      <i className="fas fa-basket-shopping" />
+                      <p>سبد خرید شما خالی است؛ پس از رزرو غذا، سفارش‌ها اینجا برای پرداخت قرار می‌گیرند.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <table className="table cart-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 40 }}>
+                              <input
+                                type="checkbox"
+                                aria-label="انتخاب همه"
+                                checked={cartUnselected.size === 0}
+                                onChange={(e) => setCartUnselected(e.target.checked ? new Set() : new Set(cart.items.map((i) => String(i.orderId))))}
+                              />
+                            </th>
+                            <th>کد</th>
+                            <th>غذا</th>
+                            <th>تاریخ تحویل</th>
+                            <th>وضعیت سفارش</th>
+                            <th>سهم شما</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cart.items.map((item) => {
+                            const key = String(item.orderId);
+                            return (
+                              <tr key={key} className={cartUnselected.has(key) ? 'is-unselected' : ''}>
+                                <td><input type="checkbox" aria-label="انتخاب" checked={!cartUnselected.has(key)} onChange={() => toggleCartItem(key)} /></td>
+                                <td>#{item.orderNumber || '-'}</td>
+                                <td>{item.foodName}</td>
+                                <td>{item.jalaliDate}</td>
+                                <td><span className={`badge badge-${STATUS_CLASS[item.status] || 'gray'}`}>{item.status === 'pending' ? 'در انتظار پرداخت' : (STATUS_LABEL[item.status] || item.status)}</span></td>
+                                <td className="statement-personal-col">{money(item.amount)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      <div className="cart-footer">
+                        <div className="cart-footer-total">
+                          <span>جمع قابل پرداخت ({faDigits(cartSelectedItems.length)} سفارش)</span>
+                          <strong>{money(cartSelectedTotal)}</strong>
+                        </div>
+                        <button type="button" className="btn btn-primary" onClick={openCartPayment} disabled={!cartSelectedItems.length}>
+                          <i className="fas fa-wallet" /> پرداخت
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {(paySub === 'history' || !payConfig.scopes.cart) && (
+                <div className="table-wrap">
+                  {!payments.length ? (
+                    <div className="orders-empty">
+                      <i className="fas fa-file-invoice-dollar" />
+                      <p>هنوز پرداختی ثبت نکرده‌اید.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>شماره</th>
+                            <th>بابت</th>
+                            <th>مبلغ</th>
+                            <th>روش</th>
+                            <th>تاریخ</th>
+                            <th>وضعیت</th>
+                            <th>عملیات</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payments.map((p) => (
+                            <tr key={p._id}>
+                              <td className="statement-number-col">{p.code}</td>
+                              <td>
+                                {PAYMENT_SCOPE_LABEL[p.scope] || p.scope}
+                                {p.scope !== 'cart' && p.periodLabel && (
+                                  <div className="statement-pay-remaining">{p.periodLabel.replace(/^صورتحساب (هفتگی|ماهیانه) /, '')}</div>
+                                )}
+                              </td>
+                              <td>{money(p.amount)}</td>
+                              <td>{PAYMENT_PROVIDER_LABEL[p.provider] || p.method}</td>
+                              <td>{jdate(p.createdAt)}</td>
+                              <td><span className={`badge badge-${PAYMENT_STATUS_CLASS[p.status] || 'gray'}`}>{p.statusLabel || PAYMENT_STATUS_LABEL[p.status]}</span></td>
+                              <td>
+                                <div className="statement-actions">
+                                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setInvoice(p)}>
+                                    <i className="fas fa-receipt" /> {p.status === 'paid' ? 'صورتحساب' : 'جزئیات'}
+                                  </button>
+                                  {p.status === 'initiated' && p.checkoutUrl && (
+                                    <a className="btn btn-primary btn-sm" href={p.checkoutUrl}>
+                                      <i className="fas fa-arrow-up-right-from-square" /> ادامه پرداخت
+                                    </a>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <Pagination
+                        page={paymentsPagination.page}
+                        totalPages={paymentsPagination.totalPages}
+                        total={paymentsPagination.total}
+                        onPage={(pg) => loadPayments(pg)}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
@@ -579,6 +1166,24 @@ export default function UserDashboardPage() {
             </>
           )}
         </div>
+      )}
+
+      {payTarget && (
+        <PaymentModal
+          target={payTarget}
+          config={payConfig}
+          onClose={() => setPayTarget(null)}
+          onDone={onPaymentDone}
+        />
+      )}
+
+      {invoice && (
+        <PaymentInvoice
+          payment={invoice}
+          orgName={orgName}
+          receiptUrl={`/api/user/payments/${encodeURIComponent(invoice._id)}/receipt`}
+          onClose={() => setInvoice(null)}
+        />
       )}
 
       {(receipt || receiptLoading) && (
@@ -689,6 +1294,18 @@ export default function UserDashboardPage() {
                     <span>قابل پرداخت شما</span>
                     <strong>{money(receiptData?.summary?.personalAmount ?? receipt?.preview?.summary?.personalAmount)}</strong>
                   </div>
+                  {stmtPayOn && receipt?.preview?.payment && (
+                    <>
+                      <div className="receipt-total-row">
+                        <span>پرداخت شده</span>
+                        <strong>{money(receipt.preview.payment.paidAmount)}</strong>
+                      </div>
+                      <div className="receipt-total-row">
+                        <span>مانده</span>
+                        <strong>{money(receipt.preview.payment.remaining)}</strong>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="receipt-dash receipt-dash--dots" />
                 <div className="receipt-footer">

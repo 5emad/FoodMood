@@ -14,7 +14,7 @@ async function originGuard(req, res, next) {
   const presented = origin ? normalizePublicUrl(origin) : normalizePublicUrl(referer || '');
 
   if (!presented) {
-    if (/^Bearer\s+\S+/.test(String(req.headers.authorization || ''))) return next();
+    if (require('./csrfMiddleware').hasValidBearer(req)) return next();
     return res.status(403).json({ success: false, message: 'درخواست بدون مبدا معتبر رد شد' });
   }
 

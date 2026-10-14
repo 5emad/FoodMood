@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import UserDashboardPage from './pages/UserDashboardPage';
 import FoodsPage from './pages/FoodsPage';
@@ -51,6 +52,7 @@ export default function App() {
       <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/complete-profile" element={<CompleteProfilePage />} />
       <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
       <Route path="/user/dashboard" element={<UserDashboardPage />} />

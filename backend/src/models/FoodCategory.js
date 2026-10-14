@@ -32,6 +32,9 @@ const foodCategorySchema = new mongoose.Schema({
   },
 });
 
+foodCategorySchema.index({ status: 1, sortOrder: 1, name: 1 }, { background: true });
+foodCategorySchema.index({ sortOrder: 1, name: 1 }, { background: true });
+
 foodCategorySchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

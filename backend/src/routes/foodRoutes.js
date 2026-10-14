@@ -10,6 +10,7 @@ const {
   assertUploadedImageMagic,
 } = require('../helpers/ImageUploadHelper');
 const { createWafParamsRestoreMiddleware } = require('../middleware/firewtwallPatches');
+const { bulkActionLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 const uploadDir = path.join(__dirname, '..', '..', 'public', 'uploads', 'foods');
@@ -22,6 +23,10 @@ router.get('/categories', optionalAuthMiddleware, FoodCategoryController.list);
 router.post('/categories', ...adminOnly, FoodCategoryController.create);
 router.put('/categories/:id', ...adminOnly, restoreIds, FoodCategoryController.update);
 router.delete('/categories/:id', ...adminOnly, restoreIds, FoodCategoryController.remove);
+
+// Bulk admin actions — before /:id
+router.post('/bulk-delete', ...adminOnly, bulkActionLimiter, FoodController.bulkDelete);
+router.post('/bulk-status', ...adminOnly, bulkActionLimiter, FoodController.bulkStatus);
 
 // Public/user read: optional session so prices can be stripped when hidden
 router.get('/', optionalAuthMiddleware, FoodController.getAll);

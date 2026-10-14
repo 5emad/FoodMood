@@ -1,6 +1,8 @@
 const { getUserCapabilities, capabilitiesApiShape, statementDisabledPayload } = require('../helpers/PermissionHelper');
 const { getSettingsLean } = require('../services/SettingsService');
 const { buildUserStatement, getUserStatementMonths, getUserStatementWeeks, listUserStatements } = require('../services/UserStatementService');
+const { annotateUserStatements } = require('../services/PaymentService');
+const { readPaymentConfig, billableStatuses } = require('../helpers/PaymentConfigHelper');
 
 class UserStatementController {
   static async getStatement(req, res, next) {
@@ -28,7 +30,7 @@ class UserStatementController {
         return res.json({ success: true, data: [] });
       }
 
-      const months = await getUserStatementMonths(req.user);
+      const months = await getUserStatementMonths(req.user, billableStatuses(await getSettingsLean()));
       return res.json({ success: true, data: months });
     } catch (error) {
       return next(error);
@@ -45,7 +47,10 @@ class UserStatementController {
       const settings = await getSettingsLean();
       const type = req.query.type === 'month' ? 'month' : 'week';
       const statements = await listUserStatements(req.user, type, settings);
-      return res.json({ success: true, data: statements });
+      const data = readPaymentConfig(settings).enabled
+        ? await annotateUserStatements(req.user, statements)
+        : statements;
+      return res.json({ success: true, data });
     } catch (error) {
       return next(error);
     }
@@ -58,7 +63,7 @@ class UserStatementController {
         return res.json({ success: true, data: [] });
       }
 
-      const weeks = await getUserStatementWeeks(req.user);
+      const weeks = await getUserStatementWeeks(req.user, billableStatuses(await getSettingsLean()));
       return res.json({ success: true, data: weeks });
     } catch (error) {
       return next(error);

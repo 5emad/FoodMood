@@ -104,6 +104,11 @@ userSchema.virtual('isLocked').get(function () {
   return this.lockUntil && this.lockUntil > Date.now();
 });
 
+userSchema.index({ phone: 1 }, { background: true, sparse: true });
+userSchema.index({ role: 1, status: 1, fullName: 1 }, { background: true });
+userSchema.index({ departmentId: 1, status: 1 }, { background: true });
+userSchema.index({ lockUntil: -1 }, { background: true, partialFilterExpression: { lockUntil: { $type: 'date' } } });
+
 userSchema.pre('validate', function (next) {
   if (!this.fullName) this.fullName = this.username;
   next();

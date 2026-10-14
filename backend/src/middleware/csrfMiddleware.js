@@ -1,4 +1,12 @@
 const crypto = require('crypto');
+const { verifyToken } = require('../helpers/TokenHelper');
+
+/** True only when the Authorization header carries a JWT that actually verifies. */
+function hasValidBearer(req) {
+  const match = /^Bearer\s+(\S+)$/.exec(String(req.headers.authorization || ''));
+  if (!match) return false;
+  return Boolean(verifyToken(match[1]));
+}
 
 function ensureCsrfToken(req) {
   if (!req.session) return '';
@@ -20,14 +28,16 @@ function csrfMiddleware(req, res, next) {
   ) return next();
 
   // Bearer-token API clients are not using ambient browser cookies (require non-empty token).
-  if (/^Bearer\s+\S+/.test(String(req.headers.authorization || ''))) return next();
+  if (hasValidBearer(req)) return next();
 
   const expected = ensureCsrfToken(req);
   const provided = String(req.get('x-csrf-token') || '');
-  if (!expected || provided !== expected) {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (!expected || a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
     return res.status(403).json({ success: false, message: 'نشست امنیتی منقضی شده. صفحه را تازه‌سازی کنید (F5) و دوباره تلاش کنید.', code: 'CSRF_INVALID' });
   }
   next();
 }
 
-module.exports = { ensureCsrfToken, csrfMiddleware };
+module.exports = { ensureCsrfToken, csrfMiddleware, hasValidBearer };

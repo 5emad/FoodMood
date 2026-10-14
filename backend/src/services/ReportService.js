@@ -194,12 +194,13 @@ function endOfRange(date) {
  */
 async function findOrdersInRange(rangeStart, rangeEnd, options = {}) {
   const light = options.light === true;
+  const statuses = options.statuses || CONFIRMED_REPORT_STATUSES;
   const dailyMenus = await DailyMenu.find({
     date: { $gte: rangeStart, $lte: rangeEnd },
   }).select('_id').lean();
   const dailyMenuIds = dailyMenus.map((m) => m._id);
 
-  const statusFilter = { status: { $in: CONFIRMED_REPORT_STATUSES } };
+  const statusFilter = { status: { $in: statuses } };
   let query;
   if (dailyMenuIds.length) {
     query = {
@@ -282,14 +283,15 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
   const candidateOrders = await findOrdersInRange(
     rangeStartInput,
     endOfRange(rangeEndInput),
-    { light: mode === 'finance' },
+    { light: mode === 'finance', statuses: options.statuses },
   );
+  const reportStatuses = options.statuses || CONFIRMED_REPORT_STATUSES;
 
   const reportDateOfOrder = (order) => startOfDay(
     order.dailyMenuId?.date || order.menuItemId?.dailyMenuId?.date || order.orderDate,
   );
   const orders = candidateOrders.filter((order) => {
-    if (!isConfirmedReportOrder(order)) return false;
+    if (!reportStatuses.includes(order.status)) return false;
     const reportDate = reportDateOfOrder(order);
     return (!rangeStart || reportDate >= rangeStart) && (!rangeEnd || reportDate <= rangeEnd);
   });
@@ -625,11 +627,11 @@ async function buildReport(rangeStartInput, rangeEndInput, options = {}) {
   };
 }
 
-async function getAvailableReportMonths() {
+async function getAvailableReportMonths(statuses = CONFIRMED_REPORT_STATUSES) {
   // Read current statuses, including cancellations made by other server processes.
   // Aggregation in Mongo — never hydrate all confirmed orders into Node heap
   const rows = await Order.aggregate([
-    { $match: { status: { $in: CONFIRMED_REPORT_STATUSES } } },
+    { $match: { status: { $in: statuses } } },
     {
       $lookup: {
         from: 'dailymenus',
@@ -679,7 +681,7 @@ async function getAvailableReportMonths() {
  * Lightweight owner totals for finance week-slices (no populate trees / day grids).
  * Returns [{ userKey, personalAmount, totalPrice, mealCount }]
  */
-async function sumOwnerTotalsInRange(rangeStartInput, rangeEndInput, organizationSharePercent = 0) {
+async function sumOwnerTotalsInRange(rangeStartInput, rangeEndInput, organizationSharePercent = 0, statuses = CONFIRMED_REPORT_STATUSES) {
   const rangeStart = startOfDay(rangeStartInput);
   const rangeEnd = startOfDay(rangeEndInput);
   const dailyMenus = await DailyMenu.find({
@@ -689,11 +691,11 @@ async function sumOwnerTotalsInRange(rangeStartInput, rangeEndInput, organizatio
 
   const match = dailyMenuIds.length
     ? {
-      status: { $in: CONFIRMED_REPORT_STATUSES },
+      status: { $in: statuses },
       dailyMenuId: { $in: dailyMenuIds },
     }
     : {
-      status: { $in: CONFIRMED_REPORT_STATUSES },
+      status: { $in: statuses },
       orderDate: { $gte: rangeStart, $lte: endOfRange(rangeEnd) },
     };
 
