@@ -11,6 +11,7 @@ import './styles/spa.css';
 import './styles/admin-panel.css';
 import './styles/auth.css';
 import './styles/admin-theme.css';
+import './styles/responsive.css';
 
 function getBootstrapData() {
   try {

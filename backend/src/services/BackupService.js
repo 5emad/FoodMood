@@ -17,6 +17,7 @@ const Counter = require('../models/Counter');
 const SecurityLog = require('../models/SecurityLog');
 const Announcement = require('../models/Announcement');
 const Payment = require('../models/Payment');
+const DiscountCode = require('../models/DiscountCode');
 const StatementDiscount = require('../models/StatementDiscount');
 const UserSession = require('../models/UserSession');
 
@@ -59,6 +60,7 @@ const collectionMap = {
   announcements: Announcement,
   statementDiscounts: StatementDiscount,
   payments: Payment,
+  discountCodes: DiscountCode,
 };
 
 /** فیلدهایی که در schema با select:false مخفی‌اند و باید در بکاپ بیایند */
@@ -334,7 +336,7 @@ function assertUsersRestorable(users) {
 }
 
 /** کالکشن‌هایی که بعداً اضافه شده‌اند؛ پشتیبان قدیمی بدون آن‌ها نباید داده فعلی را پاک کند */
-const OPTIONAL_COLLECTIONS = new Set(['statementDiscounts', 'payments']);
+const OPTIONAL_COLLECTIONS = new Set(['statementDiscounts', 'payments', 'discountCodes']);
 
 async function applyPayloadData(data, session = null) {
   const summary = {};

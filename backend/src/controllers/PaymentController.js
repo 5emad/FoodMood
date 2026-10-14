@@ -32,6 +32,7 @@ function parseCheckoutBody(body = {}) {
       ? orderIds.map(String).filter((id) => /^[a-f0-9]{24}$/i.test(id)).slice(0, 200)
       : [],
     method: String(body.method || ''),
+    discountCode: typeof body.discountCode === 'string' ? body.discountCode.slice(0, 32) : '',
     trackingCode: body.trackingCode,
     note: body.note,
   };
@@ -77,8 +78,12 @@ function adminConfigFor(req, settings) {
   };
 }
 
+function portalPath(payment) {
+  return String(payment?.userKey || '').startsWith('guest:') ? '/guest' : '/user/dashboard';
+}
+
 function returnUrl(payment, ok) {
-  return `/user/dashboard?payment=${encodeURIComponent(payment?._id || '')}&result=${ok ? 'ok' : 'fail'}`;
+  return `${portalPath(payment)}?payment=${encodeURIComponent(payment?._id || '')}&result=${ok ? 'ok' : 'fail'}`;
 }
 
 function sendPage(res, settings, view) {
@@ -105,7 +110,7 @@ function resultView(payment, view) {
       state: 'waiting',
       payment: view,
       sandbox: !!payment.sandbox,
-      actions: [{ kind: 'link', href: '/user/dashboard', label: 'بازگشت به سامانه', style: 'ghost' }],
+      actions: [{ kind: 'link', href: portalPath(payment), label: 'بازگشت به سامانه', style: 'ghost' }],
       pollUrl: `/payment/status?pid=${payment._id}&t=${encodeURIComponent(payment.viewToken)}`,
     };
   }
@@ -186,7 +191,7 @@ class PaymentController {
     try {
       const params = parseCheckoutBody(req.body);
       if (!params.scope) throw Object.assign(new Error('نوع پرداخت نامعتبر است'), { status: 400 });
-      const payment = await PaymentService.submitCardPayment(req.user, params, req.file);
+      const payment = await PaymentService.submitCardPayment(req.user, params, req.file, req);
       return res.json({
         success: true,
         message: 'رسید پرداخت ثبت شد و پس از تایید مدیر، صورتحساب پرداخت‌شده صادر می‌شود',
@@ -209,6 +214,32 @@ class PaymentController {
       return res.json({
         success: true,
         data: { payment: PaymentService.serializePayment(payment), redirectUrl },
+      });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  }
+
+  static async checkDiscount(req, res, next) {
+    try {
+      const params = parseCheckoutBody(req.body);
+      if (!params.scope) throw Object.assign(new Error('نوع پرداخت نامعتبر است'), { status: 400 });
+      const data = await PaymentService.checkDiscount(req, params);
+      return res.json({ success: true, message: `کد تخفیف ${data.label} اعمال شد`, data });
+    } catch (error) {
+      return sendError(res, next, error);
+    }
+  }
+
+  static async payWithDiscount(req, res, next) {
+    try {
+      const params = parseCheckoutBody(req.body);
+      if (!params.scope) throw Object.assign(new Error('نوع پرداخت نامعتبر است'), { status: 400 });
+      const payment = await PaymentService.payWithDiscountOnly(req, params);
+      return res.json({
+        success: true,
+        message: 'پرداخت با کد تخفیف ثبت شد و صورتحساب پرداخت‌شده صادر شد',
+        data: PaymentService.serializePayment(payment),
       });
     } catch (error) {
       return sendError(res, next, error);
@@ -250,7 +281,7 @@ class PaymentController {
 
     const appearance = readPaymentConfig(settings).appearance;
     const fields = { pid: String(payment._id), t: payment.viewToken };
-    const back = { kind: 'link', href: '/user/dashboard', label: 'بازگشت به سامانه', style: 'ghost' };
+    const back = { kind: 'link', href: portalPath(payment), label: 'بازگشت به سامانه', style: 'ghost' };
     if (payment.sandbox) {
       return sendPage(res, settings, {
         state: 'checkout',

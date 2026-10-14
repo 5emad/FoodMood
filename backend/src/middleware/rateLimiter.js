@@ -136,7 +136,46 @@ const webhookLimiter = createLimiter({
   message: { ok: false },
 });
 
+/**
+ * کانال ورود مهمان — جدا از ورود کارکنان (store و سقف جدا).
+ * ورود ناموفق: به ازای IP؛ قفل ۵ تلاش برای هر مهمان هم جداگانه اعمال می‌شود.
+ */
+const guestLoginLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.GUEST_LOGIN_RATE_LIMIT_MAX || 10),
+  skipSuccessful: true,
+  message: { success: false, message: 'تعداد تلاش‌های ورود مهمان بیش از حد مجاز است. ۱۵ دقیقه بعد دوباره تلاش کنید.' },
+  keyGenerator: (req) => `guest-login:${resolveClientIp(req)}`,
+});
+
+const guestCaptchaLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.GUEST_CAPTCHA_RATE_LIMIT_MAX || 40),
+  message: { success: false, message: 'درخواست کد امنیتی بیش از حد مجاز است.' },
+  keyGenerator: (req) => `guest-captcha:${resolveClientIp(req)}`,
+});
+
+const guestMagicLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.GUEST_MAGIC_RATE_LIMIT_MAX || 15),
+  skipSuccessful: true,
+  message: { success: false, message: 'تعداد تلاش‌ها بیش از حد مجاز است.' },
+  keyGenerator: (req) => `guest-magic:${resolveClientIp(req)}`,
+});
+
+/** بررسی کد تخفیف — کانال جدا؛ قفل ۸ تلاش ناموفق در DiscountCodeService */
+const discountCheckLimiter = createLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: Number(process.env.DISCOUNT_CHECK_RATE_LIMIT_MAX || 20),
+  message: { success: false, message: 'تعداد بررسی کد تخفیف بیش از حد مجاز است. کمی صبر کنید.' },
+  keyGenerator: (req) => `discount:${req.user?.id || resolveClientIp(req)}`,
+});
+
 module.exports = {
+  discountCheckLimiter,
+  guestLoginLimiter,
+  guestCaptchaLimiter,
+  guestMagicLimiter,
   paymentCreateLimiter,
   paymentPageLimiter,
   webhookLimiter,

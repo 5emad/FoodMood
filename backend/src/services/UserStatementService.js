@@ -28,6 +28,7 @@ const { billableStatuses } = require('../helpers/PaymentConfigHelper');
 const StatementDiscount = require('../models/StatementDiscount');
 
 function financeUserKeyFromUser(user = {}) {
+  if (user?.authSource === 'guest' && user.guestId) return `guest:${user.guestId}`;
   if (isLdapAuth(user)) return `ldap:${user.username}`;
   return String(user.id || user._id || '');
 }

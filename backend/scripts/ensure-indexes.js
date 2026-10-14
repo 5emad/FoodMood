@@ -17,6 +17,7 @@ const models = [
   require('../src/models/MenuItem'),
   require('../src/models/Order'),
   require('../src/models/Payment'),
+  require('../src/models/DiscountCode'),
   require('../src/models/SecurityLog'),
   require('../src/models/StatementDiscount'),
   require('../src/models/User'),

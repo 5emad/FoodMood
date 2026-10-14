@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { faDigits, jdate, money } from '../../utils/format';
+import ModalPortal from '../../components/ModalPortal';
 import {
   PAYMENT_PROVIDER_LABEL,
   PAYMENT_SCOPE_LABEL,
@@ -32,6 +33,7 @@ export default function PaymentInvoice({ payment, orgName, onClose, receiptUrl, 
   const canShowImage = !!(receiptUrl && payment.hasReceipt);
 
   return (
+    <ModalPortal>
     <div className="receipt-modal-root">
       <div className="receipt-modal-overlay" onClick={onClose} />
       <div
@@ -92,6 +94,14 @@ export default function PaymentInvoice({ payment, orgName, onClose, receiptUrl, 
               <div className="receipt-dash" />
               <div className="receipt-totals">
                 <div className="receipt-total-row"><span>تعداد اقلام</span><strong>{faDigits((payment.items || []).length)}</strong></div>
+                {Number(payment.discountAmount) > 0 && (
+                  <>
+                    <div className="receipt-total-row"><span>جمع قبل از تخفیف</span><strong>{money(payment.grossAmount)}</strong></div>
+                    <div className="receipt-total-row receipt-total-row--discount">
+                      <span>کد تخفیف <b dir="ltr">{payment.discountCode}</b> (−{money(payment.discountAmount)})</span>
+                    </div>
+                  </>
+                )}
                 <div className="receipt-total-row receipt-total-row--pay">
                   <span>{paid ? 'مبلغ پرداخت‌شده' : 'مبلغ'}</span>
                   <strong>{money(payment.amount)}</strong>
@@ -150,5 +160,6 @@ export default function PaymentInvoice({ payment, orgName, onClose, receiptUrl, 
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

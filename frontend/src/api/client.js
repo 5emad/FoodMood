@@ -1,4 +1,24 @@
 let csrfPromise = null;
+let pathRewrite = null;
+let unauthorizedHandler = null;
+
+/**
+ * پرتال مهمان همان صفحه کاربران را با مسیرهای /api/guest استفاده می‌کند.
+ * fn(path) => path جدید؛ null = غیرفعال
+ */
+export function setApiPathRewrite(fn) {
+  pathRewrite = typeof fn === 'function' ? fn : null;
+}
+
+/** به‌جای انتقال به /login (مثلاً بازگشت به صفحه ورود مهمان) */
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = typeof fn === 'function' ? fn : null;
+}
+
+/** آدرس نهایی API (برای <img src> و لینک‌هایی که از api() رد نمی‌شوند) */
+export function apiUrl(url) {
+  return pathRewrite ? pathRewrite(url) : url;
+}
 
 export function resetCsrf() {
   csrfPromise = null;
@@ -19,12 +39,17 @@ async function getCsrfToken() {
 }
 
 function redirectLogin(reason) {
+  if (unauthorizedHandler) {
+    unauthorizedHandler(reason);
+    return;
+  }
   if (window.location.pathname.includes('/login')) return;
   const q = reason === 'idle' ? 'idle=1' : reason === 'inactive' ? 'inactive=1' : 'expired=1';
   window.location.replace(`/login?${q}`);
 }
 
-export async function api(url, options = {}) {
+export async function api(rawUrl, options = {}) {
+  const url = apiUrl(rawUrl);
   const method = String(options.method || 'GET').toUpperCase();
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   let attempt = 0;
@@ -63,7 +88,8 @@ export async function api(url, options = {}) {
     break;
   }
 
-  const isAuthCredentialCall = /\/api\/auth\/(login|resolve-username|verify-super-token)(?:\?|$)/.test(url);
+  const isAuthCredentialCall = /\/api\/auth\/(login|resolve-username|verify-super-token)(?:\?|$)/.test(url)
+    || /\/api\/guest\/(login|magic)(?:\?|$)/.test(url);
   if (res.status === 401 || (res.status === 403 && body?.code === 'inactive')) {
     if (isAuthCredentialCall) {
       return body || { success: false, message: 'اطلاعات وارد شده صحیح نیست' };
@@ -93,7 +119,8 @@ export async function api(url, options = {}) {
   return { success: false, message: text || `HTTP ${res.status}`, _httpStatus: res.status };
 }
 
-export async function apiBlob(url, options = {}) {
+export async function apiBlob(rawUrl, options = {}) {
+  const url = apiUrl(rawUrl);
   const method = String(options.method || 'GET').toUpperCase();
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   let attempt = 0;
@@ -124,7 +151,8 @@ export async function apiBlob(url, options = {}) {
   return res;
 }
 
-export async function apiForm(url, formData, method = 'POST') {
+export async function apiForm(rawUrl, formData, method = 'POST') {
+  const url = apiUrl(rawUrl);
   const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method).toUpperCase());
   let attempt = 0;
   let res;

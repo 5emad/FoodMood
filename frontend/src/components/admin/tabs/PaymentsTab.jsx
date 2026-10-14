@@ -444,7 +444,14 @@ export default function PaymentsTab() {
                           {PAYMENT_SCOPE_LABEL[p.scope]}
                           {p.statementNumber && <div style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{p.statementNumber}</div>}
                         </td>
-                        <td>{money(p.amount)}</td>
+                        <td>
+                          {money(p.amount)}
+                          {Number(p.discountAmount) > 0 && (
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+                              کد <span dir="ltr">{p.discountCode}</span> (−{money(p.discountAmount)})
+                            </div>
+                          )}
+                        </td>
                         <td>{PAYMENT_PROVIDER_LABEL[p.provider] || p.method}{p.sandbox ? ' (آزمایشی)' : ''}</td>
                         <td>{jdate(p.createdAt)}</td>
                         <td>

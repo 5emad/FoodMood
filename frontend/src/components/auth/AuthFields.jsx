@@ -43,14 +43,14 @@ export function PasswordInput({ id, invalid, ...props }) {
  * Server-generated image captcha. Bump `version` after every attempt to get a fresh image
  * (each challenge is single-use on the server).
  */
-export function Captcha({ value, onChange, version, error }) {
+export function Captcha({ value, onChange, version, error, endpoint = '/api/auth/captcha' }) {
   const [image, setImage] = useState('');
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/captcha', {
+      const res = await fetch(endpoint, {
         credentials: 'same-origin',
         cache: 'no-store',
         headers: { Accept: 'application/json' },
@@ -63,7 +63,7 @@ export function Captcha({ value, onChange, version, error }) {
       setLoading(false);
       onChange('');
     }
-  }, [onChange]);
+  }, [onChange, endpoint]);
 
   useEffect(() => {
     reload();

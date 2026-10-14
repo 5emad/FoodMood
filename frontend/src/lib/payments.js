@@ -2,6 +2,7 @@ export const PAYMENT_METHOD_LABEL = {
   card: 'کارت به کارت',
   bale: 'بله',
   gateway: 'درگاه بانکی',
+  discount: 'کد تخفیف (بدون پرداخت)',
 };
 
 export const PAYMENT_METHOD_ICON = {
@@ -15,6 +16,7 @@ export const PAYMENT_PROVIDER_LABEL = {
   bale: 'پیام‌رسان بله',
   zarinpal: 'زرین‌پال',
   zibal: 'زیبال',
+  discount: 'کد تخفیف',
 };
 
 export const PAYMENT_SCOPE_LABEL = {

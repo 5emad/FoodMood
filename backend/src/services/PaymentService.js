@@ -11,6 +11,7 @@ const {
   billableStatuses,
 } = require('../helpers/PaymentConfigHelper');
 const { getGateway, bale } = require('./PaymentGatewayService');
+const DiscountCodeService = require('./DiscountCodeService');
 const { buildOrderOwnerFilter, isLdapAuth } = require('../helpers/AuthUserHelper');
 const { formatJalaliDate, daysInJalaliMonth, startOfDay } = require('../helpers/DateHelper');
 const { resolvePublicUrl, buildAbsoluteUrl } = require('../helpers/AppUrlHelper');
@@ -55,6 +56,7 @@ function orderOwnerKey(order = {}) {
 
 /** همهٔ کلیدهای مالکی که ممکن است سفارش‌های این کاربر زیر آن ثبت شده باشد */
 function ownerKeysOfUser(user = {}) {
+  if (user?.authSource === 'guest' && user.guestId) return [`guest:${user.guestId}`];
   const keys = new Set([financeUserKeyFromUser(user)]);
   if (user.username) keys.add(`ldap:${user.username}`);
   if (!isLdapAuth(user) && (user.id || user._id)) keys.add(String(user.id || user._id));
@@ -62,6 +64,16 @@ function ownerKeysOfUser(user = {}) {
 }
 
 function payerFields(user = {}) {
+  if (user?.authSource === 'guest' && user.guestId) {
+    return {
+      userKey: `guest:${user.guestId}`,
+      userId: null,
+      ldapUsername: null,
+      payerUsername: user.guestCode || '',
+      payerName: user.fullName ? `${user.fullName} (مهمان)` : 'مهمان',
+      payerDepartment: user.department || 'مهمان',
+    };
+  }
   const ldap = isLdapAuth(user);
   return {
     userKey: financeUserKeyFromUser(user),
@@ -400,6 +412,71 @@ async function cancelOverlappingInitiated(userKey, orderIds) {
   );
 }
 
+/**
+ * اعمال کد تخفیف روی خروجی prepareCheckout (اعتبارسنجی همیشه سمت سرور، هنگام ثبت پرداخت).
+ * اقلام دفتر (items) با مبلغ کامل می‌مانند تا سفارش‌ها کامل «پوشش» داده شوند؛ amount = خالص.
+ */
+async function applyDiscount(req, user, checkout, rawCode) {
+  const fields = { grossAmount: checkout.amount, discountCodeId: null, discountCode: '', discountAmount: 0 };
+  if (!String(rawCode || '').trim()) return { checkout, fields };
+  const result = await DiscountCodeService.evaluateDiscount(req, {
+    user,
+    userKey: financeUserKeyFromUser(user),
+    ownerKeys: ownerKeysOfUser(user),
+    code: rawCode,
+    checkout,
+  });
+  return {
+    checkout: { ...checkout, amount: result.netAmount },
+    fields: {
+      grossAmount: result.grossAmount,
+      discountCodeId: result.codeId,
+      discountCode: result.code,
+      discountAmount: result.discountAmount,
+    },
+    result,
+  };
+}
+
+/** پیش‌نمایش تخفیف در پنجره پرداخت */
+async function checkDiscount(req, params) {
+  const { settings, config } = await loadPaymentConfig();
+  assertPaymentActive(config, params.scope);
+  const checkout = await prepareCheckout(req.user, params, settings);
+  const { result } = await applyDiscount(req, req.user, checkout, params.discountCode);
+  if (!result) throw httpError('کد تخفیف را وارد کنید');
+  return result;
+}
+
+/** کل مبلغ با کد تخفیف صفر شد → پرداخت بدون درگاه، فوراً «پرداخت شده» */
+async function payWithDiscountOnly(req, params) {
+  const { settings, config } = await loadPaymentConfig();
+  assertPaymentActive(config, params.scope);
+  const checkout = await prepareCheckout(req.user, params, settings);
+  const { checkout: net, fields, result } = await applyDiscount(req, req.user, checkout, params.discountCode);
+  if (!result || net.amount > 0) throw httpError('این کد تخفیف کل مبلغ را پوشش نمی‌دهد؛ یک روش پرداخت انتخاب کنید');
+  const payer = payerFields(req.user);
+  await cancelOverlappingInitiated(payer.userKey, net.items.map((i) => i.orderId));
+  const payment = await Payment.create({
+    ...payer,
+    ...net,
+    ...fields,
+    method: 'discount',
+    provider: 'discount',
+    status: 'paid',
+    paidAt: new Date(),
+    referenceId: `DISC-${fields.discountCode}`,
+  });
+  await confirmPaidOrders(payment);
+  return payment;
+}
+
+function assertPayable(checkout) {
+  if (checkout.amount <= 0) {
+    throw httpError('مبلغ پس از تخفیف صفر است؛ گزینه «ثبت با کد تخفیف» را بزنید', 400, 'discount_covers_all');
+  }
+}
+
 async function quote(user, params) {
   const { settings, config } = await loadPaymentConfig();
   assertPaymentActive(config, params.scope);
@@ -407,17 +484,20 @@ async function quote(user, params) {
   return buildStatementQuote(user, params.scope, params.periodKey, settings);
 }
 
-async function submitCardPayment(user, params, file) {
+async function submitCardPayment(user, params, file, req = null) {
   const { settings, config } = await loadPaymentConfig();
   assertPaymentActive(config, params.scope, 'card');
   if (!file?.filename) throw httpError('تصویر رسید پرداخت را بارگذاری کنید');
 
-  const checkout = await prepareCheckout(user, params, settings);
+  const prepared = await prepareCheckout(user, params, settings);
+  const { checkout, fields } = await applyDiscount(req || { headers: {}, get: () => '' }, user, prepared, params.discountCode);
+  assertPayable(checkout);
   const payer = payerFields(user);
   await cancelOverlappingInitiated(payer.userKey, checkout.items.map((i) => i.orderId));
   return Payment.create({
     ...payer,
     ...checkout,
+    ...fields,
     method: 'card',
     provider: 'card',
     status: 'review',
@@ -432,7 +512,9 @@ async function startOnlinePayment(req, params) {
   const { settings, config } = await loadPaymentConfig();
   assertPaymentActive(config, params.scope, method);
 
-  const checkout = await prepareCheckout(req.user, params, settings);
+  const prepared = await prepareCheckout(req.user, params, settings);
+  const { checkout, fields } = await applyDiscount(req, req.user, prepared, params.discountCode);
+  assertPayable(checkout);
   const payer = payerFields(req.user);
   await cancelOverlappingInitiated(payer.userKey, checkout.items.map((i) => i.orderId));
 
@@ -441,6 +523,7 @@ async function startOnlinePayment(req, params) {
   const payment = await Payment.create({
     ...payer,
     ...checkout,
+    ...fields,
     method,
     provider: method === 'bale' ? 'bale' : config.gateway.provider,
     sandbox,
@@ -691,6 +774,9 @@ function serializePayment(payment, { admin = false } = {}) {
     periodLabel: p.periodLabel,
     statementNumber: p.statementNumber,
     amount: p.amount,
+    grossAmount: p.grossAmount || p.amount,
+    discountAmount: p.discountAmount || 0,
+    discountCode: p.discountCode || '',
     method: p.method,
     provider: p.provider,
     status: p.status,
@@ -814,7 +900,7 @@ function adminListFilter(query = {}) {
   const has = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
   if (has(STATUS_LABELS, query.status)) filter.status = query.status;
   else filter.status = { $ne: 'cancelled' };
-  if (['card', 'bale', 'gateway'].includes(query.method)) filter.method = query.method;
+  if (['card', 'bale', 'gateway', 'discount'].includes(query.method)) filter.method = query.method;
   if (['cart', 'week', 'month'].includes(query.scope)) filter.scope = query.scope;
   const q = typeof query.q === 'string' ? query.q.trim().slice(0, 60) : '';
   if (q) {
@@ -872,6 +958,8 @@ module.exports = {
   summarizePaymentColumns,
   submitCardPayment,
   startOnlinePayment,
+  checkDiscount,
+  payWithDiscountOnly,
   loadPaymentForView,
   simulateBalePayment,
   handleGatewayCallback,

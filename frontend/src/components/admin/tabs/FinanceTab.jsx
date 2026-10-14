@@ -8,6 +8,7 @@ import EmptyState from '../shared/EmptyState';
 import TableActions from '../shared/TableActions';
 import { faDigits, money } from '../../../utils/format';
 import { BILL_STATUS_CLASS, BILL_STATUS_LABEL } from '../../../lib/payments';
+import DiscountCodesPanel from '../finance/DiscountCodesPanel';
 
 function normalizeFaNumber(value) {
   const map = {
@@ -38,6 +39,7 @@ export default function FinanceTab() {
   const [search, setSearch] = useState('');
   const [savingKey, setSavingKey] = useState('');
   const [payFilter, setPayFilter] = useState('');
+  const [view, setView] = useState('statements');
 
   useEffect(() => {
     (async () => {
@@ -222,8 +224,17 @@ export default function FinanceTab() {
 
   return (
     <section id="tab-finance" className="tab-pane active">
-      <SectionHeader title="مالی و حسابداری" sub="تنظیم سهم پرداخت، جستجوی صورتحساب و تخفیف" />
-      <div className="finance-layout">
+      <SectionHeader title="مالی و حسابداری" sub="تنظیم سهم پرداخت، جستجوی صورتحساب، تخفیف و کد تخفیف" />
+      <div className="sub-tabs">
+        <button type="button" className={`sub-tab-btn${view === 'statements' ? ' active' : ''}`} onClick={() => setView('statements')}>
+          <i className="fas fa-file-invoice-dollar" /> صورتحساب‌ها
+        </button>
+        <button type="button" className={`sub-tab-btn${view === 'codes' ? ' active' : ''}`} onClick={() => setView('codes')}>
+          <i className="fas fa-ticket" /> کدهای تخفیف
+        </button>
+      </div>
+      {view === 'codes' && <DiscountCodesPanel />}
+      <div className="finance-layout" hidden={view !== 'statements'}>
         <aside className="finance-sidebar card">
           <div className="card-header"><div className="card-title"><i className="fas fa-sliders" /> تنظیمات سهم</div></div>
           <div className="card-body">

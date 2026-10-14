@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, apiUrl } from '../api/client';
 import { useToast } from '../components/ToastProvider';
 import AppVersionBadge from '../components/AppVersionBadge';
 import CategoryWeekMenuSlider from '../components/CategoryWeekMenuSlider';
@@ -11,6 +11,7 @@ import { normalizeUserCapabilities } from '../lib/portalCapabilities';
 import { faDigits, jdate, money } from '../utils/format';
 import PaymentModal from '../components/payment/PaymentModal';
 import PaymentInvoice from '../components/payment/PaymentInvoice';
+import ModalPortal from '../components/ModalPortal';
 import {
   BILL_STATUS_CLASS,
   BILL_STATUS_LABEL,
@@ -56,7 +57,11 @@ const bootstrapData = getBootstrapData();
 const PAY_CONFIG_OFF = { enabled: false, scopes: { cart: false, week: false, month: false }, methods: [], card: null };
 const EMPTY_CART = { items: [], total: 0, reviewCount: 0 };
 
-export default function UserDashboardPage() {
+/**
+ * guestMode: همین پرتال برای مهمان‌ها (مسیرهای API با setApiPathRewrite به /api/guest می‌روند)
+ * onLogout: خروج سفارشی (مهمان)
+ */
+export default function UserDashboardPage({ guestMode = false, onLogout = null } = {}) {
   const { toast } = useToast();
   const [tab, setTab] = useState('menu');
   const [user, setUser] = useState(null);
@@ -160,6 +165,21 @@ export default function UserDashboardPage() {
       setLoading(false);
     }
   }
+
+  // موبایل: تب فعال در نوار افقی دیده شود
+  useEffect(() => {
+    if (!window.matchMedia('(max-width: 900px)').matches) return undefined;
+    const raf = requestAnimationFrame(() => {
+      const nav = document.querySelector('.user-tabs');
+      const el = nav?.querySelector('.tab-button.active');
+      if (!nav || !el) return;
+      const n = nav.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      if (r.left < n.left) nav.scrollBy({ left: r.left - n.left - 12, behavior: 'smooth' });
+      else if (r.right > n.right) nav.scrollBy({ left: r.right - n.right + 12, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [tab]);
 
   useEffect(() => {
     if (tab === 'orders') loadOrdersPage(1);
@@ -558,7 +578,7 @@ export default function UserDashboardPage() {
 
   // ستون/دکمه پرداخت صورتحساب فقط وقتی پرداخت همان نوع (هفتگی/ماهیانه) فعال است
   const stmtPayOn = payConfig.enabled && !!payConfig.scopes[stmtSub === 'monthly' ? 'month' : 'week'];
-  const showAdminLink = isAdminRole(user?.role);
+  const showAdminLink = !guestMode && isAdminRole(user?.role);
   const receiptData = receipt?.detail;
   const orgName = version?.organizationName || 'سامانه تغذیه';
   const hasOrderFilters = Object.values(orderFilters).some((value) => String(value || '').trim());
@@ -578,7 +598,7 @@ export default function UserDashboardPage() {
             </div>
             <div>
               <span className="user-side-nav-head">{orgName}</span>
-              <span className="user-side-nav-sub">پرتال کارکنان</span>
+              <span className="user-side-nav-sub">{guestMode ? 'پرتال مهمان' : 'پرتال کارکنان'}</span>
             </div>
           </div>
 
@@ -683,20 +703,29 @@ export default function UserDashboardPage() {
                     </div>
                   </div>
                   <div className="portal-user-menu-divider" />
-                  <button type="button" role="menuitem" className="portal-user-menu-item" onClick={openProfile}>
-                    <i className="fas fa-user-gear" />
-                    <span>تنظیمات حساب</span>
-                  </button>
+                  {!guestMode && (
+                    <button type="button" role="menuitem" className="portal-user-menu-item" onClick={openProfile}>
+                      <i className="fas fa-user-gear" />
+                      <span>تنظیمات حساب</span>
+                    </button>
+                  )}
                   {showAdminLink && (
                     <Link to="/admin/reports" role="menuitem" className="portal-user-menu-item" onClick={() => setUserMenuOpen(false)}>
                       <i className="fas fa-cogs" />
                       <span>پنل مدیریت</span>
                     </Link>
                   )}
-                  <a href="/logout" role="menuitem" className="portal-user-menu-item portal-user-menu-item--danger">
-                    <i className="fas fa-power-off" />
-                    <span>خروج</span>
-                  </a>
+                  {onLogout ? (
+                    <button type="button" role="menuitem" className="portal-user-menu-item portal-user-menu-item--danger" onClick={onLogout}>
+                      <i className="fas fa-power-off" />
+                      <span>خروج</span>
+                    </button>
+                  ) : (
+                    <a href="/logout" role="menuitem" className="portal-user-menu-item portal-user-menu-item--danger">
+                      <i className="fas fa-power-off" />
+                      <span>خروج</span>
+                    </a>
+                  )}
                 </div>
               )}
             </div>
@@ -1128,12 +1157,12 @@ export default function UserDashboardPage() {
             </section>
           )}
 
-          <PortalProfilePanel
+          {!guestMode && <PortalProfilePanel
             open={profileOpen}
             user={user}
             onClose={() => setProfileOpen(false)}
             onUserUpdate={(next) => setUser((prev) => ({ ...prev, ...next }))}
-          />
+          />}
         </div>
       </main>
 
@@ -1181,12 +1210,13 @@ export default function UserDashboardPage() {
         <PaymentInvoice
           payment={invoice}
           orgName={orgName}
-          receiptUrl={`/api/user/payments/${encodeURIComponent(invoice._id)}/receipt`}
+          receiptUrl={apiUrl(`/api/user/payments/${encodeURIComponent(invoice._id)}/receipt`)}
           onClose={() => setInvoice(null)}
         />
       )}
 
       {(receipt || receiptLoading) && (
+        <ModalPortal>
         <div className="receipt-modal-root">
           <div className="receipt-modal-overlay" onClick={closeReceipt} />
           <div className={`receipt-modal${stmtSub === 'monthly' ? ' receipt-modal--compact' : ''}`} role="dialog" aria-modal="true" aria-label="فیش صورتحساب">
@@ -1315,6 +1345,7 @@ export default function UserDashboardPage() {
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

@@ -83,11 +83,11 @@ function hashAnswer(answer, salt) {
 }
 
 /** Creates a fresh challenge bound to the caller's session and returns a data: URL image. */
-function issueCaptcha(req) {
+function issueCaptcha(req, key = 'captcha') {
   if (!req.session) throw new Error('session unavailable');
   const text = randomText();
   const salt = crypto.randomBytes(16).toString('hex');
-  req.session.captcha = {
+  req.session[key] = {
     id: crypto.randomUUID(),
     salt,
     hash: hashAnswer(text, salt),
@@ -95,7 +95,7 @@ function issueCaptcha(req) {
   };
   const svg = renderSvg(text);
   return {
-    id: req.session.captcha.id,
+    id: req.session[key].id,
     image: `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`,
     expiresInSec: Math.round(CAPTCHA_TTL_MS / 1000),
   };
@@ -105,9 +105,9 @@ function issueCaptcha(req) {
  * Verifies and always consumes the current challenge (single-use, success or not).
  * Returns { ok: true } or { ok: false, message }.
  */
-function verifyCaptcha(req, answerRaw) {
-  const challenge = req.session?.captcha;
-  if (req.session) delete req.session.captcha;
+function verifyCaptcha(req, answerRaw, key = 'captcha') {
+  const challenge = req.session?.[key];
+  if (req.session) delete req.session[key];
   const answer = typeof answerRaw === 'string' ? answerRaw.trim().replace(/\s+/g, '') : '';
   if (!answer) return { ok: false, message: 'کد امنیتی را وارد کنید' };
   if (answer.length > MAX_ANSWER_LEN) return { ok: false, message: 'کد امنیتی نادرست است' };

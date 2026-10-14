@@ -38,6 +38,8 @@ function toAnnouncementDto(doc, extras = {}) {
 
 async function resolveUserDepartmentIds(user) {
   if (!user) return [];
+  // مهمان‌ها واحد سازمانی ندارند → فقط اطلاعیه‌های «همه»
+  if (user.authSource === 'guest') return [];
 
   if (user.authSource === 'ldap') {
     const profile = await LdapProfile.findOne({ ldapUsername: String(user.username || '').toLowerCase() })

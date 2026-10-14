@@ -5,6 +5,7 @@ import RegisterPage from './pages/RegisterPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import UserDashboardPage from './pages/UserDashboardPage';
 import FoodsPage from './pages/FoodsPage';
+import GuestPortalPage from './pages/GuestPortalPage';
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import SuperSettingsPanel from './components/admin/super/SuperSettingsPanel';
@@ -57,6 +58,8 @@ export default function App() {
       <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
       <Route path="/user/dashboard" element={<UserDashboardPage />} />
       <Route path="/foods" element={<FoodsPage />} />
+      <Route path="/guest" element={<GuestPortalPage />} />
+      <Route path="/guest/:token" element={<GuestPortalPage />} />
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Navigate to="/admin/reports" replace />} />
         <Route path="super/settings" element={<SuperSettingsPanel />} />

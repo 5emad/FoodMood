@@ -1,10 +1,16 @@
 const User = require('../models/User');
 
+/** بازیگر مهمانِ وارد شده از پرتال مهمان (req.user ساختگی) */
+function isGuestActor(user = {}) {
+  return user?.authSource === 'guest' && !!user.guestId;
+}
+
 function isLdapAuth(user = {}) {
   return user.authSource === 'ldap' || String(user.id || '').startsWith('ldap:');
 }
 
 function orderOwnerFilter(user = {}) {
+  if (isGuestActor(user)) return { guestId: user.guestId };
   if (isLdapAuth(user)) {
     return { ldapUsername: user.username };
   }
@@ -16,6 +22,7 @@ function orderOwnerFilter(user = {}) {
 }
 
 async function buildOrderOwnerFilter(user = {}) {
+  if (isGuestActor(user)) return { guestId: user.guestId };
   if (isLdapAuth(user)) {
     const clauses = [{ ldapUsername: user.username }];
     const legacyUser = await User.findOne({ username: user.username }).select('_id').lean();
@@ -35,6 +42,10 @@ async function buildOrderOwnerFilter(user = {}) {
 
 function orderBelongsToUser(order, user = {}) {
   if (!order) return false;
+  if (isGuestActor(user)) {
+    const orderGuestId = order.guestId?._id || order.guestId;
+    return !!orderGuestId && String(orderGuestId) === String(user.guestId);
+  }
   if (order.ldapUsername && user.username && String(order.ldapUsername) === String(user.username)) {
     return true;
   }
@@ -82,6 +93,7 @@ function orderUserDisplay(order = {}) {
 }
 
 module.exports = {
+  isGuestActor,
   isLdapAuth,
   orderOwnerFilter,
   buildOrderOwnerFilter,

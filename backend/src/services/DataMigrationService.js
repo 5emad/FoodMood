@@ -129,7 +129,21 @@ async function confirmPaidPendingOrders() {
   }
 }
 
+/** لینک‌های دائمی نسخه قبل (accessToken) باطل شوند؛ ورود مستقیم فقط با لینک زمان‌دار یک‌بارمصرف */
+async function revokeLegacyGuestLinks() {
+  const Guest = require('../models/Guest');
+  const result = await Guest.collection.updateMany(
+    { $or: [{ accessToken: { $exists: true } }, { accessTokenCreatedAt: { $exists: true } }] },
+    { $unset: { accessToken: '', accessTokenCreatedAt: '' }, $inc: { linkVersion: 1 } },
+  );
+  if (result.modifiedCount > 0) console.log(`[migration] guest links: ${result.modifiedCount} لینک دائمی قدیمی باطل شد`);
+  await Guest.collection.dropIndex('accessToken_1').catch(() => {});
+}
+
 async function runDataMigrations() {
+  await revokeLegacyGuestLinks().catch((err) => {
+    console.warn('[migration] legacy guest links:', err.message);
+  });
   await confirmPaidPendingOrders().catch((err) => {
     console.warn('[migration] confirm paid orders:', err.message);
   });

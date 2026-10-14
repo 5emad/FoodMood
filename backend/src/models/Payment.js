@@ -96,15 +96,37 @@ const paymentSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
-  /** مبلغ به تومان */
+  /** مبلغ پرداختی (پس از تخفیف) به تومان */
   amount: {
     type: Number,
     required: true,
-    min: 1,
+    min: 0,
   },
+  /** مبلغ قبل از کد تخفیف (= جمع سهم سفارش‌ها) */
+  grossAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  discountCodeId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'DiscountCode',
+    default: null,
+  },
+  discountCode: {
+    type: String,
+    trim: true,
+    default: '',
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  /** discount = کل مبلغ با کد تخفیف پوشش داده شد (بدون پرداخت) */
   method: {
     type: String,
-    enum: ['card', 'bale', 'gateway'],
+    enum: ['card', 'bale', 'gateway', 'discount'],
     required: true,
   },
   /** card | bale | zarinpal | zibal */
@@ -202,6 +224,7 @@ paymentSchema.index({ userKey: 1, createdAt: -1 });
 paymentSchema.index({ 'items.orderId': 1, status: 1 });
 paymentSchema.index({ 'items.ownerKey': 1, 'items.reportDate': 1, status: 1 });
 paymentSchema.index({ provider: 1, gatewayRef: 1 });
+paymentSchema.index({ discountCodeId: 1, status: 1, userKey: 1 }, { partialFilterExpression: { discountCodeId: { $type: 'objectId' } } });
 // گزارش مالی: پرداخت‌های تاییدشده در بازه تاریخ (بدون فیلتر کاربر)
 paymentSchema.index({ status: 1, 'items.reportDate': 1 });
 

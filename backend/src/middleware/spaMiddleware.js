@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const SPA_INDEX = path.join(__dirname, '../../public/spa/index.html');
 
-const SPA_ROUTE_RE = /^\/(?:login|register|complete-profile|foods|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
+const SPA_ROUTE_RE = /^\/(?:login|register|complete-profile|foods|guest(?:\/|$)|user(?:\/|$)|admin(?:\/|$))(?:.*)?$/;
 
 function spaIndexExists() {
   try {
@@ -84,6 +84,8 @@ async function spaMiddleware(req, res, next) {
     };
 
     res.set('Content-Type', 'text/html');
+    // HTML اپ کش نشود تا بعد از هر build نسخه جدید (asset با هش جدید) فوراً بارگذاری شود
+    res.set('Cache-Control', 'no-cache, must-revalidate');
     return res.send(injectSpaHtml(rawHtml, bootstrapData, orgName));
   } catch (err) {
     try {

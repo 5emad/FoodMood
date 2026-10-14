@@ -327,6 +327,7 @@ app.use('/api/admin',  adminRoutes);
 app.use('/api/menu',          menuRoutes);
 app.use('/api/user',          ensureDbMiddleware, userApiRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/guest',         ensureDbMiddleware, require('./src/routes/guestRoutes'));
 
 const spaMiddleware = require('./src/middleware/spaMiddleware');
 // Root URL must always land on login (spa/index.html must not capture "/")

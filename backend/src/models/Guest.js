@@ -42,6 +42,49 @@ const guestSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
+  /** لینک ورود مستقیم یک‌بارمصرف: فقط هش SHA-256 توکن ذخیره می‌شود */
+  magicTokenHash: {
+    type: String,
+    default: '',
+    select: false,
+  },
+  magicCreatedAt: {
+    type: Date,
+    default: null,
+  },
+  magicExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  magicUsedAt: {
+    type: Date,
+    default: null,
+  },
+  /** با تغییر رمز یا «خروج از همه نشست‌ها» بالا می‌رود تا نشست‌های قبلی باطل شوند */
+  linkVersion: {
+    type: Number,
+    default: 1,
+  },
+  /** رمز اختیاری مهمان (bcrypt + pepper)؛ خالی = ورود فقط با شناسه از طریق لینک */
+  passwordHash: {
+    type: String,
+    default: '',
+    select: false,
+  },
+  loginAttempts: {
+    type: Number,
+    default: 0,
+    select: false,
+  },
+  lockUntil: {
+    type: Date,
+    default: null,
+    select: false,
+  },
+  lastLoginAt: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -53,6 +96,10 @@ const guestSchema = new mongoose.Schema({
 });
 
 guestSchema.index({ status: 1, createdAt: -1 }, { background: true });
+guestSchema.index(
+  { magicTokenHash: 1 },
+  { partialFilterExpression: { magicTokenHash: { $type: 'string', $gt: '' } } },
+);
 guestSchema.index({ guestType: 1, status: 1, createdAt: -1 }, { background: true });
 
 guestSchema.pre('save', function saveHook(next) {

@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 
-const PUBLIC_PATHS = ['/login', '/register', '/service-unavailable'];
+// /guest: نشست مهمان سیاست جداگانه (حداکثر ۱۲ ساعت) دارد و نباید به /login کارکنان برود
+const PUBLIC_PATHS = ['/login', '/register', '/service-unavailable', '/guest'];
 
 function isPublicPath(pathname) {
   if (!pathname) return true;

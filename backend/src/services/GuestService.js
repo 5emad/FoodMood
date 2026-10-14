@@ -58,7 +58,18 @@ async function listGuests(query = {}) {
       ];
     }
   }
-  return Guest.find(filter).sort({ createdAt: -1 }).lean();
+  const guests = await Guest.find(filter)
+    .select('+passwordHash +magicTokenHash')
+    .sort({ createdAt: -1 })
+    .lean();
+  // اسرار هرگز به کلاینت نمی‌رود؛ فقط وضعیت
+  const now = Date.now();
+  return guests.map(({ passwordHash, magicTokenHash, ...guest }) => ({
+    ...guest,
+    hasPassword: !!passwordHash,
+    hasActiveLink: !!magicTokenHash && !guest.magicUsedAt
+      && !!guest.magicExpiresAt && new Date(guest.magicExpiresAt).getTime() > now,
+  }));
 }
 
 async function createGuest(payload = {}, createdBy = '') {
@@ -126,7 +137,7 @@ async function deleteGuest(guestId) {
   return guest;
 }
 
-async function buildGuestOrderFromMenuItem(menuItemId, guest) {
+async function buildGuestOrderFromMenuItem(menuItemId, guest, options = {}) {
   if (!isGuestActive(guest)) {
     const error = new Error('مهمان غیرفعال یا منقضی شده است');
     error.status = 400;
@@ -175,7 +186,8 @@ async function buildGuestOrderFromMenuItem(menuItemId, guest) {
     weekId: menuItem.dailyMenuId.weekId,
     quantity: 1,
     totalPrice: price,
-    status: 'confirmed',
+    // رزرو توسط مدیر = تاییدشده؛ رزرو خودِ مهمان از پرتال = مثل کاربران (در انتظار تایید/پرداخت)
+    status: options.status === 'pending' ? 'pending' : 'confirmed',
     orderDate: new Date(),
     items: [{ foodId: menuItem.foodId._id, quantity: 1, price }],
   };
@@ -185,7 +197,7 @@ async function buildGuestOrderFromMenuItem(menuItemId, guest) {
   return payload;
 }
 
-async function reserveForGuest(guestId, menuItemId) {
+async function reserveForGuest(guestId, menuItemId, options = {}) {
   let claimed = null;
   try {
     const guest = await Guest.findById(guestId);
@@ -194,7 +206,7 @@ async function reserveForGuest(guestId, menuItemId) {
       error.status = 404;
       throw error;
     }
-    const payload = await buildGuestOrderFromMenuItem(menuItemId, guest);
+    const payload = await buildGuestOrderFromMenuItem(menuItemId, guest, options);
     claimed = payload._capacityClaimed;
     delete payload._capacityClaimed;
     const order = await Order.create(payload);

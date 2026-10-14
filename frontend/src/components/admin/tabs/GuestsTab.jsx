@@ -6,6 +6,7 @@ import AdminSpinner from '../shared/AdminSpinner';
 import EmptyState from '../shared/EmptyState';
 import { useJalaliDatepicker } from '../../../hooks/useJalaliDatepicker';
 import { faDigits, jdate, money } from '../../../utils/format';
+import GuestAccessModal from '../guests/GuestAccessModal';
 
 function guestInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -33,6 +34,7 @@ export default function GuestsTab() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ id: '', fullName: '', guestType: 'temporary', department: '', status: 'active', notes: '', validUntil: '' });
   const [reserveGuest, setReserveGuest] = useState(null);
+  const [accessGuest, setAccessGuest] = useState(null);
   const [weeks, setWeeks] = useState([]);
   const [weekId, setWeekId] = useState('');
   const [menuDays, setMenuDays] = useState([]);
@@ -239,13 +241,17 @@ export default function GuestsTab() {
                           <span>{g.fullName}</span>
                         </div>
                       </td>
-                      <td><span className="guest-code-pill">{g.guestCode}</span></td>
+                      <td>
+                        <span className="guest-code-pill">{g.guestCode}</span>
+                        {g.hasPassword && <i className="fas fa-lock guest-code-lock" title="ورود با رمز" aria-label="ورود با رمز" />}
+                      </td>
                       <td><span className={`guest-type-chip ${g.guestType === 'permanent' ? 'permanent' : 'temporary'}`}>{g.guestType === 'permanent' ? 'دائم' : 'موقت'}</span></td>
                       <td>{g.department || '—'}</td>
                       <td><span className={`guest-status-chip ${g.status === 'active' ? 'active' : 'inactive'}`}>{g.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
                       <td>
                         <div className="guest-actions">
                           <button type="button" className="btn btn-primary btn-sm" onClick={() => openReserve(g)} title="رزرو هفتگی"><i className="fas fa-calendar-check" /></button>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => setAccessGuest(g)} title="ورود مهمان: لینک مستقیم و رمز"><i className="fas fa-qrcode" /></button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(g)} title="ویرایش"><i className="fas fa-pen" /></button>
                           <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(g)} title="حذف"><i className="fas fa-trash" /></button>
                         </div>
@@ -395,6 +401,10 @@ export default function GuestsTab() {
           </div>
         </div>
       </aside>
+
+      {accessGuest && (
+        <GuestAccessModal guest={accessGuest} onClose={() => setAccessGuest(null)} onChanged={load} />
+      )}
     </section>
   );
 }

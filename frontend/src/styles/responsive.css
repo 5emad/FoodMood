@@ -1,0 +1,235 @@
+/*
+ * ریسپانسیو یکپارچه — آخرین فایل استایل (بعد از enterprise-theme / spa / admin-theme).
+ * نقطه‌های شکست: ≤1100 تبلت افقی، ≤900 تبلت/موبایل افقی، ≤640 موبایل، ≤380 موبایل کوچک.
+ */
+
+/* ── عمومی ─────────────────────────────────────────────────────────────── */
+html, body { max-width: 100%; }
+body { overflow-x: clip; }
+img, svg, video { max-width: 100%; }
+.table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* پاپ‌آپ‌ها: همیشه داخل صفحه، با فاصله امن از لبه‌ها */
+body .receipt-modal-root { padding: 16px 12px; }
+body .receipt-modal-root .receipt-modal { max-width: 100%; }
+
+/* دکمه رادیویی روش پرداخت: انتخاب‌نشده توخالی */
+.pay-method:not(.is-active) .pay-method-radio { color: var(--border, #cbd5e1); }
+
+@media (max-width: 1100px) {
+  /* مالی: سایدبار تنظیمات بالای جدول */
+  .finance-layout { grid-template-columns: minmax(0, 1fr) !important; }
+  .finance-sidebar, .finance-main { height: auto !important; min-height: 0 !important; }
+}
+
+/* ── پرتال کاربران و مهمان (≤900px) ─────────────────────────────────── */
+@media (max-width: 900px) {
+  body.user-portal-body .user-portal-shell.user-portal-shell--split {
+    display: block;
+    padding: 0 0 96px !important;
+    min-height: 100vh;
+  }
+  /* جدول‌ها داخل کادر خودشان اسکرول شوند (فیلتر ستونی در موبایل با پنل فیلتر جایگزین است) */
+  body.user-portal-body .user-portal-main .table-wrap { overflow-x: auto !important; overflow-y: visible; }
+  body.user-portal-body .order-filter-trigger,
+  body.user-portal-body .order-filter-popover { display: none !important; }
+
+  /* نوار بالایی چسبان به‌جای منوی کناری */
+  body.user-portal-body .user-side-nav {
+    position: sticky !important;
+    top: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    z-index: 60;
+    margin: 0 0 12px !important;
+    padding: 8px 10px 10px !important;
+    border: 0 !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--primary, #1B3F8D) 12%, transparent) !important;
+    border-radius: 0 0 16px 16px !important;
+    box-shadow: 0 6px 18px rgba(18, 42, 98, .08) !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 8px;
+    overflow: visible !important;
+    background: rgba(255, 255, 255, .96) !important;
+    backdrop-filter: blur(10px);
+  }
+  body.user-portal-body .user-side-nav-brand {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    padding-inline-end: 64px !important; /* جا برای آواتار حساب در بالا-چپ */
+    min-height: 40px;
+  }
+  body.user-portal-body .user-side-nav-logo { width: 34px !important; height: 34px !important; flex: none; }
+  body.user-portal-body .user-side-nav-logo img { width: 100%; height: 100%; }
+  body.user-portal-body .user-side-nav-head { font-size: .92rem !important; }
+  body.user-portal-body .user-side-nav-sub { font-size: .7rem !important; }
+  body.user-portal-body .user-side-nav-foot { display: none !important; }
+
+  body.user-portal-body .user-tabs--vertical {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0 4px;
+    margin: 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  body.user-portal-body .user-tabs--vertical::-webkit-scrollbar { display: none; }
+  body.user-portal-body .user-nav-group { display: contents !important; }
+  body.user-portal-body .user-tabs--vertical .tab-button {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-height: 40px !important;
+    padding: 7px 12px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    gap: 6px !important;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+  body.user-portal-body .user-tabs--vertical .tab-button-ico {
+    width: 26px !important; height: 26px !important; min-width: 26px !important; font-size: .8rem !important;
+  }
+  body.user-portal-body .user-tabs--vertical .tab-button-label { font-size: .84rem !important; }
+  body.user-portal-body .user-tabs--vertical .tab-button-hint { display: none !important; }
+  body.user-portal-body .tab-button-badge { margin-inline-start: 4px; }
+
+  /* هفته‌های فعال به‌صورت چیپ کنار تب‌ها */
+  body.user-portal-body .user-nav-sub {
+    display: flex !important;
+    flex: 0 0 auto;
+    flex-direction: row !important;
+    gap: 6px;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+  body.user-portal-body .user-nav-sub::before { display: none !important; }
+  body.user-portal-body .user-nav-sub-link {
+    flex: 0 0 auto;
+    width: auto !important;
+    white-space: nowrap;
+    min-height: 40px;
+    padding: 6px 10px !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    font-size: .76rem !important;
+  }
+
+  /* منوی حساب کاربر: گوشه نوار بالا */
+  body.user-portal-body .portal-topbar {
+    position: fixed !important;
+    top: 8px;
+    left: 10px;
+    right: auto;
+    z-index: 70;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    width: auto !important;
+  }
+  /* فقط آواتار؛ نام و واحد داخل منوی بازشونده هست */
+  body.user-portal-body .portal-user-menu-trigger { padding: 3px !important; gap: 4px !important; min-height: 0 !important; }
+  body.user-portal-body .portal-user-menu-trigger-meta,
+  body.user-portal-body .portal-user-menu-caret { display: none !important; }
+  body.user-portal-body .portal-user-menu-avatar:not(.portal-user-menu-avatar--lg) { width: 36px !important; height: 36px !important; font-size: .8rem !important; }
+  body.user-portal-body .portal-user-menu-panel { left: 0; right: auto; max-width: calc(100vw - 20px); }
+
+  body.user-portal-body .user-portal-main { padding: 0 12px !important; margin: 0 !important; }
+  body.user-portal-body .portal-stage-header { margin-bottom: 12px !important; gap: 8px; flex-wrap: wrap; }
+  body.user-portal-body .portal-stage-title { font-size: 1.15rem !important; line-height: 1.6; }
+  body.user-portal-body .sub-tabs { width: auto; max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  body.user-portal-body .sub-tab-btn { white-space: nowrap; flex: 0 0 auto; }
+  body.user-portal-body .statement-split-banner { font-size: .8rem; padding: 10px 12px; }
+  body.user-portal-body .table th,
+  body.user-portal-body .table td { padding: 9px 8px !important; font-size: .8rem !important; }
+  body.user-portal-body .statement-actions { flex-wrap: wrap; }
+  body.user-portal-body .statement-actions .btn { padding: 6px 10px; }
+  body.user-portal-body .order-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+  /* سبد خرید */
+  .cart-bar { bottom: 10px; }
+  .cart-footer { flex-direction: column; align-items: stretch; }
+
+  /* اطلاعیه شناور کنار نوار سبد قرار نگیرد */
+  body.user-portal-body .ann-fab { bottom: 84px !important; }
+}
+
+@media (max-width: 900px) {
+  /* کارت‌های خلاصه مالی/پرداخت: دو ستون منظم (نه ۳+۱) */
+  .finance-summary-grid,
+  .report-grid.finance-summary-grid.has-split-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .finance-summary-grid .mini-card { grid-column: auto !important; }
+}
+
+@media (max-width: 640px) {
+  /* کپچا: تصویر کوچک‌تر تا ورودی جا شود */
+  .fm-captcha .fm-captcha-img { width: 118px !important; height: 40px !important; flex: none; }
+  .fm-captcha .fm-input { min-width: 0; }
+
+  /* ورودی‌ها ۱۶px تا iOS هنگام فوکوس صفحه را بزرگ نکند */
+  input.form-control, select.form-control, textarea.form-control, .fm-input { font-size: 16px !important; }
+
+  body.user-portal-body .order-filter-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  body.user-portal-body .user-side-nav-sub { display: none; }
+
+  /* پاپ‌آپ‌ها تمام‌عرض */
+  body .receipt-modal-root { padding: 10px 8px; }
+  .pay-modal, .guest-access-modal, .discount-form-modal, .pay-invoice-modal { width: 100% !important; }
+  .pay-modal-card, .guest-access-card { padding: 16px 12px 14px; border-radius: 16px; }
+  .pay-modal-head { padding-inline-end: 40px; }
+  .pay-modal-amount strong { font-size: 1.05rem; }
+  .pay-method { padding: 10px; gap: 10px; }
+  .pay-method-copy span { font-size: .72rem; }
+  .pay-card-number { font-size: 1rem; }
+  .receipt-paper { padding: 14px 12px 12px !important; }
+  .receipt-meta-row, .receipt-total-row { font-size: .82rem; }
+  .guest-access-link { flex-wrap: wrap; }
+  .guest-access-link .form-control { flex: 1 1 100%; }
+  .guest-access-actions .btn, .guest-access-actions .form-control { flex: 1 1 auto; }
+
+  /* پنل مدیر */
+  .finance-summary-grid,
+  .report-grid.finance-summary-grid.has-split-cards { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+  .finance-summary-grid .mini-card { padding: 12px !important; grid-column: auto !important; }
+  .finance-summary-grid .stat-value { font-size: 1rem !important; }
+  .finance-summary-grid .stat-label { font-size: .74rem !important; }
+  .finance-toolbar, .finance-toolbar-actions, .report-controls { flex-direction: column; align-items: stretch !important; gap: 8px !important; }
+  .finance-toolbar-actions .form-control,
+  .finance-toolbar-actions select,
+  .finance-toolbar-actions .btn,
+  .report-controls .form-control,
+  .report-controls .btn { width: 100% !important; min-width: 0 !important; max-width: none !important; }
+  .finance-toolbar-actions .sub-tabs { width: 100%; justify-content: stretch; }
+  .finance-toolbar-actions .sub-tab-btn { flex: 1; }
+  .pay-settings-overview-body { grid-template-columns: 1fr; }
+  .section-header { flex-wrap: wrap; gap: 10px; }
+  .sub-tabs { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .sub-tab-btn { white-space: nowrap; flex: 0 0 auto; }
+  .discount-panel .finance-toolbar { flex-direction: row; align-items: center !important; }
+  .pay-preview-frame { height: 520px; }
+}
+
+@media (max-width: 380px) {
+  .pay-modal-head-ico, .guest-access-head-ico { width: 36px; height: 36px; }
+}

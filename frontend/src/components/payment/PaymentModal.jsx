@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, apiForm } from '../../api/client';
 import { useToast } from '../ToastProvider';
+import ModalPortal from '../../components/ModalPortal';
 import { money } from '../../utils/format';
 import { PAYMENT_METHOD_ICON, formatCardNumber } from '../../lib/payments';
 
@@ -23,6 +24,13 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
   const [trackingCode, setTrackingCode] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [discount, setDiscount] = useState(null);
+  const [codeError, setCodeError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const netAmount = discount ? discount.netAmount : target.amount;
+  const coveredByCode = !!discount && discount.netAmount <= 0;
 
   useEffect(() => {
     if (!file) { setPreview(''); return undefined; }
@@ -42,7 +50,53 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
       scope: target.scope,
       periodKey: target.periodKey || '',
       orderIds: target.orderIds || [],
+      discountCode: discount?.code || '',
     };
+  }
+
+  async function applyCode(e) {
+    e?.preventDefault();
+    const code = codeInput.trim();
+    if (!code) return setCodeError('کد تخفیف را وارد کنید');
+    setChecking(true);
+    setCodeError('');
+    try {
+      const res = await api('/api/user/payments/discount/check', {
+        method: 'POST',
+        body: JSON.stringify({ ...basePayload(), discountCode: code }),
+      });
+      if (!res.success) {
+        setDiscount(null);
+        setCodeError(res.message || 'کد تخفیف معتبر نیست');
+        return;
+      }
+      setDiscount(res.data);
+      toast(res.message || 'کد تخفیف اعمال شد', 'success');
+    } catch {
+      setCodeError('خطا در اتصال');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  function removeCode() {
+    setDiscount(null);
+    setCodeInput('');
+    setCodeError('');
+  }
+
+  async function payWithCode() {
+    setBusy(true);
+    try {
+      const res = await api('/api/user/payments/discount/pay', { method: 'POST', body: JSON.stringify(basePayload()) });
+      if (!res.success) return toast(res.message || 'ثبت ناموفق بود', 'error');
+      toast(res.message || 'ثبت شد', 'success');
+      onDone?.(res.data);
+    } catch {
+      toast('خطا در اتصال', 'error');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function copyCard() {
@@ -62,6 +116,7 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
     fd.append('scope', payload.scope);
     fd.append('periodKey', payload.periodKey);
     fd.append('orderIds', JSON.stringify(payload.orderIds));
+    fd.append('discountCode', payload.discountCode);
     fd.append('trackingCode', trackingCode);
     fd.append('note', note);
     fd.append('receipt', file);
@@ -101,13 +156,14 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
   }
 
   return (
+    <ModalPortal>
     <div className="receipt-modal-root">
       <div className="receipt-modal-overlay" onClick={() => !busy && onClose()} />
       <div className="receipt-modal pay-modal" role="dialog" aria-modal="true" aria-label="پرداخت">
-        <button type="button" className="receipt-modal-close" onClick={onClose} disabled={busy} aria-label="بستن">
-          <i className="fas fa-times" />
-        </button>
         <div className="pay-modal-card">
+          <button type="button" className="receipt-modal-close" onClick={onClose} disabled={busy} aria-label="بستن">
+            <i className="fas fa-times" />
+          </button>
           <div className="pay-modal-head">
             <span className="pay-modal-head-ico"><i className="fas fa-wallet" /></span>
             <div>
@@ -117,10 +173,54 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
           </div>
           <div className="pay-modal-amount">
             <span>مبلغ قابل پرداخت</span>
-            <strong>{money(target.amount)}</strong>
+            <strong>
+              {discount && <s className="pay-modal-amount-old">{money(target.amount)}</s>}
+              {money(netAmount)}
+            </strong>
           </div>
 
-          <>
+          <div className={`pay-discount${discount ? ' is-applied' : ''}`}>
+            {discount ? (
+              <div className="pay-discount-applied">
+                <i className="fas fa-ticket" />
+                <span>
+                  کد <b dir="ltr">{discount.code}</b> ({discount.label}) — تخفیف <b>{money(discount.discountAmount)}</b>
+                </span>
+                <button type="button" className="btn btn-outline btn-sm" onClick={removeCode} disabled={busy}>حذف</button>
+              </div>
+            ) : !codeOpen ? (
+              <button type="button" className="pay-discount-toggle" onClick={() => setCodeOpen(true)}>
+                <i className="fas fa-ticket" /> کد تخفیف دارید؟
+              </button>
+            ) : (
+              <form className="pay-discount-form" onSubmit={applyCode}>
+                <input
+                  className="form-control"
+                  dir="ltr"
+                  placeholder="DISCOUNT-CODE"
+                  value={codeInput}
+                  onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeError(''); }}
+                  maxLength={24}
+                  autoComplete="off"
+                  spellCheck="false"
+                  autoFocus
+                  aria-label="کد تخفیف"
+                />
+                <button type="submit" className="btn btn-primary btn-sm" disabled={checking || !codeInput.trim()}>
+                  {checking ? <i className="fas fa-circle-notch fa-spin" /> : 'اعمال'}
+                </button>
+              </form>
+            )}
+            {codeError && <p className="pay-discount-error" role="alert">{codeError}</p>}
+          </div>
+
+          {coveredByCode && (
+            <button type="button" className="btn btn-primary btn-w100 pay-online-btn" onClick={payWithCode} disabled={busy}>
+              <i className={`fas ${busy ? 'fa-circle-notch fa-spin' : 'fa-ticket'}`} /> ثبت با کد تخفیف (بدون پرداخت)
+            </button>
+          )}
+
+          {!coveredByCode && <>
               <div className="pay-method-list" role="radiogroup" aria-label="روش پرداخت">
                 {methods.map((m) => (
                   <button
@@ -137,7 +237,7 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
                       <strong>{m.label}</strong>
                       <span>{METHOD_HINT[m.key]}</span>
                     </span>
-                    <i className={`fas ${method === m.key ? 'fa-circle-dot' : 'fa-circle'} pay-method-radio`} />
+                    <i className={`${method === m.key ? 'fas fa-circle-dot' : 'far fa-circle'} pay-method-radio`} />
                   </button>
                 ))}
                 {!methods.length && <p className="pay-modal-empty">روش پرداختی فعال نیست.</p>}
@@ -186,9 +286,10 @@ export default function PaymentModal({ target, config, onClose, onDone }) {
                   {method === 'bale' ? ' پرداخت با بله' : ' انتقال به درگاه پرداخت'}
                 </button>
               )}
-            </>
+            </>}
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
