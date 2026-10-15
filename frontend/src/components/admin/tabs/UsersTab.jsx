@@ -6,6 +6,7 @@ import SectionHeader from '../shared/SectionHeader';
 import Pagination from '../shared/Pagination';
 import AdminSpinner from '../shared/AdminSpinner';
 import TableActions from '../shared/TableActions';
+import WeeklyReserveDrawer from '../shared/WeeklyReserveDrawer';
 
 const ROLE = { admin: 'مدیر', superadmin: 'سوپر ادمین', user: 'کاربر' };
 
@@ -19,15 +20,19 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ id: '', username: '', fullName: '', password: '', email: '', phone: '', role: 'admin', status: 'active', departmentId: '' });
+  const [reserveUser, setReserveUser] = useState(null);
+  const [manualReserve, setManualReserve] = useState({ enabled: false, reason: '' });
 
   async function load(page = 1, q = search) {
     setLoading(true);
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
     if (String(q || '').trim()) qs.set('search', String(q).trim());
-    const [usersData, deptData] = await Promise.all([
+    const [usersData, deptData, reserveStatus] = await Promise.all([
       api(`/api/admin/users?${qs}`),
       api('/api/admin/departments'),
+      api('/api/admin/user-reservations/status'),
     ]);
+    if (reserveStatus.success) setManualReserve(reserveStatus.data);
     setUsers(usersData.success ? usersData.data : []);
     setDepts(deptData.success ? deptData.data : []);
     setPagination(usersData.pagination || { page, totalPages: 1, total: 0 });
@@ -102,6 +107,25 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
     const data = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
     if (data.success) { toast('حذف شد', 'success'); load(pagination.page); }
     else toast(data.message || 'خطا', 'error');
+  }
+
+  async function loadUserReservations(wid) {
+    const res = await api(`/api/admin/users/${encodeURIComponent(reserveUser._id)}/reservations?weekId=${wid}`);
+    if (!res.success) toast(res.message || 'خطا', 'error');
+    return res.success ? res.data : { orders: [] };
+  }
+
+  async function reserveForUser(menuItemId) {
+    const data = await api(`/api/admin/users/${encodeURIComponent(reserveUser._id)}/reserve`, { method: 'POST', body: JSON.stringify({ menuItemId }) });
+    toast(data.message || (data.success ? 'رزرو ثبت شد' : 'خطا'), data.success ? 'success' : 'error');
+    return !!data.success;
+  }
+
+  async function cancelUserOrder(order) {
+    if (!(await confirmAction({ title: 'لغو رزرو؟', text: `رزرو «${order.menuItemId?.foodId?.name || 'غذا'}» برای ${reserveUser.fullName || reserveUser.username} لغو می‌شود.`, confirmText: 'لغو رزرو', icon: 'warning' }))) return false;
+    const data = await api(`/api/orders/admin/${order._id}/cancel`, { method: 'POST' });
+    toast(data.message || (data.success ? 'لغو شد' : 'خطا'), data.success ? 'success' : 'error');
+    return !!data.success;
   }
 
   const editingUser = users.find((u) => u._id === form.id);
@@ -213,6 +237,9 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
                     <td>{ROLE[u.role] || u.role}{(u.authSource === 'ldap' || u.ldapUser) && ' (AD)'}</td>
                     <td><span className={`badge badge-${u.status === 'active' ? 'success' : 'danger'}`}>{u.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
                     <TableActions>
+                      {manualReserve.enabled && u.status === 'active' && (
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => setReserveUser(u)} title="رزرو دستی غذا برای هفته‌های کاربر"><i className="fas fa-calendar-check" /></button>
+                      )}
                       <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(u)} title="ویرایش"><i className="fas fa-edit" /></button>
                       {String(u._id) === String(currentUserId)
                         ? <span className="badge badge-gray" title="حساب خودتان قابل حذف نیست">شما</span>
@@ -226,6 +253,16 @@ export default function UsersTab({ currentUserId, isSuperadmin }) {
           </>
         )}
       </div>
+      <WeeklyReserveDrawer
+        open={!!reserveUser}
+        title="رزرو دستی مدیر"
+        name={reserveUser?.fullName || reserveUser?.username}
+        subtitle={reserveUser ? `نام کاربری: ${reserveUser.username}` : ''}
+        loadReservations={loadUserReservations}
+        reserve={reserveForUser}
+        onCancel={cancelUserOrder}
+        onClose={() => setReserveUser(null)}
+      />
     </section>
   );
 }

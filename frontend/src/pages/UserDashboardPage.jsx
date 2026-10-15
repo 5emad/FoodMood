@@ -906,7 +906,7 @@ export default function UserDashboardPage({ guestMode = false, onLogout = null }
                         {orders.length ? orders.map((o) => (
                           <tr key={o._id}>
                             <td>#{o.orderNumber || '-'}</td>
-                            <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}</td>
+                            <td>{o.menuItemId?.foodId?.name || o.foodId?.name || '-'}{o.placedBy && <span className="weekly-reserve-by" title="این رزرو را مدیر برای شما ثبت کرده است">ثبت مدیر</span>}</td>
                             {caps.showPrices && <td>{money(o.totalPrice)}</td>}
                             <td>{jdate(o.orderDate)}</td>
                             <td>{o.deliveryDate ? jdate(o.deliveryDate) : '—'}</td>

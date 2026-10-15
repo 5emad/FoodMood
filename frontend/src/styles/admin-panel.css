@@ -79,4 +79,38 @@ body.admin-body .guest-drawer-overlay:not([hidden]) {
   }
 }
 
+/* رزرو دستی مدیر (کشوی رزرو هفتگی) */
+.weekly-reserve-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.weekly-reserve-cat { color: var(--text-muted); font-size: .76rem; }
+.weekly-reserve-by,
+.weekly-reserve-pending {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: .7rem;
+  line-height: 1.6;
+  vertical-align: middle;
+  background: var(--primary-bg-soft, rgba(27, 63, 141, .08));
+  color: var(--primary, #1B3F8D);
+}
+.weekly-reserve-pending { background: rgba(217, 119, 6, .12); color: #b45309; }
+.weekly-reserve-cancel { color: var(--danger, #dc2626); flex-shrink: 0; }
+.weekly-reserve-cancel:disabled { opacity: .5; cursor: not-allowed; }
+.weekly-reserve-blocked {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: .8rem;
+  line-height: 1.8;
+  background: rgba(217, 119, 6, .1);
+  color: #92400e;
+}
+
 /* end admin-panel */

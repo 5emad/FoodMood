@@ -537,3 +537,4 @@ class OrderController {
 }
 
 module.exports = OrderController;
+module.exports.buildOrderFromMenuItem = buildOrderFromMenuItem;

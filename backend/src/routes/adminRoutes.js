@@ -7,6 +7,7 @@ const GuestController = require('../controllers/GuestController');
 const MenuController = require('../controllers/MenuController');
 const PaymentController = require('../controllers/PaymentController');
 const DiscountCodeController = require('../controllers/DiscountCodeController');
+const UserReservationController = require('../controllers/UserReservationController');
 const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
 const { backupRestoreLimiter, bulkActionLimiter } = require('../middleware/rateLimiter');
@@ -97,6 +98,9 @@ router.get('/users', AdminController.getUsers);
 router.post('/users', AdminController.createUser);
 router.put('/users/:id', AdminController.updateUser);
 router.delete('/users/:id', AdminController.deleteUser);
+router.get('/user-reservations/status', UserReservationController.status);
+router.get('/users/:id/reservations', UserReservationController.reservations);
+router.post('/users/:id/reserve', UserReservationController.reserve);
 
 router.get('/guests', GuestController.list);
 router.post('/guests', GuestController.create);

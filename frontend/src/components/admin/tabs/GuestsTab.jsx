@@ -5,23 +5,15 @@ import { confirmAction } from '../../../hooks/useConfirm';
 import AdminSpinner from '../shared/AdminSpinner';
 import EmptyState from '../shared/EmptyState';
 import { useJalaliDatepicker } from '../../../hooks/useJalaliDatepicker';
-import { faDigits, jdate, money } from '../../../utils/format';
+import { faDigits, jdate } from '../../../utils/format';
 import GuestAccessModal from '../guests/GuestAccessModal';
+import WeeklyReserveDrawer from '../shared/WeeklyReserveDrawer';
 
 function guestInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'م';
   if (parts.length === 1) return parts[0].slice(0, 1);
   return `${parts[0].slice(0, 1)}${parts[parts.length - 1].slice(0, 1)}`;
-}
-
-function weekSelectLabel(w) {
-  const prefix = w.isActive ? 'فعال - ' : '';
-  return `${prefix}${w.jalaliStart} تا ${w.jalaliEnd}`;
-}
-
-function dayJalali(dateValue) {
-  return dateValue ? jdate(dateValue) : '';
 }
 
 export default function GuestsTab() {
@@ -35,11 +27,6 @@ export default function GuestsTab() {
   const [form, setForm] = useState({ id: '', fullName: '', guestType: 'temporary', department: '', status: 'active', notes: '', validUntil: '' });
   const [reserveGuest, setReserveGuest] = useState(null);
   const [accessGuest, setAccessGuest] = useState(null);
-  const [weeks, setWeeks] = useState([]);
-  const [weekId, setWeekId] = useState('');
-  const [menuDays, setMenuDays] = useState([]);
-  const [reservations, setReservations] = useState([]);
-  const [menuLoading, setMenuLoading] = useState(false);
 
   useJalaliDatepicker(showForm && form.guestType === 'temporary');
 
@@ -51,11 +38,6 @@ export default function GuestsTab() {
   }
 
   useEffect(() => { load(); }, []);
-
-  useEffect(() => {
-    document.body.classList.toggle('guest-drawer-open', !!reserveGuest);
-    return () => document.body.classList.remove('guest-drawer-open');
-  }, [reserveGuest]);
 
   const filtered = useMemo(() => guests.filter((g) => {
     if (typeFilter && g.guestType !== typeFilter) return false;
@@ -123,49 +105,16 @@ export default function GuestsTab() {
     } else toast(data.message || 'خطا', 'error');
   }
 
-  async function openReserve(g) {
-    setReserveGuest(g);
-    const w = await api('/api/admin/weeks?noSync=true');
-    const wl = w.success ? w.data : [];
-    setWeeks(wl);
-    const wid = wl.find((x) => x.isActive)?._id || wl[0]?._id || '';
-    setWeekId(wid);
-    if (wid) await loadReserveData(g._id, wid);
-  }
-
-  async function loadReserveData(guestId, wid) {
-    if (!wid) {
-      setMenuDays([]);
-      setReservations([]);
-      return;
-    }
-    setMenuLoading(true);
-    const [menu, res] = await Promise.all([
-      api(`/api/menu/weeks/${encodeURIComponent(wid)}?scope=admin`),
-      api(`/api/admin/guests/${guestId}/reservations?weekId=${wid}`),
-    ]);
-    setMenuDays(menu.success ? menu.data?.days || [] : []);
-    setReservations(res.success ? res.data?.orders || [] : []);
-    setMenuLoading(false);
+  async function loadGuestReservations(wid) {
+    const res = await api(`/api/admin/guests/${reserveGuest._id}/reservations?weekId=${wid}`);
+    return { orders: res.success ? res.data?.orders || [] : [] };
   }
 
   async function reserve(menuItemId) {
     const data = await api(`/api/admin/guests/${reserveGuest._id}/reserve`, { method: 'POST', body: JSON.stringify({ menuItemId }) });
-    if (data.success) {
-      toast(data.message || 'رزرو ثبت شد', 'success');
-      loadReserveData(reserveGuest._id, weekId);
-    } else toast(data.message || 'خطا', 'error');
+    toast(data.message || (data.success ? 'رزرو ثبت شد' : 'خطا'), data.success ? 'success' : 'error');
+    return !!data.success;
   }
-
-  const reservedByDay = useMemo(() => {
-    const map = new Map();
-    reservations.forEach((order) => {
-      const dayKey = order.menuItemId?.dailyMenuId?.date || order.orderDate;
-      const jalali = dayKey ? dayJalali(dayKey) : '';
-      if (jalali) map.set(jalali, order);
-    });
-    return map;
-  }, [reservations]);
 
   if (loading) return <AdminSpinner />;
 
@@ -250,7 +199,7 @@ export default function GuestsTab() {
                       <td><span className={`guest-status-chip ${g.status === 'active' ? 'active' : 'inactive'}`}>{g.status === 'active' ? 'فعال' : 'غیرفعال'}</span></td>
                       <td>
                         <div className="guest-actions">
-                          <button type="button" className="btn btn-primary btn-sm" onClick={() => openReserve(g)} title="رزرو هفتگی"><i className="fas fa-calendar-check" /></button>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => setReserveGuest(g)} title="رزرو هفتگی"><i className="fas fa-calendar-check" /></button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => setAccessGuest(g)} title="ورود مهمان: لینک مستقیم و رمز"><i className="fas fa-qrcode" /></button>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => openEdit(g)} title="ویرایش"><i className="fas fa-pen" /></button>
                           <button type="button" className="btn btn-danger btn-sm" onClick={() => remove(g)} title="حذف"><i className="fas fa-trash" /></button>
@@ -324,83 +273,15 @@ export default function GuestsTab() {
         </div>
       </div>
 
-      <div id="guestReserveOverlay" className="guest-drawer-overlay" hidden={!reserveGuest} onClick={() => setReserveGuest(null)} />
-      <aside className={`guest-drawer${reserveGuest ? ' is-open' : ''}`} id="guestReservePanel" aria-hidden={reserveGuest ? 'false' : 'true'}>
-        <div className="guest-drawer-header">
-          <div>
-            <div className="guest-drawer-title"><i className="fas fa-calendar-check" /> رزرو هفتگی</div>
-            <div className="guest-reserve-name" id="guestReserveName">{reserveGuest?.fullName || '—'}</div>
-            <div className="guest-reserve-code" id="guestReserveCode">کد: {reserveGuest?.guestCode || '—'}</div>
-          </div>
-          <button type="button" className="btn-icon guest-drawer-close" onClick={() => setReserveGuest(null)}><i className="fas fa-times" /></button>
-        </div>
-        <div className="guest-drawer-body">
-          <div className="form-group">
-            <label className="form-label">هفته</label>
-            <select className="form-control" id="guestReserveWeekSelect" value={weekId} onChange={(e) => { setWeekId(e.target.value); if (reserveGuest) loadReserveData(reserveGuest._id, e.target.value); }}>
-              {weeks.map((w) => <option key={w._id} value={w._id}>{weekSelectLabel(w)}</option>)}
-            </select>
-          </div>
-          <div id="guestReserveMenuWrap">
-            {!weekId ? (
-              <div className="text-muted" style={{ fontSize: '.82rem' }}>هفته را انتخاب کنید</div>
-            ) : menuLoading ? (
-              <div style={{ padding: 16, textAlign: 'center' }}><div className="spinner" /></div>
-            ) : !menuDays.length ? (
-              <div className="text-muted" style={{ fontSize: '.82rem' }}>روزی در منو نیست</div>
-            ) : (
-              menuDays.map((day) => {
-                const jalali = dayJalali(day.date);
-                const reserved = reservedByDay.get(jalali);
-                if (reserved) {
-                  const food = reserved.menuItemId?.foodId?.name
-                    || (reserved.items || []).map((i) => i.foodId?.name).filter(Boolean).join('، ')
-                    || 'رزرو شده';
-                  return (
-                    <div key={day._id} className="guest-day-card">
-                      <div className="guest-day-title">{jalali}</div>
-                      <div className="guest-day-reserved"><i className="fas fa-check-circle" /> {food}</div>
-                    </div>
-                  );
-                }
-                const items = (day.items || []).filter((item) => item.isAvailable !== false && item.foodId?.isAvailable !== false);
-                if (!items.length) {
-                  return (
-                    <div key={day._id} className="guest-day-card">
-                      <div className="guest-day-title">{jalali}</div>
-                      <div className="text-muted" style={{ fontSize: '.8rem' }}>غذایی در منو نیست</div>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={day._id} className="guest-day-card">
-                    <div className="guest-day-title">{jalali}</div>
-                    <div className="guest-food-actions">
-                      {items.map((item) => {
-                        const full = Number(item.reservedCount || 0) >= Number(item.effectiveCapacity || 0) && Number(item.effectiveCapacity || 0) > 0;
-                        const foodName = item.foodId?.name || 'غذا';
-                        const price = item.price ?? item.customPrice ?? item.foodId?.price ?? 0;
-                        return (
-                          <button
-                            key={item._id}
-                            type="button"
-                            className="guest-food-btn"
-                            disabled={full}
-                            onClick={() => reserve(item._id)}
-                          >
-                            <span>{foodName}</span>
-                            <span>{full ? 'تکمیل' : money(price)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </aside>
+      <WeeklyReserveDrawer
+        open={!!reserveGuest}
+        title="رزرو هفتگی"
+        name={reserveGuest?.fullName}
+        subtitle={reserveGuest ? `کد: ${reserveGuest.guestCode}` : ''}
+        loadReservations={loadGuestReservations}
+        reserve={reserve}
+        onClose={() => setReserveGuest(null)}
+      />
 
       {accessGuest && (
         <GuestAccessModal guest={accessGuest} onClose={() => setAccessGuest(null)} onChanged={load} />

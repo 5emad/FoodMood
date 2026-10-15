@@ -89,6 +89,16 @@ const orderSchema = new mongoose.Schema({
     ref: 'Week',
   },
   items: [orderItemSchema],
+  /** رزرو دستی مدیر برای کاربر (خالی = خود کاربر رزرو کرده) */
+  placedBy: {
+    type: new mongoose.Schema({
+      userId: { type: String, default: null },
+      username: { type: String, trim: true, default: null },
+      fullName: { type: String, trim: true, default: null },
+      role: { type: String, trim: true, default: null },
+    }, { _id: false }),
+    default: null,
+  },
   orderDate: {
     type: Date,
     default: Date.now,
