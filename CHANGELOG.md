@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Ver
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-15
+
+### Added
+- Online payments (opt-in, admin «پرداخت‌ها» tab): card-to-card with receipt upload and admin approval, Bale, and Zarinpal/Zibal gateways, for the cart, weekly or monthly statements. Paid orders are confirmed automatically and can't be cancelled.
+- Guest portal at `/guest`: login with guest code, password and captcha, or a single-use direct link valid for 30 or 60 minutes.
+- Discount codes (Finance tab): percent or fixed amount, for everyone, a department or one person, with expiry and usage limits.
+- Responsive layout for phones and tablets across the user portal and admin panel.
+- Admins and superadmins can book meals by hand for a user's week from the Users tab (calendar button): pick the week, fill the days the user left empty, or cancel a booking. Admin-placed orders are confirmed immediately, follow the same capacity and one-meal-per-category-per-day rules, and show a «ثبت مدیر» badge in the user's portal. Not available while cart payment (pay right after booking) is on.
+- The guest weekly-booking drawer now shares this component and handles several meal categories per day.
+- Safe server updates: `update.sh` now builds the new version in a temp dir first, takes a full backup before changing anything (MongoDB dump, payment receipts, uploads, certificates, `.env`, code snapshot in `/var/backups/foodmood/`), rolls back to the previous code automatically if the new version fails, and compares record counts before and after. New commands: `--list-backups`, `--rollback`, `--restore-db [DIR] --yes`.
+
+### Fixed
+- Updates no longer delete card-payment receipt images (`backend/storage/` was not protected from `rsync --delete`).
+- Automatic data recovery no longer restores an old backup over the live database when it merely failed to count users (a mongosh/auth hiccup was treated as an empty database). It now takes a safety dump before any restore.
+
 ## [1.9.45] - 2026-09-05
 
 ### Added
