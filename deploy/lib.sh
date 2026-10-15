@@ -571,12 +571,18 @@ mongoose.connect(uri, { serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000 }
 \"" 2>&1 || true
 }
 
-# How many app users in a DB (via MONGODB_URI, swapping db name).
+# How many documents a collection has in a DB (via MONGODB_URI, swapping db name).
+# Prints "?" when the count could not be read — callers must never treat that as 0.
 count_app_users_in_db() {
+  count_app_docs_in_db "$1" users
+}
+
+count_app_docs_in_db() {
   local db="$1"
+  local coll="${2:-users}"
   local uri count
   uri="$(grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)"
-  [[ -n "$uri" ]] || { echo 0; return; }
+  [[ -n "$uri" ]] || { echo "?"; return; }
   count="$(
     DB_TARGET="$db" MONGODB_URI="$uri" python3 - <<'PY' 2>/dev/null || true
 import os, re, urllib.parse
@@ -589,13 +595,34 @@ PY
   )"
   # count via mongosh
   local n
-  n="$(mongosh --quiet "$count" --eval 'db.users.estimatedDocumentCount()' 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  n="$(mongosh --quiet "$count" --eval "db.getCollection('${coll}').countDocuments({})" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
   if [[ "$n" =~ ^[0-9]+$ ]]; then
     echo "$n"
   else
     # localhost no-auth fallback
-    n="$(mongosh --quiet "$db" --eval 'db.users.estimatedDocumentCount()' 2>/dev/null | tail -n1 | tr -d '\r' || true)"
-    [[ "$n" =~ ^[0-9]+$ ]] && echo "$n" || echo 0
+    n="$(mongosh --quiet "$db" --eval "db.getCollection('${coll}').countDocuments({})" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+    [[ "$n" =~ ^[0-9]+$ ]] && echo "$n" || echo "?"
+  fi
+}
+
+# A DB is "empty" only when users AND orders were actually counted and both are 0.
+app_db_definitely_empty() {
+  local db="$1" users orders
+  users="$(count_app_docs_in_db "$db" users)"
+  orders="$(count_app_docs_in_db "$db" orders)"
+  [[ "$users" == "0" && "$orders" == "0" ]]
+}
+
+# Dump the target DB before anything --drop's it, even if it looks empty.
+safety_dump_before_restore() {
+  local uri="$1" dir
+  command -v mongodump >/dev/null 2>&1 || return 0
+  dir="${BACKUP_ROOT:-/var/backups/foodmood}/pre-restore-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$dir" && chmod 700 "$(dirname "$dir")" "$dir"
+  if mongodump --uri="$uri" --archive="${dir}/db.archive.gz" --gzip >/dev/null 2>&1; then
+    log_info "Safety dump of current DB: ${dir}/db.archive.gz"
+  else
+    log_warn "Safety dump before restore failed"
   fi
 }
 
@@ -640,8 +667,18 @@ auto_recover_app_data() {
   reservation_users="$(count_app_users_in_db food_reservation)"
   log_info "Data check: ${DB_NAME}=${ordering_users} users, food_reservation=${reservation_users} users"
 
+  # Never overwrite a DB whose contents could not be read (mongosh/auth hiccup is not "empty")
+  if [[ ! "$ordering_users" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not count users in ${DB_NAME} — skipping automatic data recovery (nothing changed)"
+    return 0
+  fi
+  if ! app_db_definitely_empty "$DB_NAME"; then
+    log_ok "App data present in ${DB_NAME} — no recovery needed"
+    return 0
+  fi
+
   # Case A: data landed in wrong DB name after bad Docker exit
-  if [[ "$ordering_users" -lt 1 && "$reservation_users" -gt 0 ]]; then
+  if [[ "$reservation_users" =~ ^[0-9]+$ && "$reservation_users" -gt 0 ]]; then
     log_warn "Found data in food_reservation — copying into ${DB_NAME}…"
     local res_uri tmp_archive
     res_uri="$(DB_TARGET=food_reservation MONGODB_URI="$uri" python3 - <<'PY'
@@ -651,6 +688,7 @@ db = os.environ["DB_TARGET"]
 print(re.sub(r"(mongodb(?:\+srv)?://[^/]+/)([^?]+)", r"\1" + db, uri, count=1))
 PY
 )"
+    safety_dump_before_restore "$uri"
     tmp_archive="$(mktemp /tmp/food-nsfix-XXXXXX.archive)"
     if mongodump --uri="$res_uri" --archive="$tmp_archive" --gzip >/dev/null 2>&1 \
       || mongodump --db=food_reservation --archive="$tmp_archive" --gzip >/dev/null 2>&1; then
@@ -668,11 +706,12 @@ PY
     ordering_users="$(count_app_users_in_db "$DB_NAME")"
   fi
 
-  # Case B: still empty — restore newest filesystem backup
-  if [[ "$ordering_users" -lt 1 ]]; then
-    log_warn "App DB looks empty — searching backups…"
+  # Case B: still definitely empty — restore newest filesystem backup
+  if app_db_definitely_empty "$DB_NAME"; then
+    log_warn "App DB is empty — searching backups…"
     best="$(
       {
+        ls -1t "${BACKUP_ROOT:-/var/backups/foodmood}"/update-*/db.archive.gz 2>/dev/null || true
         ls -1t "${INSTALL_DIR}/backups"/docker-exit-*.archive 2>/dev/null || true
         ls -1td /var/backups/foodmood-docker-migrate-* 2>/dev/null || true
         ls -1td /var/backups/foodmood-* 2>/dev/null || true
@@ -682,6 +721,7 @@ PY
     )"
     if [[ -n "$best" ]]; then
       log_info "Restoring from ${best}…"
+      safety_dump_before_restore "$uri"
       if restore_archive_or_dir_into_ordering "$best"; then
         log_ok "Backup restored into ${DB_NAME}"
       else

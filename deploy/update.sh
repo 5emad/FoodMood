@@ -10,6 +10,19 @@
 #
 #  Reset superadmin:
 #    sudo bash .../update.sh --superadmin-pass 'Food@Super2026!'
+#
+#  Safety (every update):
+#    - full MongoDB dump + receipts/uploads/certs/.env + code snapshot
+#      in /var/backups/foodmood/update-<date>-v<old>/ BEFORE any change
+#    - new version is built in a temp dir first; the live site is untouched
+#      if that fails
+#    - automatic rollback to the previous code if the update fails
+#    - row counts (users/orders/payments/…) compared before and after
+#
+#  Backups & recovery:
+#    sudo bash /opt/food/deploy/update.sh --list-backups
+#    sudo bash /opt/food/deploy/update.sh --rollback            # previous code, DB untouched
+#    sudo bash /opt/food/deploy/update.sh --restore-db [DIR] --yes
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -25,6 +38,32 @@ DIAGNOSE_ONLY=0
 REPAIR_DB_ONLY=0
 SUPERADMIN_USER="${SUPERADMIN_USER:-superadmin}"
 SUPERADMIN_PASS="${SUPERADMIN_PASS:-}"
+BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/foodmood}"
+KEEP_BACKUPS="${KEEP_BACKUPS:-5}"
+KEEP_CODE_SNAPSHOTS=2
+NO_BACKUP=0
+DO_ROLLBACK=0
+DO_RESTORE_DB=0
+RESTORE_DIR=""
+ASSUME_YES=0
+LIST_BACKUPS=0
+
+# Runtime data that an update must never delete or overwrite (anchored rsync patterns)
+PRESERVE_EXCLUDES=(
+  --exclude '/.env'
+  --exclude '/.env.docker'
+  --exclude '/INSTALL_INFO.txt'
+  --exclude '/.git/'
+  --exclude '/.npm/'
+  --exclude '/.cache/'
+  --exclude '/logs/'
+  --exclude '/backups/'
+  --exclude '/backend/logs/'
+  --exclude '/backend/storage/'
+  --exclude '/backend/public/uploads/'
+  --exclude '/certs/ssl/'
+  --exclude '*.log'
+)
 
 # ── colors ────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -105,8 +144,17 @@ while [[ $# -gt 0 ]]; do
     --repair-db) REPAIR_DB_ONLY=1; shift ;;
     --superadmin-user) SUPERADMIN_USER="$2"; shift 2 ;;
     --superadmin-pass) SUPERADMIN_PASS="$2"; shift 2 ;;
+    --no-backup) NO_BACKUP=1; shift ;;
+    --keep) KEEP_BACKUPS="$2"; shift 2 ;;
+    --rollback) DO_ROLLBACK=1; shift ;;
+    --restore-db)
+      DO_RESTORE_DB=1
+      if [[ $# -gt 1 && "$2" != --* ]]; then RESTORE_DIR="$2"; shift 2; else shift; fi
+      ;;
+    --yes) ASSUME_YES=1; shift ;;
+    --list-backups) LIST_BACKUPS=1; shift ;;
     -h|--help)
-      sed -n '2,16p' "$0"
+      sed -n '2,30p' "$0"
       exit 0
       ;;
     *) log_err "Unknown option: $1"; exit 1 ;;
@@ -335,6 +383,305 @@ migrate_systemd_service() {
   chmod +x "${INSTALL_DIR}/deploy/"*.sh 2>/dev/null || true
 }
 
+# ── Backups, staging build, rollback ──────────────────────────
+mongo_uri_from_env() {
+  grep '^MONGODB_URI=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true
+}
+
+COUNT_COLLECTIONS=(users ldapprofiles orders payments guests foods discountcodes)
+
+# "users=12 orders=3400 …" — "?" for a collection that could not be counted
+snapshot_counts() {
+  local uri out js
+  uri="$(mongo_uri_from_env)"
+  command -v mongosh >/dev/null 2>&1 && [[ -n "$uri" ]] || { echo ""; return 0; }
+  local list
+  list="$(printf "'%s'," "${COUNT_COLLECTIONS[@]}")"
+  js="const c=[${list%,}];"
+  js+="print(c.map(n=>{try{return n+'='+db.getCollection(n).countDocuments({})}catch(e){return n+'=?'}}).join(' '))"
+  out="$(mongosh --quiet "$uri" --eval "$js" 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  echo "$out"
+}
+
+count_of() {
+  local counts="$1" name="$2" kv
+  for kv in $counts; do
+    [[ "${kv%%=*}" == "$name" ]] && { echo "${kv#*=}"; return 0; }
+  done
+  echo "?"
+}
+
+ensure_mongo_tools() {
+  command -v mongodump >/dev/null 2>&1 && command -v mongorestore >/dev/null 2>&1 && return 0
+  log_warn "mongodump not found — installing MongoDB database tools…"
+  apt-get install -y -qq mongodb-database-tools >/dev/null 2>&1 \
+    || apt-get install -y -qq mongodb-org-tools >/dev/null 2>&1 || true
+  command -v mongodump >/dev/null 2>&1 && command -v mongorestore >/dev/null 2>&1
+}
+
+latest_backup_dir() {
+  ls -1dt "${BACKUP_ROOT}"/update-* 2>/dev/null | head -n1 || true
+}
+
+list_backups() {
+  local d size
+  ui_banner "FoodMood  ·  Backups"
+  if ! ls -1d "${BACKUP_ROOT}"/update-* >/dev/null 2>&1; then
+    log_warn "No update backups in ${BACKUP_ROOT}"
+    return 0
+  fi
+  for d in $(ls -1dt "${BACKUP_ROOT}"/update-*); do
+    size="$(du -sh "$d" 2>/dev/null | cut -f1)"
+    echo -e "  ${BOLD}$(basename "$d")${NC}  ${DIM}${size}${NC}"
+    [[ -f "${d}/manifest.txt" ]] && grep -E '^(from|to|date|counts)=' "${d}/manifest.txt" | sed 's/^/      /'
+    [[ -d "${d}/app" ]] && echo -e "      ${DIM}code snapshot: yes (rollback possible)${NC}"
+  done
+  ui_blank
+}
+
+# Keep KEEP_BACKUPS backups; code snapshots (large) only for the newest KEEP_CODE_SNAPSHOTS
+prune_backups() {
+  local i=0 d
+  for d in $(ls -1dt "${BACKUP_ROOT}"/update-* 2>/dev/null); do
+    i=$((i + 1))
+    if (( i > KEEP_BACKUPS )); then
+      rm -rf "$d"
+    elif (( i > KEEP_CODE_SNAPSHOTS )); then
+      rm -rf "${d}/app"
+    fi
+  done
+}
+
+# Free space check: app code + uncompressed data size (dump is gzip, so this is generous)
+check_backup_space() {
+  local uri data_kb app_kb need_kb free_kb
+  uri="$(mongo_uri_from_env)"
+  data_kb="$(mongosh --quiet "$uri" --eval 'print(Math.ceil((db.stats().dataSize||0)/1024))' 2>/dev/null | tail -n1 | tr -d '\r' || true)"
+  [[ "$data_kb" =~ ^[0-9]+$ ]] || data_kb=0
+  app_kb="$(du -sk "$INSTALL_DIR" 2>/dev/null | cut -f1)"
+  [[ "$app_kb" =~ ^[0-9]+$ ]] || app_kb=0
+  need_kb=$(( app_kb + data_kb + 512 * 1024 ))
+  free_kb="$(df -Pk "$BACKUP_ROOT" | awk 'NR==2 {print $4}')"
+  if [[ "$free_kb" =~ ^[0-9]+$ ]] && (( free_kb < need_kb )); then
+    log_warn "Low disk space for backup — pruning older backups…"
+    KEEP_BACKUPS=2 KEEP_CODE_SNAPSHOTS=1 prune_backups
+    free_kb="$(df -Pk "$BACKUP_ROOT" | awk 'NR==2 {print $4}')"
+    if [[ "$free_kb" =~ ^[0-9]+$ ]] && (( free_kb < need_kb )); then
+      log_err "Not enough disk space for a safe backup: need ~$((need_kb / 1024)) MB, free $((free_kb / 1024)) MB in ${BACKUP_ROOT}"
+      log_dim "Free some space and run the update again (the live site was not changed)."
+      return 1
+    fi
+  fi
+  return 0
+}
+
+UPDATE_BACKUP_DIR=""
+PRE_COUNTS=""
+
+# Everything needed to get back to the current state, taken before any change.
+create_update_backup() {
+  local old_version="$1" new_version="$2" source_commit="$3" uri dir files=()
+  uri="$(mongo_uri_from_env)"
+  mkdir -p "$BACKUP_ROOT"
+  chmod 700 "$BACKUP_ROOT"
+  check_backup_space || return 1
+
+  dir="${BACKUP_ROOT}/update-$(date +%Y%m%d-%H%M%S)-v${old_version}"
+  mkdir -p "$dir"
+  chmod 700 "$dir"
+
+  PRE_COUNTS="$(snapshot_counts)"
+
+  log_info "MongoDB dump…"
+  if ! ensure_mongo_tools; then
+    log_err "mongodump/mongorestore unavailable — refusing to update without a database backup"
+    log_dim "Install mongodb-database-tools, or re-run with --no-backup (not recommended)."
+    rm -rf "$dir"
+    return 1
+  fi
+  if ! mongodump --uri="$uri" --archive="${dir}/db.archive.gz" --gzip >"${dir}/mongodump.log" 2>&1 \
+     || [[ ! -s "${dir}/db.archive.gz" ]] || ! gzip -t "${dir}/db.archive.gz" 2>/dev/null; then
+    log_err "Database backup failed — update aborted, nothing was changed"
+    log_dim "$(tail -n 5 "${dir}/mongodump.log" 2>/dev/null)"
+    rm -rf "$dir"
+    return 1
+  fi
+  log_ok "Database dumped ($(du -h "${dir}/db.archive.gz" | cut -f1))"
+
+  log_info "Receipts, uploads, certificates, .env…"
+  for f in .env backend/storage backend/public/uploads certs/ssl; do
+    [[ -e "${INSTALL_DIR}/${f}" ]] && files+=("$f")
+  done
+  if (( ${#files[@]} )); then
+    tar -czf "${dir}/files.tar.gz" -C "$INSTALL_DIR" "${files[@]}"
+    chmod 600 "${dir}/files.tar.gz"
+  fi
+  log_ok "Files archived (${files[*]:-none})"
+
+  log_info "Snapshot of current code (for rollback)…"
+  rsync -a "${PRESERVE_EXCLUDES[@]}" --exclude '/frontend/node_modules/' "${INSTALL_DIR}/" "${dir}/app/"
+  [[ -f /etc/systemd/system/${SERVICE_NAME}.service ]] && cp -a "/etc/systemd/system/${SERVICE_NAME}.service" "${dir}/systemd.service"
+  log_ok "Code snapshot ready"
+
+  {
+    echo "from=v${old_version}"
+    echo "to=v${new_version} (${TAG:-$BRANCH} @ ${source_commit})"
+    echo "date=$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    echo "counts=${PRE_COUNTS}"
+  } >"${dir}/manifest.txt"
+  UPDATE_BACKUP_DIR="$dir"
+  log_ok "Backup: ${dir}"
+}
+
+# Build the new version in the temp clone, so a broken build never reaches /opt/food.
+stage_build() {
+  local source_dir="$1"
+  log_info "Installing dependencies in staging…"
+  if ! (cd "$source_dir" && npm install --omit=dev --no-audit --no-fund >/dev/null 2>&1); then
+    (cd "$source_dir" && npm install --omit=dev --no-audit --no-fund --registry=https://registry.npmmirror.com >/dev/null 2>&1) || {
+      log_err "npm install failed for the new version — update aborted, live site untouched"
+      return 1
+    }
+  fi
+  log_info "Building SPA and client bundles in staging…"
+  if (cd "$source_dir" && npm run vendor:sync >/dev/null 2>&1 && npm run build >/dev/null 2>&1); then
+    log_ok "New version built"
+  else
+    log_warn "Build failed in staging — using the prebuilt SPA shipped in the release"
+  fi
+  if [[ ! -s "${source_dir}/backend/public/spa/index.html" ]]; then
+    log_err "Release has no SPA bundle (backend/public/spa/index.html) — update aborted, live site untouched"
+    return 1
+  fi
+  # Load every route module (pulls in controllers/services/models) without starting the server
+  if ! (cd "$source_dir" && node --check backend/server.js \
+        && node -e "for (const f of require('fs').readdirSync('backend/src/routes')) require('./backend/src/routes/' + f); process.exit(0)") \
+        >"${source_dir}/.stage-check.log" 2>&1; then
+    log_err "New backend does not load — update aborted, live site untouched"
+    log_dim "$(tail -n 8 "${source_dir}/.stage-check.log")"
+    return 1
+  fi
+  log_ok "New backend loads"
+}
+
+# Restore the code snapshot of a backup dir (DB and runtime data are left as they are).
+restore_code_snapshot() {
+  local dir="$1"
+  if [[ ! -d "${dir}/app" ]]; then
+    log_err "No code snapshot in ${dir}"
+    return 1
+  fi
+  log_warn "Restoring previous code from ${dir}…"
+  systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  rsync -a --delete "${PRESERVE_EXCLUDES[@]}" "${dir}/app/" "${INSTALL_DIR}/"
+  if [[ -f "${dir}/systemd.service" ]]; then
+    cp -a "${dir}/systemd.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl daemon-reload
+  fi
+  chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
+  chmod 600 "${INSTALL_DIR}/.env"
+  systemctl start "$SERVICE_NAME"
+  if wait_for_api_health 30; then
+    log_ok "Previous version is running again: v$(read_installed_version)"
+  else
+    log_err "Previous version did not become healthy — check: journalctl -u ${SERVICE_NAME} -n 60"
+    return 1
+  fi
+}
+
+# Set once the backup exists and files are about to change; cleared when the new version is healthy.
+ROLLBACK_ARMED=0
+
+fail_update() {
+  log_err "Update failed: $1"
+  exit 1
+}
+
+# EXIT trap: any failure (set -e, fail_update) while armed rolls the code back.
+# (An ERR trap with set -E would also fire inside $(...) in lib.sh and roll back by mistake.)
+on_exit() {
+  local rc=$?
+  set +e
+  if [[ "$rc" -ne 0 && "$ROLLBACK_ARMED" -eq 1 && -n "$UPDATE_BACKUP_DIR" ]]; then
+    ROLLBACK_ARMED=0
+    log_err "Update did not complete — rolling back to the previous version"
+    restore_code_snapshot "$UPDATE_BACKUP_DIR"
+    log_warn "Your data was not deleted. Database backup taken before the update:"
+    log_dim "${UPDATE_BACKUP_DIR}/db.archive.gz"
+    log_dim "Only if data looks wrong: sudo bash ${INSTALL_DIR}/deploy/update.sh --restore-db ${UPDATE_BACKUP_DIR} --yes"
+  fi
+  [[ -n "$CLONE_DIR" ]] && rm -rf "$CLONE_DIR"
+  exit "$rc"
+}
+
+# After restart: no core collection may have fewer rows than before the update.
+verify_data_counts() {
+  local post name before after lost=0
+  [[ -n "$PRE_COUNTS" ]] || { log_warn "Pre-update counts unavailable — skipping data check"; return 0; }
+  post="$(snapshot_counts)"
+  for name in "${COUNT_COLLECTIONS[@]}"; do
+    before="$(count_of "$PRE_COUNTS" "$name")"
+    after="$(count_of "$post" "$name")"
+    [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] || continue
+    if (( after < before )); then
+      log_err "Data check: ${name} ${before} → ${after}"
+      lost=1
+    fi
+  done
+  ui_kv "Before" "$PRE_COUNTS"
+  ui_kv "After"  "$post"
+  if (( lost )); then
+    log_err "Some records are missing after the update!"
+    log_dim "Restore the pre-update database: sudo bash ${INSTALL_DIR}/deploy/update.sh --restore-db ${UPDATE_BACKUP_DIR} --yes"
+    return 1
+  fi
+  log_ok "Data check passed — no records lost"
+}
+
+# Manual DB restore from an update backup (takes a fresh safety dump first).
+restore_database() {
+  local dir="${RESTORE_DIR:-$(latest_backup_dir)}" uri safety
+  load_lib || exit 1
+  if [[ -z "$dir" || ! -s "${dir}/db.archive.gz" ]]; then
+    log_err "No database backup found (${dir:-none}). See: update.sh --list-backups"
+    exit 1
+  fi
+  ui_banner "FoodMood  ·  Restore database"
+  ui_kv "From" "$dir"
+  [[ -f "${dir}/manifest.txt" ]] && sed 's/^/    /' "${dir}/manifest.txt"
+  if [[ "$ASSUME_YES" -ne 1 ]]; then
+    log_warn "This REPLACES the current database with the backup (changes since then are lost)."
+    log_dim "Re-run with --yes to confirm."
+    exit 1
+  fi
+  ensure_mongo_tools || { log_err "mongorestore unavailable"; exit 1; }
+  uri="$(mongo_uri_from_env)"
+  safety="${BACKUP_ROOT}/pre-restore-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$safety" && chmod 700 "$safety"
+  log_info "Safety dump of the current database…"
+  mongodump --uri="$uri" --archive="${safety}/db.archive.gz" --gzip >/dev/null 2>&1 \
+    || { log_err "Safety dump failed — restore aborted"; exit 1; }
+  log_ok "Current database saved to ${safety}/db.archive.gz"
+
+  systemctl stop "$SERVICE_NAME" 2>/dev/null || true
+  if mongorestore --uri="$uri" --archive="${dir}/db.archive.gz" --gzip --drop >"${safety}/mongorestore.log" 2>&1; then
+    log_ok "Database restored"
+  else
+    log_err "mongorestore failed — see ${safety}/mongorestore.log"
+    log_dim "Undo: sudo bash ${INSTALL_DIR}/deploy/update.sh --restore-db ${safety} --yes"
+    systemctl start "$SERVICE_NAME" 2>/dev/null || true
+    exit 1
+  fi
+  if [[ -f "${dir}/files.tar.gz" ]]; then
+    tar -xzf "${dir}/files.tar.gz" -C "$INSTALL_DIR" backend/storage backend/public/uploads 2>/dev/null || true
+    chown -R "$APP_USER:$APP_USER" "${INSTALL_DIR}/backend/storage" "${INSTALL_DIR}/backend/public/uploads" 2>/dev/null || true
+    log_ok "Payment receipts and uploads restored"
+  fi
+  systemctl start "$SERVICE_NAME"
+  wait_for_api_health 30 && log_ok "Service healthy" || log_warn "Service not healthy yet — journalctl -u ${SERVICE_NAME} -n 60"
+  log_dim "Undo this restore: sudo bash ${INSTALL_DIR}/deploy/update.sh --restore-db ${safety} --yes"
+}
+
 fetch_source() {
   CLONE_DIR="$(mktemp -d /tmp/food-update-XXXXXX)"
   log_info "Fetching source from ${REPO_URL}…"
@@ -434,7 +781,7 @@ apply_update() {
   server_ip="$(detect_server_ip)"
 
   UPDATE_STEP=0
-  UPDATE_STEPS_TOTAL=11
+  UPDATE_STEPS_TOTAL=13
 
   ui_banner "FoodMood  ·  Update"
   ui_kv "From"    "v${old_version}"
@@ -443,26 +790,25 @@ apply_update() {
   ui_kv "Mode"    "bare-metal (systemd + host MongoDB + Nginx)"
   ui_blank
 
-  ui_step "Backup configuration"
-  cp -a "${INSTALL_DIR}/.env" "/tmp/food-env-backup-$(date +%s).env"
-  log_ok ".env backed up"
+  ui_step "Prepare new version (staging)"
+  stage_build "$source_dir" || exit 1
+
+  ui_step "Backup data & current version"
+  if [[ "$NO_BACKUP" -eq 1 ]]; then
+    log_warn "--no-backup: skipping backup and automatic rollback (not recommended)"
+  else
+    create_update_backup "$old_version" "$new_version" "$source_commit" || exit 1
+    ROLLBACK_ARMED=1
+  fi
 
   ui_step "Sync application files"
-  log_info "Preserving .env, uploads, and certificates…"
+  log_info "Preserving .env, receipts, uploads, certificates, logs and backups…"
   mkdir -p "${INSTALL_DIR}/backend/public/uploads/foods" \
+           "${INSTALL_DIR}/backend/storage" \
            "${INSTALL_DIR}/certs/ssl"
   rsync -a --delete \
+    "${PRESERVE_EXCLUDES[@]}" \
     --exclude node_modules \
-    --exclude .git \
-    --exclude .env \
-    --exclude .env.docker \
-    --exclude .npm \
-    --exclude .cache \
-    --exclude INSTALL_INFO.txt \
-    --exclude '*.log' \
-    --exclude 'backend/logs/' \
-    --exclude 'backend/public/uploads/' \
-    --exclude 'certs/ssl/' \
     "$source_dir/" "$INSTALL_DIR/"
 
   chown -R "$APP_USER:$APP_USER" "$INSTALL_DIR"
@@ -482,11 +828,9 @@ apply_update() {
   fi
   log_ok "Dependencies installed"
 
-  ui_step "Build assets"
-  log_info "Vendor fonts & SPA bundles…"
+  ui_step "Assets"
+  log_info "Vendor fonts (SPA was built in staging)…"
   sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run vendor:sync"
-  sudo -u "$APP_USER" bash -c "cd '$INSTALL_DIR' && npm run build" \
-    || log_warn "Build failed — non-minified JS / SPA may be stale"
   chmod -R a+rX "${INSTALL_DIR}/backend/public" 2>/dev/null || true
   log_ok "Assets ready"
 
@@ -513,7 +857,7 @@ apply_update() {
   log_ok "PDF runtime prepared"
 
   ui_step "HTTPS / Nginx"
-  configure_tls_deployment
+  configure_tls_deployment || log_warn "HTTPS / Nginx repair had issues — app update continues"
 
   ui_step "Restart & health checks"
   log_info "Restarting ${SERVICE_NAME}…"
@@ -523,7 +867,7 @@ apply_update() {
   if ! repair_mongodb_from_env; then
     log_err "MongoDB repair failed after restart — login will not work"
     run_diagnose "$server_ip"
-    exit 1
+    fail_update "MongoDB not reachable after restart"
   fi
 
   local mongo_query
@@ -531,7 +875,7 @@ apply_update() {
   if [[ "$mongo_query" != OK:* ]]; then
     log_err "MongoDB query test failed: ${mongo_query#FAIL:}"
     run_diagnose "$server_ip"
-    exit 1
+    fail_update "MongoDB query test failed"
   fi
   log_ok "MongoDB ready (${mongo_query#OK:})"
 
@@ -542,17 +886,21 @@ apply_update() {
     if ! wait_for_api_health 20; then
       log_err "Health check failed. Logs: journalctl -u ${SERVICE_NAME} -n 40"
       run_diagnose "$server_ip"
-      exit 1
+      fail_update "new version did not become healthy"
     fi
   fi
   log_ok "API health check passed"
 
   installed_after="$(read_installed_version)"
   if [[ "$installed_after" != "$new_version" ]]; then
-    log_err "package.json on disk is still v${installed_after} (expected v${new_version})."
-    exit 1
+    fail_update "package.json on disk is v${installed_after} (expected v${new_version})"
   fi
   log_ok "Installed version confirmed: v${installed_after}"
+
+  # From here on the new version is live and healthy; later checks only warn
+  ROLLBACK_ARMED=0
+  verify_data_counts || true
+  prune_backups
 
   # Persist + show DB version + data counts (helps empty-DB diagnosis)
   if [[ -x "${INSTALL_DIR}/deploy/restore-data.sh" ]]; then
@@ -603,6 +951,10 @@ apply_update() {
   ensure_superadmin_exists || true
 
   log_warn "If login/settings still blocked: sudo bash ${INSTALL_DIR}/deploy/emergency-unlock.sh"
+  if [[ -n "$UPDATE_BACKUP_DIR" ]]; then
+    log_info "Pre-update backup: ${UPDATE_BACKUP_DIR}"
+    log_dim "Go back to v${old_version}: sudo bash ${INSTALL_DIR}/deploy/update.sh --rollback"
+  fi
 
   ui_success_card "$new_version" "$source_commit" "https://${server_ip}/login"
 
@@ -628,6 +980,7 @@ apply_update() {
     echo "  Version     : v${new_version}"
     echo "  Git commit  : ${source_commit}"
     echo "  Git ref     : ${TAG:-$BRANCH}"
+    echo "  Backup      : ${UPDATE_BACKUP_DIR:-none}"
     echo "  Date        : $(date '+%Y-%m-%d %H:%M:%S %Z')"
     echo "  App URL     : https://${server_ip}"
     echo "  Mode        : bare-metal"
@@ -643,6 +996,38 @@ main() {
   require_root
   export DEBIAN_FRONTEND=noninteractive
   command -v git >/dev/null 2>&1 || { apt-get update -qq; apt-get install -y -qq git rsync curl python3; }
+
+  # One update/restore at a time
+  exec 9>/var/lock/foodmood-update.lock
+  if ! flock -n 9; then
+    log_err "Another FoodMood update/restore is running"
+    exit 1
+  fi
+
+  if [[ "$LIST_BACKUPS" -eq 1 ]]; then
+    list_backups
+    exit 0
+  fi
+
+  if [[ "$DO_RESTORE_DB" -eq 1 ]]; then
+    restore_database
+    exit 0
+  fi
+
+  if [[ "$DO_ROLLBACK" -eq 1 ]]; then
+    load_lib || exit 1
+    local d dir=""
+    for d in $(ls -1dt "${BACKUP_ROOT}"/update-* 2>/dev/null); do
+      [[ -d "${d}/app" ]] && { dir="$d"; break; }
+    done
+    [[ -n "$dir" ]] || { log_err "No code snapshot to roll back to (see --list-backups)"; exit 1; }
+    ui_banner "FoodMood  ·  Rollback"
+    ui_kv "Current" "v$(read_installed_version)"
+    ui_kv "Restore" "$(grep '^from=' "${dir}/manifest.txt" 2>/dev/null | cut -d= -f2)  (${dir})"
+    restore_code_snapshot "$dir" || exit 1
+    log_dim "Database was not changed. If needed: update.sh --restore-db ${dir} --yes"
+    exit 0
+  fi
 
   if [[ "$LIST_TAGS" -eq 1 ]]; then
     ui_banner "FoodMood  ·  Tags"
@@ -701,8 +1086,8 @@ main() {
   echo -e "  ${DIM}Preparing update…${NC}"
   ui_blank
 
+  trap on_exit EXIT
   fetch_source
-  trap 'rm -rf "$CLONE_DIR"' EXIT
   load_lib "${CLONE_DIR}/deploy/lib.sh"
   # Keep pretty loggers after lib.sh (lib may redefine them)
   log_info()  { echo -e "  ${CYAN}●${NC}  $*"; }
